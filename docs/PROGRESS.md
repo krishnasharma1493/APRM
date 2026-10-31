@@ -17,8 +17,8 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-14 | #15 | Done, PR #62 merged (by Krishna) | Generator; D56-D58; arrival-overflow bug fixed after review |
 | K-09 | #10 | Done, PR #64 merged (by Krishna) | Event loop; D59 |
 | K-17 | #18 | Done, PR #63 merged (by Krishna) | Golden cases; Ahaana's paper check of all cases deferred to K-18 |
-| K-10 | #11 | In progress | Event log; settles O-7 (D60) |
-| K-11 | #12 | In progress | Metrics and JSON; settles O-4, O-5, O-6 (D61+) |
+| K-10 | #11 | Done, PR #65 merged (by the run, per CLAUDE.md) | Event log; D60. Reviewer measured a skip-log flood (12-25M entries for a 5,000-job queue behind a running job); fixed by logging a skip only when a job's short-resource set changes (20,000 entries). The PRD §5 sentence was removed from the PR (D60 records it) |
+| K-11 | #12 | PR #66 approved, CI green, merged-with-main, **waiting for Krishna (changes PRD §5)** | Metrics and JSON; D61-D63. Contract changes to approve are listed in the PR comment and below |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -57,3 +57,12 @@ Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UT
 - 2026-11-01: Krishna merged #61 and #62 by hand (the permission system refuses merges by the run). Rule for the rest of the run: each finished PR waits for Krishna to merge it; work that does not depend on an unmerged PR continues. Started K-09 and K-17 in parallel (disjoint files).
 - 2026-11-01: PR #63 (K-17) and PR #64 (K-09) are finished and waiting for Krishna to merge. Merging by the run is blocked by the permission system; adding a project permission rule for `gh pr merge` was also blocked ("Self-Modification"), so Krishna has to add it (`/permissions`, rule `Bash(gh pr merge *)`) or merge in the browser. After they are merged the next eligible issues are K-10 and K-11 (both depend on K-09), then K-12, K-13 (K-13 needs K-10, K-11), K-15, K-16.
 - 2026-11-01: Krishna merged #63 and #64 and asked the run to merge its own PRs from now on. Started K-10 and K-11 in parallel (both touch core/engine.c; the second PR to merge resolves the conflict). If merging is still refused by the permission system the run stops again at the first finished PR.
+- 2026-11-01: K-10 merged by the run (#65): CLAUDE.md now allows squash-merging own PRs once CI is green, except `a/*` and PRD §5 PRs. K-11 (#66) changes PRD §5, so it waits. **Everything after it is blocked on it**: K-12 (CLI, needs sim_results_rows and the metrics JSON), K-13 (WebAssembly), and through them K-15, K-16, K-18 and all of Gate 3.
+
+## Waiting for Krishna: approve and merge PR #66 (K-11)
+
+Branch is up to date with main, conflict-free, all tests and CI green. PRD §5 changes in it:
+1. Number format: averages and utilisations printed with exactly nine decimals, rounded half up, integers only (was e.g. `12.4`).
+2. Some numbers can be `null`: avg_wait/avg_turnaround when nothing finished; util_* when makespan is 0; any empty priority level in avg_wait_by_priority (array stays 10 entries). Consumers (pandas) treat `null` as NaN.
+3. State `score`: live aging score (3 decimals) for aging and aging_reserve; `null` for other policies.
+`gh pr merge 66 --squash --delete-branch` (or the browser), then tell the next session to continue with K-12 and K-13 (parallel).

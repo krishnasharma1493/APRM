@@ -16,3 +16,5 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-14 | Autonomous run: seeded workload generator and experiment parameters (PR #62, not merged); independent AI review | Branch k/K-14-gen-workload, decisions D56-D58 | to confirm |
 | 2026-11-01 | Krishna | K-17 | Autonomous run: hand-worked golden cases for every policy; independent AI re-derivation | PR #63 (not yet merged) | to confirm; Ahaana's paper check pending |
 | 2026-11-01 | Krishna | K-09 | Autonomous run: event loop, invariant checker, decision D59; independent AI review with differential and mutation testing | PR #64 (not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-10 | Autonomous run: event log, decision D60, skip-log bound after review; independent AI review (fuzz, fault injection, mutation) | PR #65 as merged | to confirm |
+| 2026-11-01 | Krishna | K-11 | Autonomous run: metrics and JSON outputs, decisions D61-D63; independent AI review (reference arithmetic, mutation) | PR #66 (not yet merged) | to confirm |
