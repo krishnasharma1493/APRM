@@ -66,3 +66,14 @@ Branch is up to date with main, conflict-free, all tests and CI green. PRD §5 c
 2. Some numbers can be `null`: avg_wait/avg_turnaround when nothing finished; util_* when makespan is 0; any empty priority level in avg_wait_by_priority (array stays 10 entries). Consumers (pandas) treat `null` as NaN.
 3. State `score`: live aging score (3 decimals) for aging and aging_reserve; `null` for other policies.
 `gh pr merge 66 --squash --delete-branch` (or the browser), then tell the next session to continue with K-12 and K-13 (parallel).
+
+## Stacked PRs (built on top of unmerged PR #66; they merge after it)
+
+| PR | Issue | Base branch | Status |
+| --- | --- | --- | --- |
+| #66 | K-11 #12 | main | approved, CI green, **needs Krishna: changes PRD §5** |
+| #68 | K-12 #13 console program | k/K-11-metrics-json | reviewed, fixes applied, CI green; auto-retargets to main when #66 merges, then merge |
+| #67 | K-13 #14 WebAssembly | k/K-11-metrics-json | review running; **also changes PRD §5** (the `aprm_last_error` row, decision D64) so needs Krishna too |
+| (next) | K-15 #16 experiment runner | k/K-12-cli | in progress |
+
+Order to merge: #66, then #68, then #67 (after you approve its PRD §5 row). New follow-up: issue #69 (K-42, engine speed, Nice-to-have).
