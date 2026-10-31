@@ -5,8 +5,7 @@
 #   make debug      -g and -DAPRM_DEBUG (invariant checks after every step)
 #   make sanitize   debug + AddressSanitizer + UBSan; also runs the C tests
 #   make test       builds and runs every tests/c/test_*.c; stops at the first failure
-#   make wasm       runs wasm/build.sh if it exists; until K-13 it prints a
-#                   message and exits NON-ZERO (clearer than silently doing nothing)
+#   make wasm       runs wasm/build.sh: web/vendor/aprm.js (needs emcc, see docs/TOOLCHAIN.md)
 #   make clean      removes build/ and nothing else
 #
 # Generic by design: later issues only add files.
@@ -65,8 +64,7 @@ test:
 	@$(MAKE) --no-print-directory MODE=debug tests-run
 
 wasm:
-	@if [ -f wasm/build.sh ]; then sh wasm/build.sh; \
-	else echo "make wasm: wasm/build.sh does not exist yet (added in K-13); nothing built." >&2; exit 1; fi
+	@sh wasm/build.sh
 
 clean:
 	rm -rf build

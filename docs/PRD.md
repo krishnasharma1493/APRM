@@ -405,7 +405,7 @@ Flat functions, so JavaScript never builds C structs. Each returns a status, or 
 | `aprm_add_job(h, id, arrival, duration, cpu, mem, priority)` | Adds one job; returns a status |
 | `aprm_step(h)` / `aprm_run_until(h, t)` | Advance the simulation |
 | `aprm_state(h)` / `aprm_log(h, since)` / `aprm_results(h)` / `aprm_metrics(h)` | JSON strings |
-| `aprm_last_error(h)` | JSON error envelope for the last failed call |
+| `aprm_last_error(h)` | JSON error envelope for the last failed call on `h`. `h` = 0, or any handle that is not live, means "no handle": the last failed `aprm_create` or call with an unknown handle (D64) |
 | `aprm_exact(h)` | Runs the exact solver on the handle's jobs (n ≤ 9) |
 | `aprm_reset(h)` / `aprm_destroy(h)` | Clear or free |
 
