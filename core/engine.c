@@ -412,6 +412,7 @@ int sim_step(Sim *s)
         heap_pop(&s->pending, &jb);
         we.job = jb;
         eventlog_push(&s->log, t, LOG_ARRIVE, jb.id, jb.priority, 0, 0, 0);  /* reserved above */
+        we.skipmask = 0;
         we.key = 0;  /* FCFS has no key; the compare is arrival, then id */
         rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
         if (rc != APRM_OK) return rc;
@@ -433,8 +434,14 @@ int sim_step(Sim *s)
             rc = heap_push(&s->running, &re);  /* cannot fail: reserved above */
             if (rc != APRM_OK) return rc;
         } else {
-            eventlog_push(&s->log, t, LOG_SKIP, we.job.id, we.job.cpu, we.job.mem,
-                          s->free_cpu, s->free_mem);  /* reserved above */
+            /* Log a SKIP only the first time, and again only when the set of
+             * short resources changes (D60): at most 3 per job. */
+            int mask = (we.job.cpu > s->free_cpu ? 1 : 0) | (we.job.mem > s->free_mem ? 2 : 0);
+            if (mask != we.skipmask) {
+                eventlog_push(&s->log, t, LOG_SKIP, we.job.id, we.job.cpu, we.job.mem,
+                              s->free_cpu, s->free_mem);  /* reserved above */
+                we.skipmask = mask;
+            }
             s->skip[skipped++] = we;
         }
     }

@@ -124,16 +124,22 @@ static void test_log_golden(void)
 {
     static const char *const dirs[] = { "tests/cases", "../tests/cases", "../../tests/cases",
                                         "../../../tests/cases" };
+    /* Derived by hand (16 cores, 32768 MB). Job 1 (arr 0, dur 10, 4c 24000MB),
+     * job 2 (arr 1, dur 6, 4c 16000MB), job 3 (arr 2, dur 3, 2c 4000MB).
+     * t=0: job 1 arrives and starts (everything free).
+     * t=1: job 2 arrives; free 12c 8768MB; memory short -> SKIP (first time).
+     * t=2: job 3 arrives; job 2 is examined again, still only memory short ->
+     *      NO second SKIP (D60); job 3 starts (free 12c 8768MB before it).
+     * t=5: job 3 finishes; job 2 still memory short -> no SKIP.
+     * t=10: job 1 finishes; job 2 starts. t=16: job 2 finishes. */
     static const struct { int64_t t; const char *kind; int job; const char *msg; } want[] = {
         {  0, "ARRIVE", 1, "Job 1 arrived with priority 2." },
         {  0, "START",  1, "Job 1 started: needs 4 cores and 24000 MB; 16 cores and 32768 MB free." },
         {  1, "ARRIVE", 2, "Job 2 arrived with priority 5." },
         {  1, "SKIP",   2, "Job 2 skipped: needs 16000 MB, only 8768 MB free." },
         {  2, "ARRIVE", 3, "Job 3 arrived with priority 1." },
-        {  2, "SKIP",   2, "Job 2 skipped: needs 16000 MB, only 8768 MB free." },
         {  2, "START",  3, "Job 3 started: needs 2 cores and 4000 MB; 12 cores and 8768 MB free." },
         {  5, "FINISH", 3, "Job 3 finished after 3 ticks; freed 2 cores and 4000 MB." },
-        {  5, "SKIP",   2, "Job 2 skipped: needs 16000 MB, only 8768 MB free." },
         { 10, "FINISH", 1, "Job 1 finished after 10 ticks; freed 4 cores and 24000 MB." },
         { 10, "START",  2, "Job 2 started: needs 4 cores and 16000 MB; 16 cores and 32768 MB free." },
         { 16, "FINISH", 2, "Job 2 finished after 6 ticks; freed 4 cores and 16000 MB." },
@@ -236,6 +242,7 @@ static void test_log_since(void)
 static void test_log_one_per_decision(void)
 {
     int w;
+    int32_t worst_skips = 0;
     for (w = 0; w < 1000; w++) {
         Sim *s = make(16, 32768);
         int64_t n = rnd(1, 25), i;
@@ -243,16 +250,18 @@ static void test_log_one_per_decision(void)
         int32_t *started = calloc((size_t)n + 1, sizeof *started);
         int32_t *finished = calloc((size_t)n + 1, sizeof *finished);
         int32_t *arrived = calloc((size_t)n + 1, sizeof *arrived);
+        int32_t *skips = calloc((size_t)n + 1, sizeof *skips);
         int64_t prev_t = 0;
+        int32_t max_skips = 0;
         rng_state = 1000 + (uint64_t)w;
-        CHECK(started && finished && arrived);
+        CHECK(started && finished && arrived && skips);
         for (i = 1; i <= n; i++)
             add(s, (int32_t)i, rnd(0, 60), rnd(1, 30), rnd(1, 16), rnd(100, 32768), (int32_t)rnd(0, 9));
         run_all(s);
         CHECK(count_kind(s, LOG_START) == n);
         CHECK(count_kind(s, LOG_FINISH) == n);
         CHECK(count_kind(s, LOG_ARRIVE) == n);
-        for (k = 0; k < s->log.len && started && finished && arrived; k++) {
+        for (k = 0; k < s->log.len && started && finished && arrived && skips; k++) {
             const LogEntry *e = &s->log.e[k];
             CHECK(e->seq == (int64_t)k + 1);
             CHECK(e->t >= prev_t);  /* time never goes backwards */
@@ -269,6 +278,9 @@ static void test_log_one_per_decision(void)
                 arrived[e->job]++;
             } else {
                 CHECK(e->kind == LOG_SKIP && started[e->job] == 0);
+                CHECK(arrived[e->job] == 1);          /* ARRIVE < every SKIP < START */
+                skips[e->job]++;
+                if (skips[e->job] > max_skips) max_skips = skips[e->job];
             }
         }
         /* FINISH order: by finish time, then arrival, then id (sim_step comment). */
@@ -287,9 +299,11 @@ static void test_log_one_per_decision(void)
                 }
             CHECK(fi == s->fin_len);
         }
-        free(started); free(finished); free(arrived);
+        if (max_skips > worst_skips) worst_skips = max_skips;
+        free(started); free(finished); free(arrived); free(skips);
         sim_destroy(s);
     }
+    printf("1,000 random workloads: most SKIPs for one job = %d\n", (int)worst_skips);
 }
 
 static const char *first_skip_msg(Sim *s)
@@ -368,6 +382,11 @@ static void test_log_formatters(void)
         if (strcmp(buf, c[i].want) != 0) printf("got \"%s\"\nwant \"%s\"\n", buf, c[i].want);
         CHECK(strcmp(buf, c[i].want) == 0);
     }
+    /* Zeros, and plural of 0. */
+    memset(&e, 0, sizeof e);
+    e.kind = LOG_FINISH; e.job = 0;
+    eventlog_format(&e, buf, sizeof buf);
+    CHECK(strcmp(buf, "Job 0 finished after 0 ticks; freed 0 cores and 0 MB.") == 0);
     /* Truncation: never overruns, always NUL-terminated, length reported is
      * what was stored. */
     memset(&e, 0, sizeof e);
@@ -407,21 +426,24 @@ static void test_log_growth(void)
     CHECK(l.e[0].seq == 1);
     eventlog_free(&l);
 
-    /* (b) a real run: each job needs 600 of 1000 MB, so one runs at a time
-     * while CPU stays free and the whole queue is re-examined (one SKIP per
-     * waiting job) at every event. */
+    /* (b) regression for the SKIP flood: a hog holds all memory while 2,000
+     * big-memory jobs queue behind it. Every job is skipped for memory, but
+     * only once (D60), not once per event. */
     {
         Sim *s = make(16, 1000);
         JsonBuf j;
-        int64_t n = 600, id;
+        int64_t n = 2000, id;
         size_t k;
-        for (id = 1; id <= n; id++) add(s, (int32_t)id, 0, 1, 1, 600, 0);
+        add(s, 0, 0, 100, 1, 1000, 0);                       /* the hog */
+        for (id = 1; id <= n; id++) add(s, (int32_t)id, 1, 1, 1, 600, 0);
         run_all(s);
-        CHECK(s->log.len > 100000);
-        printf("growth run: %lld jobs -> %zu log entries (%zu bytes)\n", (long long)n, s->log.len,
-               s->log.len * sizeof(LogEntry));
-        CHECK(count_kind(s, LOG_START) == n && count_kind(s, LOG_FINISH) == n);
-        CHECK(count_kind(s, LOG_SKIP) == (int)(s->log.len - 3 * (size_t)n));
+        CHECK(count_kind(s, LOG_START) == n + 1 && count_kind(s, LOG_FINISH) == n + 1);
+        CHECK(count_kind(s, LOG_SKIP) <= 3 * (n + 1));
+        /* The hog leaves no free memory at t=1, so nobody is examined then; after
+         * it finishes, job 1 starts and the other n-1 are skipped once each. */
+        CHECK(count_kind(s, LOG_SKIP) == n - 1);
+        CHECK(s->log.len == (size_t)(4 * n + 2));
+        printf("flood run: %lld queued jobs -> %zu log entries\n", (long long)n, s->log.len);
         for (k = 0; k < s->log.len; k++)
             if (s->log.e[k].seq != (int64_t)k + 1) { CHECK(0); break; }
         json_init(&j);
@@ -430,6 +452,73 @@ static void test_log_growth(void)
         json_free(&j);
         sim_destroy(s);
     }
+}
+
+/* SKIP is logged again only when the set of short resources changes (D60).
+ * Machine 4 cores, 1000 MB. Hand-derived:
+ *  t=0  job 1 (dur 10, 1c 800MB) arrives, starts (4c 1000MB free)
+ *  t=1  job 2 (dur 5, 2c 300MB) arrives; free 3c 200MB: memory short -> SKIP
+ *  t=2  job 3 (dur 20, 3c 50MB) arrives; job 2 examined, still memory only ->
+ *       no SKIP; job 3 starts (3c 200MB free before)
+ *  t=10 job 1 finishes; free 1c 950MB: job 2 now CPU short only -> SKIP (new)
+ *  t=22 job 3 finishes; job 2 starts; t=27 job 2 finishes. */
+static void test_log_skip_on_change(void)
+{
+    static const char *const want[] = {
+        "Job 1 arrived with priority 0.",
+        "Job 1 started: needs 1 core and 800 MB; 4 cores and 1000 MB free.",
+        "Job 2 arrived with priority 0.",
+        "Job 2 skipped: needs 300 MB, only 200 MB free.",
+        "Job 3 arrived with priority 0.",
+        "Job 3 started: needs 3 cores and 50 MB; 3 cores and 200 MB free.",
+        "Job 1 finished after 10 ticks; freed 1 core and 800 MB.",
+        "Job 2 skipped: needs 2 cores, only 1 core free.",
+        "Job 3 finished after 20 ticks; freed 3 cores and 50 MB.",
+        "Job 2 started: needs 2 cores and 300 MB; 4 cores and 1000 MB free.",
+        "Job 2 finished after 5 ticks; freed 2 cores and 300 MB.",
+    };
+    size_t i, n = sizeof want / sizeof want[0];
+    Sim *s = make(4, 1000);
+    add(s, 1, 0, 10, 1, 800, 0);
+    add(s, 2, 1, 5, 2, 300, 0);
+    add(s, 3, 2, 20, 3, 50, 0);
+    run_all(s);
+    CHECK(s->log.len == n);
+    for (i = 0; i < n && i < s->log.len; i++) {
+        if (strcmp(msg_of(s, i), want[i]) != 0) printf("entry %zu: got \"%s\"\n", i, msg_of(s, i));
+        CHECK(strcmp(msg_of(s, i), want[i]) == 0);
+    }
+    sim_destroy(s);
+}
+
+/* Within one step, FINISH entries come before ARRIVE entries (D9). */
+static void test_log_finish_before_arrive(void)
+{
+    Sim *s = make(4, 1000);
+    add(s, 1, 0, 5, 1, 100, 0);
+    add(s, 2, 5, 5, 1, 100, 0);   /* arrives exactly when job 1 finishes */
+    run_all(s);
+    CHECK(strcmp(msg_of(s, 2), "Job 1 finished after 5 ticks; freed 1 core and 100 MB.") == 0);
+    CHECK(strcmp(msg_of(s, 3), "Job 2 arrived with priority 0.") == 0);
+    CHECK(s->log.e[2].t == 5 && s->log.e[3].t == 5);
+    sim_destroy(s);
+}
+
+/* eventlog_push never allocates: with no reserved room it fails and changes nothing. */
+static void test_log_push_full(void)
+{
+    EventLog l;
+    eventlog_init(&l);
+    CHECK(eventlog_push(&l, 0, LOG_ARRIVE, 1, 0, 0, 0, 0) == APRM_OUT_OF_MEMORY);
+    CHECK(l.len == 0 && l.e == NULL);
+    CHECK(eventlog_reserve(&l, 64) == APRM_OK);
+    while (l.len < l.cap) CHECK(eventlog_push(&l, 0, LOG_ARRIVE, 1, 0, 0, 0, 0) == APRM_OK);
+    {
+        size_t len0 = l.len;
+        CHECK(eventlog_push(&l, 9, LOG_START, 2, 0, 0, 0, 0) == APRM_OUT_OF_MEMORY);
+        CHECK(l.len == len0 && l.e[len0 - 1].seq == (int64_t)len0 && l.e[len0 - 1].kind == LOG_ARRIVE);
+    }
+    eventlog_free(&l);
 }
 
 static void test_log_json_valid(void)
@@ -511,6 +600,9 @@ int main(void)
     test_log_skip_resource();
     test_log_formatters();
     test_log_growth();
+    test_log_skip_on_change();
+    test_log_finish_before_arrive();
+    test_log_push_full();
     test_log_json_valid();
     test_log_reset();
     test_log_step_all_or_nothing();
