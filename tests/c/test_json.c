@@ -18,6 +18,65 @@ static int milli_is(int64_t v, const char *want)
     return ok;
 }
 
+/* Tiny structural checker: quotes close, brackets balance and match. */
+static int balanced(const char *s)
+{
+    char st[64];
+    int d = 0, in = 0;
+    for (; *s; s++) {
+        if (in) {
+            if (*s == '\\') { if (!*++s) return 0; }
+            else if (*s == '"') in = 0;
+            continue;
+        }
+        if (*s == '"') in = 1;
+        else if (*s == '{' || *s == '[') { if (d >= 64) return 0; st[d++] = *s; }
+        else if (*s == '}' || *s == ']') {
+            if (d == 0 || st[--d] != (*s == '}' ? '{' : '[')) return 0;
+        }
+    }
+    return d == 0 && !in;
+}
+
+/* Write s as a JSON string and compare the exact output bytes with want. */
+static int str_is(const char *s, const char *want)
+{
+    JsonBuf j;
+    int ok;
+    json_init(&j);
+    json_str(&j, s);
+    ok = json_status(&j) == APRM_OK && strcmp(json_cstr(&j), want) == 0 &&
+         json_len(&j) == strlen(want) && balanced(json_cstr(&j));
+    json_free(&j);
+    return ok;
+}
+
+/* Valid UTF-8 passes through; each invalid byte becomes EF BF BD. */
+static void test_json_utf8(void)
+{
+    JsonBuf j;
+    CHECK(str_is("\xc3\xa9", "\"\xc3\xa9\""));                 /* e acute, 2 bytes */
+    CHECK(str_is("\xe2\x82\xac", "\"\xe2\x82\xac\""));         /* euro, 3 bytes */
+    CHECK(str_is("\xf0\x9f\x98\x80", "\"\xf0\x9f\x98\x80\""));  /* U+1F600, 4 bytes */
+    CHECK(str_is("\xf4\x8f\xbf\xbf", "\"\xf4\x8f\xbf\xbf\""));  /* U+10FFFF, max */
+    CHECK(str_is("\xed\x9f\xbf", "\"\xed\x9f\xbf\""));         /* U+D7FF, just below surrogates */
+    CHECK(str_is("\xee\x80\x80", "\"\xee\x80\x80\""));         /* U+E000, just above */
+    CHECK(str_is("\xc3\x28", "\"\xef\xbf\xbd" "(\""));          /* bad continuation */
+    CHECK(str_is("\xff\xfe", "\"\xef\xbf\xbd\xef\xbf\xbd\""));
+    CHECK(str_is("\xed\xa0\x80", "\"\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\""));  /* surrogate */
+    CHECK(str_is("\xc0\x80", "\"\xef\xbf\xbd\xef\xbf\xbd\""));             /* overlong */
+    CHECK(str_is("\xe0\x80\x80", "\"\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\""));  /* overlong 3 */
+    CHECK(str_is("\xf4\x90\x80\x80", "\"\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\""));  /* > 10FFFF */
+    CHECK(str_is("\x80", "\"\xef\xbf\xbd\""));                   /* stray continuation */
+    CHECK(str_is("ab\xe2\x82", "\"ab\xef\xbf\xbd\xef\xbf\xbd\""));  /* truncated at end */
+    CHECK(str_is("a\xf0\x9f\x98", "\"a\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\""));
+    CHECK(str_is("\xc3\n\xc3\xa9", "\"\xef\xbf\xbd\\n\xc3\xa9\""));  /* control after bad byte */
+    json_init(&j);   /* keys are repaired too */
+    json_obj_begin(&j); json_key(&j, "k\xff"); json_i64(&j, 1); json_obj_end(&j);
+    CHECK(strcmp(json_cstr(&j), "{\"k\xef\xbf\xbd\":1}") == 0);
+    json_free(&j);
+}
+
 static void test_json_escape(void)
 {
     JsonBuf j;
@@ -58,6 +117,7 @@ static void test_json_nested(void)
     CHECK(strcmp(json_cstr(&j),
         "{\"jobs\":[{\"id\":1,\"ok\":true},{\"id\":2,\"x\":null},[]],\"empty\":{},\"s\":6.200}") == 0);
     CHECK(json_len(&j) == strlen(json_cstr(&j)));
+    CHECK(balanced(json_cstr(&j)));
     json_free(&j);
 
     json_init(&j);   /* top-level array of scalars */
@@ -109,6 +169,7 @@ static void test_json_growth(void)
     CHECK(json_status(&j) == APRM_OK);
     CHECK(json_len(&j) == expect);
     CHECK(j.buf[json_len(&j)] == '\0' && strlen(j.buf) == expect);
+    CHECK(balanced(j.buf));
     CHECK(j.buf[0] == '[' && j.buf[1] == '"' && j.buf[1001] == 'x' && j.buf[1002] == '"' && j.buf[1003] == ',');
     CHECK(j.buf[expect - 1] == ']' && j.buf[expect - 2] == '"');
     /* reset keeps capacity */
@@ -155,6 +216,7 @@ static void test_json_oom(void)
     /* a loop that eventually hits a small limit never overruns */
     json_init(&j);
     json_set_limit(&j, 1000);
+    json_arr_begin(&j);
     for (i = 0; i < 1000; i++) json_i64(&j, 123456789);
     CHECK(json_status(&j) == APRM_OUT_OF_MEMORY);
     CHECK(j.len < 1000 && j.buf[j.len] == '\0');
@@ -175,6 +237,13 @@ static void test_json_misuse(void)
     CHECK(json_status(&j) == APRM_INVALID_ARGUMENT); json_free(&j);
     json_init(&j); json_obj_begin(&j); json_key(&j, "a"); json_obj_end(&j);  /* dangling key */
     CHECK(json_status(&j) == APRM_INVALID_ARGUMENT); json_free(&j);
+    json_init(&j); json_i64(&j, 1); json_i64(&j, 2);             /* second top-level value */
+    CHECK(json_status(&j) == APRM_INVALID_ARGUMENT);
+    CHECK(strcmp(json_cstr(&j), "1") == 0);
+    json_reset(&j); json_arr_begin(&j); json_arr_end(&j); json_obj_begin(&j);
+    CHECK(json_status(&j) == APRM_INVALID_ARGUMENT);
+    CHECK(strcmp(json_cstr(&j), "[]") == 0);
+    json_free(&j);
     json_init(&j);
     for (i = 0; i < JSON_MAX_DEPTH + 1; i++) json_arr_begin(&j);  /* too deep */
     CHECK(json_status(&j) == APRM_INVALID_ARGUMENT); json_free(&j);
@@ -205,6 +274,7 @@ static void test_json_envelope(void)
 
 int main(void)
 {
+    test_json_utf8();
     test_json_escape();
     test_json_nested();
     test_json_milli();

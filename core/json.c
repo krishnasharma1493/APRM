@@ -57,7 +57,8 @@ static char *start(JsonBuf *j, size_t n, int is_key)
             fail(j, APRM_INVALID_ARGUMENT); return NULL;   /* value without key */
         }
         comma = j->has[j->depth - 1] && !j->after_key;
-    } else if (is_key) {
+    } else if (is_key || j->len > 0) {
+        /* a key outside an object, or a second top-level value */
         fail(j, APRM_INVALID_ARGUMENT); return NULL;
     }
     if (n > SIZE_MAX - 1) { fail(j, APRM_OUT_OF_MEMORY); return NULL; }
@@ -71,27 +72,75 @@ static char *start(JsonBuf *j, size_t n, int is_key)
     return p;
 }
 
-/* Number of bytes json-escaping s needs (without quotes). O(len). */
+/* Length (1..4) of the valid UTF-8 sequence (RFC 3629) starting at s, or 0 if
+ * the byte at s cannot start one: stray continuation, overlong (C0, C1,
+ * E0 80..9F, F0 80..8F), surrogate (ED A0..BF), above U+10FFFF (F4 90.., F5..FF)
+ * or truncated. s is NUL-terminated, and NUL is never a continuation byte, so
+ * the reads stay inside the string. O(1). */
+static int utf8_len(const unsigned char *s)
+{
+    unsigned char c = s[0], lo = 0x80, hi = 0xBF;
+    int n, i;
+    if (c < 0x80) return 1;
+    if (c >= 0xC2 && c <= 0xDF) n = 2;
+    else if (c >= 0xE0 && c <= 0xEF) {
+        n = 3;
+        if (c == 0xE0) lo = 0xA0;
+        if (c == 0xED) hi = 0x9F;
+    } else if (c >= 0xF0 && c <= 0xF4) {
+        n = 4;
+        if (c == 0xF0) lo = 0x90;
+        if (c == 0xF4) hi = 0x8F;
+    } else return 0;
+    if (s[1] < lo || s[1] > hi) return 0;
+    for (i = 2; i < n; i++)
+        if (s[i] < 0x80 || s[i] > 0xBF) return 0;
+    return n;
+}
+
+/* Number of bytes the escaped form of s needs (without quotes). Must agree
+ * exactly with esc_write. O(len). */
 static size_t esc_len(const char *s)
 {
     size_t n = 0;
-    for (; *s; s++) {
-        unsigned char c = (unsigned char)*s;
+    const unsigned char *u = (const unsigned char *)s;
+    while (*u) {
+        unsigned char c = *u;
+        int m = utf8_len(u);
+        if (c >= 0x80) {
+            if (m == 0) { n += 3; u += 1; }       /* U+FFFD, one per bad byte */
+            else { n += (size_t)m; u += m; }
+            continue;
+        }
         if (c == '"' || c == '\\' || c == '\n' || c == '\t' || c == '\r' ||
             c == '\b' || c == '\f') n += 2;
         else if (c < 0x20) n += 6;
         else n += 1;
+        u++;
     }
     return n;
 }
 
-/* Write the quoted, escaped form of s at p; returns the end pointer. O(len). */
+/* Write the quoted, escaped form of s at p; returns the end pointer.
+ * Invalid UTF-8 bytes each become the three bytes EF BF BD. O(len). */
 static char *esc_write(char *p, const char *s)
 {
     static const char hex[] = "0123456789abcdef";
+    const unsigned char *u = (const unsigned char *)s;
     *p++ = '"';
-    for (; *s; s++) {
-        unsigned char c = (unsigned char)*s;
+    while (*u) {
+        unsigned char c = *u;
+        if (c >= 0x80) {
+            int m = utf8_len(u), i;
+            if (m == 0) {
+                *p++ = (char)0xEF; *p++ = (char)0xBF; *p++ = (char)0xBD;
+                u++;
+            } else {
+                for (i = 0; i < m; i++) *p++ = (char)u[i];
+                u += m;
+            }
+            continue;
+        }
         switch (c) {
         case '"':  *p++ = '\\'; *p++ = '"';  break;
         case '\\': *p++ = '\\'; *p++ = '\\'; break;
@@ -108,6 +157,7 @@ static char *esc_write(char *p, const char *s)
                 *p++ = (char)c;
             }
         }
+        u++;
     }
     *p++ = '"';
     return p;
@@ -175,9 +225,13 @@ static void end(JsonBuf *j, char close, char kind)
     j->depth--;
 }
 
+/* Open an object "{" (O(1)). */
 void json_obj_begin(JsonBuf *j) { begin(j, '{', 'o'); }
+/* Close the current object "}" (O(1)); error if the open level is not an object. */
 void json_obj_end(JsonBuf *j)   { end(j, '}', 'o'); }
+/* Open an array "[" (O(1)). */
 void json_arr_begin(JsonBuf *j) { begin(j, '[', 'a'); }
+/* Close the current array "]" (O(1)); error if the open level is not an array. */
 void json_arr_end(JsonBuf *j)   { end(j, ']', 'a'); }
 
 /* Write an object key and the colon. O(len k). */

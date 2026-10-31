@@ -6,6 +6,15 @@
  * Callers who need the text longer must copy it. All functions are
  * pure C11, no globals; every JsonBuf is independent.
  *
+ * Strings and keys are always valid UTF-8 on output. The input is checked per
+ * RFC 3629 (no overlongs, no surrogates U+D800..DFFF, nothing above U+10FFFF,
+ * no truncated or stray continuation bytes). Valid multi-byte sequences pass
+ * through unchanged; EACH offending byte is replaced by one U+FFFD, written as
+ * the three raw bytes EF BF BD (not an escape). The result does not depend on
+ * the platform or locale. Control characters are escaped as before.
+ * Only one top-level value per buffer (until json_reset); a second one sets
+ * APRM_INVALID_ARGUMENT.
+ *
  * Errors are sticky: the first error is stored in `err`; after that every
  * write is a no-op until json_reset(). Each token (comma + text) is written
  * atomically, so the buffer always holds the text of the last complete token
@@ -42,7 +51,7 @@ void json_obj_end(JsonBuf *j);
 void json_arr_begin(JsonBuf *j);
 void json_arr_end(JsonBuf *j);
 void json_key(JsonBuf *j, const char *k);   /* only inside an object */
-void json_str(JsonBuf *j, const char *s);   /* escapes " \ and bytes < 0x20; NULL prints null */
+void json_str(JsonBuf *j, const char *s);   /* escapes " \ and bytes < 0x20, repairs bad UTF-8; NULL prints null */
 void json_i64(JsonBuf *j, int64_t v);
 void json_bool(JsonBuf *j, int b);
 void json_null(JsonBuf *j);
