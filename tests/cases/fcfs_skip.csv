@@ -1,0 +1,4 @@
+id,arrival,duration,cpu,mem,priority
+1,0,10,4,24000,2
+2,1,6,4,16000,5
+3,2,3,2,4000,1

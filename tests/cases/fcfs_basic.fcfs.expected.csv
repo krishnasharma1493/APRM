@@ -1,0 +1,4 @@
+id,arrival,start,finish,wait,turnaround,priority,cpu,mem
+1,0,0,10,0,10,0,16,32768
+2,2,10,15,8,13,3,8,16384
+3,4,15,18,11,14,9,16,8192
