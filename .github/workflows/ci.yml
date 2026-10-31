@@ -1,0 +1,72 @@
+# CI baseline (K-06). Runs on every push and pull request, on every branch.
+#
+# Versions were looked up on the official pages on 2026-11-01 (see the K-06 PR):
+#  - actions/checkout      v7  (latest release v7.0.1; README recommends @v7)
+#  - actions/setup-python  v7  (latest release v7.1.0; README recommends @v7)
+#  - runner image          ubuntu-24.04 (what GitHub's runner-images README lists for ubuntu-latest)
+#  - Python 3.13           the version recorded in docs/TOOLCHAIN.md. Exact patch is frozen in K-18.
+# No secrets are used.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-c:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build with -Wall -Wextra -Werror
+        run: make
+
+  test-c:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the C tests
+        run: make test
+
+  sanitize:
+    runs-on: ubuntu-24.04
+    env:
+      # LeakSanitizer is available on Linux, so also report leaks.
+      ASAN_OPTIONS: detect_leaks=1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test under ASan + UBSan
+        run: make sanitize
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Create venv and install requirements
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+      - name: Run Python tests
+        run: |
+          # pytest exit code 5 means "no tests collected": treated as a pass until tests exist.
+          set +e
+          .venv/bin/python -m pytest tests/py
+          code=$?
+          if [ "$code" -eq 5 ]; then echo "no tests collected (exit 5): treated as pass"; exit 0; fi
+          exit "$code"
+
+  # build-wasm: added in K-13 (install the frozen emsdk, `make wasm`).
+  # build-wasm:
+  #   runs-on: ubuntu-24.04
+  #   steps:
+  #     - uses: actions/checkout@v7
+
+  # deploy: added in K-37 (main only, publish web/ to GitHub Pages).
+  # deploy:
+  #   if: github.ref == 'refs/heads/main'
+  #   needs: [build-c, test-c, sanitize, python]
