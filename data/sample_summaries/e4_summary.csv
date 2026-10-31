@@ -1,0 +1,6 @@
+experiment,setting,x_value,policy,n_seeds,high_prio_avg_wait_mean,high_prio_avg_wait_ci_low,high_prio_avg_wait_ci_high,low_prio_max_wait_mean,low_prio_max_wait_ci_low,low_prio_max_wait_ci_high
+E4,alpha_milli=0,0.0,aging,30,5.0,4.5,5.5,200.0,192.0,208.0
+E4,alpha_milli=100,0.1,aging,30,6.0,5.5,6.5,183.333,175.333,191.333
+E4,alpha_milli=250,0.25,aging,30,7.5,7.0,8.0,158.333,150.333,166.333
+E4,alpha_milli=500,0.5,aging,30,10.0,9.5,10.5,116.667,108.667,124.667
+E4,alpha_milli=1000,1.0,aging,30,15.0,14.5,15.5,33.333,25.333,41.333
