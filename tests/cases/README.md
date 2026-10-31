@@ -10,7 +10,7 @@ Rules used (BLUEPRINT §2, §3.2, §3.4): time jumps between events; at one tick
 
 ## FCFS cases
 
-Status of the paper check by Ahaana: **pending** for every case (tick here when done).
+Status of the paper check by Ahaana: **pending** for every case (deferred to K-17; tick here when done). Until then the only independent check is a separate AI session that derived all four schedules from the inputs alone and matched every row.
 
 ### fcfs_basic (shows: priority is ignored)
 
