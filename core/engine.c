@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "config.h"
+#include "policy.h"
 
 /* ---- error storage ---- */
 
@@ -42,12 +43,18 @@ static int cmp_pending(const void *a, const void *b, void *ctx)
     return (x->id > y->id) - (x->id < y->id);
 }
 
-/* Waiting: smaller key first, then arrival, then id. O(1). */
+/* Waiting: smaller key first, then the policy's compare (ctx is the Sim),
+ * then arrival, then id (the final tie-break always applies). O(1). */
 static int cmp_waiting(const void *a, const void *b, void *ctx)
 {
     const WaitEntry *x = a, *y = b;
-    (void)ctx;
+    const Sim *s = ctx;
+    int r;
     if (x->key != y->key) return x->key < y->key ? -1 : 1;
+    if (s && s->policy_cmp) {
+        r = s->policy_cmp(&x->job, &y->job);
+        if (r != 0) return r;
+    }
     return cmp_pending(&x->job, &y->job, NULL);
 }
 
@@ -153,6 +160,7 @@ static void sim_clear_scalars(Sim *s)
     s->free_mem = s->cfg.mem_cap;
     s->n_total = 0;
     s->n_finished = 0;
+    s->fin_len = 0;
     memset(&s->err, 0, sizeof s->err);
 }
 
@@ -168,8 +176,9 @@ int sim_create(const SimConfig *cfg, Sim **out)
     if (!s) return APRM_OUT_OF_MEMORY;
     s->cfg = *cfg;
     sim_clear_scalars(s);
+    s->policy_cmp = policy_compare_for(cfg->policy);
     if (heap_init(&s->pending, sizeof(Job), cmp_pending, NULL) != APRM_OK ||
-        heap_init(&s->waiting, sizeof(WaitEntry), cmp_waiting, NULL) != APRM_OK ||
+        heap_init(&s->waiting, sizeof(WaitEntry), cmp_waiting, s) != APRM_OK ||
         heap_init(&s->running, sizeof(RunEntry), cmp_running, NULL) != APRM_OK) {
         sim_destroy(s);  /* heap_free is safe on a heap that failed to init */
         return APRM_OUT_OF_MEMORY;
@@ -185,6 +194,8 @@ void sim_destroy(Sim *s)
     heap_free(&s->waiting);
     heap_free(&s->running);
     free(s->ids.slot);
+    free(s->fin);
+    free(s->skip);
     free(s);
 }
 
@@ -267,3 +278,217 @@ int sim_add_job(Sim *s, const Job *job)
     s->n_total++;
     return APRM_OK;
 }
+
+/* ---- event loop (issue K-09) ---- */
+
+/* Grow a plain array of elem-sized items to hold at least need items, at
+ * least doubling. Returns APRM_OK or APRM_OUT_OF_MEMORY (array unchanged).
+ * O(n) when it grows, O(1) otherwise. The Sim owns the array. */
+static int reserve_array(void **buf, size_t *cap, size_t need, size_t elem)
+{
+    size_t ncap;
+    void *grown;
+    if (need <= *cap) return APRM_OK;
+    ncap = (*cap <= SIZE_MAX / 2 && *cap * 2 > need) ? *cap * 2 : need;
+    if (ncap < 16) ncap = 16;
+    if (ncap > SIZE_MAX / elem) return APRM_OUT_OF_MEMORY;
+    grown = realloc(*buf, ncap * elem);
+    if (!grown) return APRM_OUT_OF_MEMORY;
+    *buf = grown;
+    *cap = ncap;
+    return APRM_OK;
+}
+
+/* Time of the next event into *t: the earlier of the first pending arrival
+ * and the first running finish. If only waiting jobs remain (cannot happen
+ * after a selection step, since a job fits an empty machine) the next event
+ * is "now". Returns 1 if there is an event, 0 if the simulation is finished.
+ * O(1). */
+static int next_event(const Sim *s, int64_t *t)
+{
+    Job a;
+    RunEntry r;
+    int has_a = heap_peek(&s->pending, &a) == APRM_OK;
+    int has_r = heap_peek(&s->running, &r) == APRM_OK;
+    if (has_a && has_r) *t = a.arrival < r.finish ? a.arrival : r.finish;
+    else if (has_a) *t = a.arrival;
+    else if (has_r) *t = r.finish;
+    else if (heap_size(&s->waiting) > 0) *t = s->now;
+    else return 0;
+    return 1;
+}
+
+int sim_step(Sim *s)
+{
+    int64_t t, w_max, r_max;
+    size_t skipped = 0, i;
+    int rc;
+    Job jb;
+    RunEntry re;
+    WaitEntry we;
+
+    if (!s) return APRM_INVALID_ARGUMENT;
+    if (!s->policy_cmp) {
+        fail(&s->err, APRM_INVALID_ARGUMENT, "policy", "Policy %d is not implemented yet.",
+             (int)s->cfg.policy);
+        return APRM_INVALID_ARGUMENT;
+    }
+    if (!next_event(s, &t)) return 0;
+
+    /* Reserve every buffer this step can need, so that nothing below can
+     * fail halfway (a step is all-or-nothing). Bounds are the live counts,
+     * not n_total, so memory follows the queue, not the whole workload. */
+    w_max = (int64_t)(heap_size(&s->waiting) + heap_size(&s->pending));
+
+    /* Overflow guard, before anything changes. A job can only start if one is
+     * waiting or pending; every start is at t and every duration is at most
+     * APRM_DURATION_MAX, so start + duration fits when t is below the limit. */
+    if (w_max > 0 && t > INT64_MAX - APRM_DURATION_MAX) {
+        fail(&s->err, APRM_INVALID_FIELD, "duration", "Time %lld is too large to add a duration.",
+             (long long)t);
+        return APRM_INVALID_FIELD;
+    }
+
+    r_max = (int64_t)heap_size(&s->running) + w_max;
+    if (r_max > s->cfg.cpu_cap) r_max = s->cfg.cpu_cap;  /* each running job uses >= 1 core */
+    if (heap_reserve(&s->waiting, (size_t)w_max) != APRM_OK ||
+        heap_reserve(&s->running, (size_t)r_max) != APRM_OK ||
+        reserve_array((void **)&s->skip, &s->skip_cap, (size_t)w_max, sizeof *s->skip) != APRM_OK ||
+        reserve_array((void **)&s->fin, &s->fin_cap, s->fin_len + heap_size(&s->running),
+                      sizeof *s->fin) != APRM_OK) {
+        fail(&s->err, APRM_OUT_OF_MEMORY, "", "Out of memory.");
+        return APRM_OUT_OF_MEMORY;
+    }
+
+    s->now = t;
+
+    /* 1. Finishes first (D9): free resources, append to the finished list.
+     * Loop until no running job finishes at t (several can share a tick).
+     * K-10 hook: FINISH log line here. */
+    while (heap_peek(&s->running, &re) == APRM_OK && re.finish <= t) {
+        heap_pop(&s->running, &re);
+        s->free_cpu += re.job.cpu;
+        s->free_mem += re.job.mem;
+        s->fin[s->fin_len++] = re;
+        s->n_finished++;
+    }
+
+    /* 2. Arrivals at t join the waiting heap. K-10 hook: ARRIVE log line. */
+    while (heap_peek(&s->pending, &jb) == APRM_OK && jb.arrival <= t) {
+        heap_pop(&s->pending, &jb);
+        we.job = jb;
+        we.key = 0;  /* FCFS has no key; the compare is arrival, then id */
+        rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
+        if (rc != APRM_OK) return rc;
+    }
+
+    /* 3. Greedy fill (BLUEPRINT 3.4). A job that does not fit is parked in
+     * the skip list and pushed back only after the loop, so it is never
+     * popped twice in one step. K-10 hook: START and WAIT log lines. */
+    while (heap_size(&s->waiting) > 0 && s->free_cpu > 0 && s->free_mem > 0) {
+        heap_pop(&s->waiting, &we);
+        if (we.job.cpu <= s->free_cpu && we.job.mem <= s->free_mem) {
+            re.job = we.job;
+            re.start = t;
+            re.finish = t + we.job.duration;  /* cannot overflow: guarded above */
+            s->free_cpu -= we.job.cpu;
+            s->free_mem -= we.job.mem;
+            rc = heap_push(&s->running, &re);  /* cannot fail: reserved above */
+            if (rc != APRM_OK) return rc;
+        } else {
+            s->skip[skipped++] = we;
+        }
+    }
+    for (i = 0; i < skipped; i++) {
+        rc = heap_push(&s->waiting, &s->skip[i]);
+        if (rc != APRM_OK) return rc;
+    }
+
+#ifdef APRM_DEBUG
+    {
+        const char *why = NULL;
+        if (sim_check_invariants(s, &why)) {
+            fprintf(stderr, "APRM invariant violated after step at t=%lld: %s\n",
+                    (long long)s->now, why);
+            abort();
+        }
+    }
+#endif
+    return 1;
+}
+
+int sim_run_until(Sim *s, int64_t t)
+{
+    int64_t next;
+    int rc;
+    if (!s) return APRM_INVALID_ARGUMENT;
+    while (next_event(s, &next) && next <= t) {
+        rc = sim_step(s);
+        if (rc < 0) return rc;
+        if (rc == 0) break;
+    }
+    return APRM_OK;
+}
+
+#ifdef APRM_DEBUG
+/* ---- invariant checker (debug builds only; PRD section 4) ---- */
+
+int sim_check_invariants(const Sim *s, const char **why)
+{
+    int64_t used_cpu = 0, used_mem = 0;
+    size_t i, n;
+    const RunEntry *r;
+    const WaitEntry *w;
+    const Job *p;
+#define BAD(msg) do { *why = (msg); return 1; } while (0)
+
+    if (s->free_cpu < 0 || s->free_cpu > s->cfg.cpu_cap) BAD("free cpu outside 0..capacity");
+    if (s->free_mem < 0 || s->free_mem > s->cfg.mem_cap) BAD("free memory outside 0..capacity");
+
+    n = heap_size(&s->running);
+    for (i = 0; i < n; i++) {
+        r = (const RunEntry *)(s->running.data + i * s->running.elem_size);
+        used_cpu += r->job.cpu;
+        used_mem += r->job.mem;
+        if (r->start < r->job.arrival) BAD("running job started before its arrival");
+        if (r->start > s->now) BAD("running job starts in the future");
+        if (r->finish - r->start != r->job.duration) BAD("running job finish - start != duration");
+        if (r->finish <= s->now) BAD("running job should already have finished");
+    }
+    if (used_cpu > s->cfg.cpu_cap) BAD("used cpu above capacity");
+    if (used_mem > s->cfg.mem_cap) BAD("used memory above capacity");
+    if (used_cpu + s->free_cpu != s->cfg.cpu_cap) BAD("used + free cpu != capacity");
+    if (used_mem + s->free_mem != s->cfg.mem_cap) BAD("used + free memory != capacity");
+
+    for (i = 0; i < s->fin_len; i++) {
+        if (s->fin[i].start < s->fin[i].job.arrival) BAD("finished job started before its arrival");
+        if (s->fin[i].finish - s->fin[i].start != s->fin[i].job.duration)
+            BAD("finished job finish - start != duration");
+        if (s->fin[i].finish > s->now) BAD("finished job finishes after now");
+    }
+    if ((int64_t)s->fin_len != s->n_finished) BAD("finished list length != n_finished");
+
+    n = heap_size(&s->waiting);
+    for (i = 0; i < n; i++) {
+        w = (const WaitEntry *)(s->waiting.data + i * s->waiting.elem_size);
+        if (w->job.cpu > s->cfg.cpu_cap || w->job.mem > s->cfg.mem_cap)
+            BAD("waiting job can never fit the machine");
+        if (w->job.arrival > s->now) BAD("waiting job has not arrived yet");
+        /* Greedy-fill post-condition: nothing left waiting could start now. */
+        if (w->job.cpu <= s->free_cpu && w->job.mem <= s->free_mem)
+            BAD("a waiting job fits but was not started");
+    }
+    for (i = 0; i < heap_size(&s->pending); i++) {
+        p = (const Job *)(s->pending.data + i * s->pending.elem_size);
+        if (p->arrival < s->now) BAD("pending job arrival is in the past");
+    }
+
+    if ((int64_t)(heap_size(&s->pending) + heap_size(&s->waiting) + heap_size(&s->running)
+                  + s->fin_len) != s->n_total)
+        BAD("pending + waiting + running + finished != total jobs");
+    /* "At most one reservation, and it is in the waiting heap": there is no
+     * reservation until K-26, so there is nothing to check yet. */
+#undef BAD
+    return 0;
+}
+#endif

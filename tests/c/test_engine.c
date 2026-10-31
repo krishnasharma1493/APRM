@@ -259,7 +259,7 @@ static void test_add_past(void)
 {
     Sim *s = make(cfg_default());
     Job j = job_ok(1);
-    s->now = 42;  /* test hook: sim_step does not exist yet (K-09) */
+    s->now = 42;  /* test hook: set the clock directly */
     j.arrival = 10;
     expect_reject(s, j, APRM_ARRIVAL_IN_PAST, "arrival");
     CHECK(strcmp(sim_last_error(s)->message, "Arrival 10 is before current time 42.") == 0);
@@ -376,6 +376,467 @@ static void test_reset_destroy(void)
     sim_destroy(s);
 }
 
+
+/* ===================== event loop (K-09) ===================== */
+
+static Job mkjob(int32_t id, int64_t arrival, int64_t dur, int64_t cpu, int64_t mem)
+{
+    Job j;
+    j.id = id; j.arrival = arrival; j.duration = dur; j.cpu = cpu; j.mem = mem; j.priority = 0;
+    return j;
+}
+
+/* Step until finished (bounded). Returns the number of steps taken. */
+static int run_all(Sim *s)
+{
+    int n = 0, rc;
+    while ((rc = sim_step(s)) == 1 && n < 1000000) n++;
+    CHECK(rc == 0);
+    return n;
+}
+
+/* The finished entry for id, or NULL. */
+static const RunEntry *fin_of(const Sim *s, int32_t id)
+{
+    size_t i;
+    for (i = 0; i < s->fin_len; i++) if (s->fin[i].job.id == id) return &s->fin[i];
+    return NULL;
+}
+
+static void expect_sched(const Sim *s, int32_t id, int64_t start, int64_t finish)
+{
+    const RunEntry *r = fin_of(s, id);
+    if (!r) printf("expect_sched: job %d did not finish\n", (int)id);
+    CHECK(r != NULL);
+    if (r) { CHECK(r->start == start); CHECK(r->finish == finish); }
+}
+
+static void test_step_null_and_policy(void)
+{
+    SimConfig c = cfg_default();
+    Sim *s;
+    Job j = job_ok(1);
+    CHECK(sim_step(NULL) == APRM_INVALID_ARGUMENT);
+    CHECK(sim_run_until(NULL, 5) == APRM_INVALID_ARGUMENT);
+    c.policy = POL_SJF;  /* not built yet: refused, Sim untouched */
+    s = make(c);
+    CHECK(sim_add_job(s, &j) == APRM_OK);
+    CHECK(sim_step(s) == APRM_INVALID_ARGUMENT);
+    CHECK(sim_last_error(s)->code == APRM_INVALID_ARGUMENT);
+    CHECK(strcmp(sim_last_error(s)->field, "policy") == 0);
+    CHECK(s->now == 0 && heap_size(&s->pending) == 1 && s->fin_len == 0);
+    sim_destroy(s);
+}
+
+static void test_step_empty(void)
+{
+    Sim *s = make(cfg_default());
+    CHECK(sim_step(s) == 0);
+    CHECK(sim_step(s) == 0);  /* stays finished */
+    CHECK(sim_run_until(s, 100) == APRM_OK);
+    CHECK(s->now == 0 && s->n_total == 0);
+    sim_destroy(s);
+}
+
+static void test_step_single(void)
+{
+    Sim *s = make(cfg_default());
+    Job j = mkjob(1, 5, 7, 2, 1024);
+    CHECK(sim_add_job(s, &j) == APRM_OK);
+    CHECK(sim_step(s) == 1);                    /* t=5: arrives and starts */
+    CHECK(s->now == 5 && heap_size(&s->running) == 1 && heap_size(&s->pending) == 0);
+    CHECK(s->free_cpu == 14 && s->free_mem == 32768 - 1024);
+    CHECK(sim_step(s) == 1);                    /* t=12: finishes */
+    CHECK(s->now == 12 && s->fin_len == 1 && s->n_finished == 1);
+    CHECK(s->free_cpu == 16 && s->free_mem == 32768);
+    expect_sched(s, 1, 5, 12);
+    CHECK(sim_step(s) == 0);
+    CHECK(s->now == 12);
+    sim_destroy(s);
+}
+
+static void test_finish_before_arrival(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 0, 5, 8, 30000), b = mkjob(2, 5, 4, 8, 30000);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK);
+    run_all(s);
+    expect_sched(s, 1, 0, 5);
+    expect_sched(s, 2, 5, 9);  /* B fits only because A's finish at 5 was processed first */
+    sim_destroy(s);
+
+    /* Several jobs finishing at the same tick are all freed in one step. */
+    s = make(cfg_default());
+    {
+        Job x = mkjob(1, 0, 6, 4, 4000), y = mkjob(2, 0, 6, 4, 4000), z = mkjob(3, 0, 6, 4, 4000);
+        Job w = mkjob(4, 6, 2, 16, 32768);
+        CHECK(sim_add_job(s, &x) == APRM_OK && sim_add_job(s, &y) == APRM_OK);
+        CHECK(sim_add_job(s, &z) == APRM_OK && sim_add_job(s, &w) == APRM_OK);
+        CHECK(sim_step(s) == 1);              /* t=0 */
+        CHECK(sim_step(s) == 1);              /* t=6: three finish, w arrives and fits */
+        CHECK(s->now == 6 && s->fin_len == 3 && heap_size(&s->running) == 1);
+        run_all(s);
+        expect_sched(s, 4, 6, 8);
+    }
+    sim_destroy(s);
+}
+
+static void test_greedy_skip(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 0, 10, 4, 24000), b = mkjob(2, 1, 6, 4, 16000), c = mkjob(3, 2, 3, 2, 4000);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK && sim_add_job(s, &c) == APRM_OK);
+    CHECK(sim_run_until(s, 2) == APRM_OK);
+    CHECK(s->now == 2);
+    CHECK(fin_of(s, 3) == NULL && heap_size(&s->running) == 2);  /* c running, b still waiting */
+    CHECK(heap_size(&s->waiting) == 1);
+    run_all(s);
+    expect_sched(s, 3, 2, 5);
+    expect_sched(s, 2, 10, 16);
+    sim_destroy(s);
+}
+
+/* Several skipped jobs return to the queue in their original order. */
+static void test_skip_pushback_order(void)
+{
+    Sim *s;
+    SimConfig c = cfg_default();
+    int32_t id;
+    c.cpu_cap = 10; c.mem_cap = 100;
+    s = make(c);
+    { Job a = mkjob(1, 0, 4, 9, 10); CHECK(sim_add_job(s, &a) == APRM_OK); }
+    for (id = 2; id <= 6; id++) { Job j = mkjob(id, 0, 2, 5, 10); CHECK(sim_add_job(s, &j) == APRM_OK); }
+    run_all(s);
+    expect_sched(s, 1, 0, 4);
+    expect_sched(s, 2, 4, 6);  /* two 5-core jobs at a time: 2,3 then 4,5 then 6 */
+    expect_sched(s, 3, 4, 6);
+    expect_sched(s, 4, 6, 8);
+    expect_sched(s, 5, 6, 8);
+    expect_sched(s, 6, 8, 10);
+    sim_destroy(s);
+}
+
+static void test_run_until(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 3, 4, 1, 1), b = mkjob(2, 10, 4, 1, 1);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK);
+    CHECK(sim_run_until(s, -1) == APRM_OK && s->now == 0 && heap_size(&s->pending) == 2);
+    CHECK(sim_run_until(s, 2) == APRM_OK && s->now == 0);
+    CHECK(sim_run_until(s, 3) == APRM_OK && s->now == 3 && heap_size(&s->running) == 1);  /* inclusive */
+    CHECK(sim_run_until(s, 6) == APRM_OK && s->now == 3);   /* finish is at 7 */
+    CHECK(sim_run_until(s, 7) == APRM_OK && s->now == 7 && s->fin_len == 1);
+    CHECK(sim_run_until(s, 9) == APRM_OK && s->now == 7);   /* clock stays at the last event */
+    { Job c = mkjob(3, 8, 1, 1, 1); CHECK(sim_add_job(s, &c) == APRM_OK); }  /* 8 >= now: accepted */
+    { Job d = mkjob(4, 6, 1, 1, 1); CHECK(sim_add_job(s, &d) == APRM_ARRIVAL_IN_PAST); }
+    CHECK(sim_run_until(s, 1000000) == APRM_OK);
+    CHECK(sim_step(s) == 0);
+    expect_sched(s, 2, 10, 14);
+    expect_sched(s, 3, 8, 9);
+    sim_destroy(s);
+}
+
+static void test_reset_rerun(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 0, 10, 16, 32768), b = mkjob(2, 2, 5, 8, 16384);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK);
+    run_all(s);
+    expect_sched(s, 2, 10, 15);
+    CHECK(sim_reset(s) == APRM_OK);
+    CHECK(s->fin_len == 0 && s->n_finished == 0 && s->now == 0);
+    CHECK(sim_step(s) == 0);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK);
+    run_all(s);
+    expect_sched(s, 1, 0, 10);
+    expect_sched(s, 2, 10, 15);
+    sim_destroy(s);
+}
+
+/* Time near the int64 limit: the step refuses, before changing anything, when
+ * start + duration could overflow; just inside the limit it works. Jobs are
+ * put in the pending heap directly (sim_add_job caps arrival at 1e9). Also
+ * the largest legal values through the public API. */
+static void test_overflow(void)
+{
+    Sim *s;
+    Snap before;
+    Job j;
+    int64_t lim = INT64_MAX - APRM_DURATION_MAX;
+
+    /* legal extremes: arrival 1e9, duration 1e6, full machine */
+    s = make(cfg_default());
+    j = mkjob(1, APRM_ARRIVAL_MAX, APRM_DURATION_MAX, 16, 32768);
+    CHECK(sim_add_job(s, &j) == APRM_OK);
+    j = mkjob(2, APRM_ARRIVAL_MAX, APRM_DURATION_MAX, 16, 32768);
+    CHECK(sim_add_job(s, &j) == APRM_OK);
+    run_all(s);
+    expect_sched(s, 1, 1000000000, 1001000000);
+    expect_sched(s, 2, 1001000000, 1002000000);
+    sim_destroy(s);
+
+    /* exactly at the limit: allowed, finish == INT64_MAX */
+    s = make(cfg_default());
+    j = mkjob(1, lim, APRM_DURATION_MAX, 1, 1);
+    CHECK(heap_push(&s->pending, &j) == APRM_OK); s->n_total = 1;
+    CHECK(sim_step(s) == 1);
+    {
+        RunEntry r;
+        CHECK(heap_peek(&s->running, &r) == APRM_OK && r.finish == INT64_MAX);
+    }
+    CHECK(sim_step(s) == 1 && s->now == INT64_MAX);
+    CHECK(sim_step(s) == 0);
+    sim_destroy(s);
+
+    /* one tick past the limit: refused with the Sim unchanged */
+    s = make(cfg_default());
+    j = mkjob(1, lim + 1, APRM_DURATION_MAX, 1, 1);
+    CHECK(heap_push(&s->pending, &j) == APRM_OK); s->n_total = 1;
+    before = snap(s);
+    CHECK(sim_step(s) == APRM_INVALID_FIELD);
+    CHECK(same(before, snap(s)));
+    CHECK(sim_last_error(s)->code == APRM_INVALID_FIELD);
+    CHECK(sim_run_until(s, INT64_MAX) == APRM_INVALID_FIELD);
+    sim_destroy(s);
+}
+
+/* ---- reference simulator: tick by tick, no heaps, written independently ---- */
+
+typedef struct { Job j; int64_t start; int started, done; } RefJob;
+
+/* Brute-force FCFS with greedy fill. jobs[] must be sorted by (arrival, id). */
+static void ref_fcfs(RefJob *r, int n, int64_t cpu_cap, int64_t mem_cap)
+{
+    int64_t t, fc = cpu_cap, fm = mem_cap;
+    int i, left = n;
+    for (t = 0; left > 0; t++) {
+        for (i = 0; i < n; i++)  /* finishes first */
+            if (r[i].started && !r[i].done && r[i].start + r[i].j.duration == t) {
+                r[i].done = 1; fc += r[i].j.cpu; fm += r[i].j.mem; left--;
+            }
+        for (i = 0; i < n; i++)  /* then the queue in FCFS order (arrivals are implicit) */
+            if (!r[i].started && r[i].j.arrival <= t && r[i].j.cpu <= fc && r[i].j.mem <= fm) {
+                r[i].started = 1; r[i].start = t; fc -= r[i].j.cpu; fm -= r[i].j.mem;
+            }
+    }
+}
+
+static uint64_t rng_state;
+static uint64_t rng(void)  /* xorshift64*: deterministic, test-only */
+{
+    rng_state ^= rng_state >> 12; rng_state ^= rng_state << 25; rng_state ^= rng_state >> 27;
+    return rng_state * 2685821657736338717ull;
+}
+static int64_t rnd(int64_t lo, int64_t hi) { return lo + (int64_t)(rng() % (uint64_t)(hi - lo + 1)); }
+
+static int cmp_refjob(const void *a, const void *b)
+{
+    const Job *x = &((const RefJob *)a)->j, *y = &((const RefJob *)b)->j;
+    if (x->arrival != y->arrival) return x->arrival < y->arrival ? -1 : 1;
+    return (x->id > y->id) - (x->id < y->id);
+}
+
+/* 1,000 random small workloads. In this (debug) build the PRD section 4
+ * checker runs after every step and aborts on a violation. Each schedule is
+ * also compared with the independent tick-by-tick reference, and with the
+ * same workload added one arrival time at a time while running ("mid-run"):
+ * all three must be identical. */
+static void test_invariants_random(void)
+{
+    int w, i, n, k;
+    for (w = 0; w < 1000; w++) {
+        SimConfig c = cfg_default();
+        RefJob rj[40];
+        Sim *a, *b;
+        int64_t cpu_cap = rnd(1, 12), mem_cap = rnd(1, 12) * 1000;
+        n = (int)rnd(0, 30);
+        rng_state = 0x9E3779B97F4A7C15ull ^ (uint64_t)(w + 1) * 0xD1B54A32D192ED03ull;
+        cpu_cap = rnd(1, 12); mem_cap = rnd(1, 12) * 1000;
+        c.cpu_cap = cpu_cap; c.mem_cap = mem_cap;
+        for (i = 0; i < n; i++) {
+            Job j = mkjob((int32_t)(rnd(0, 9) * 100 + i), rnd(0, 25), rnd(1, 10),
+                          rnd(1, cpu_cap), rnd(1, mem_cap / 1000) * 1000 - rnd(0, 500));
+            if (j.mem < 1) j.mem = 1;
+            j.priority = (int32_t)rnd(0, 9);
+            rj[i].j = j; rj[i].started = rj[i].done = 0; rj[i].start = -1;
+        }
+        a = make(c); b = make(c);
+        for (i = 0; i < n; i++) CHECK(sim_add_job(a, &rj[i].j) == APRM_OK);
+        run_all(a);  /* checker active after every step */
+        CHECK(a->fin_len == (size_t)n);
+
+        qsort(rj, (size_t)n, sizeof rj[0], cmp_refjob);
+        ref_fcfs(rj, n, cpu_cap, mem_cap);
+        for (i = 0; i < n; i++) {
+            const RunEntry *r = fin_of(a, rj[i].j.id);
+            CHECK(r != NULL && r->start == rj[i].start);
+            if (!r || r->start != rj[i].start) { printf("workload %d job %d\n", w, (int)rj[i].j.id); break; }
+        }
+
+        /* Mid-run: before the step for time T, add every job arriving at T. */
+        for (i = 0; i < n; i = k) {
+            int64_t T = rj[i].j.arrival;
+            CHECK(sim_run_until(b, T - 1) == APRM_OK);
+            for (k = i; k < n && rj[k].j.arrival == T; k++) CHECK(sim_add_job(b, &rj[k].j) == APRM_OK);
+        }
+        run_all(b);
+        CHECK(b->fin_len == a->fin_len);
+        for (i = 0; i < n; i++) {
+            const RunEntry *x = fin_of(a, rj[i].j.id), *y = fin_of(b, rj[i].j.id);
+            CHECK(x && y && x->start == y->start && x->finish == y->finish);
+        }
+        /* and in the same order of finishing */
+        for (i = 0; i < n && (size_t)i < b->fin_len; i++) CHECK(a->fin[i].job.id == b->fin[i].job.id);
+        sim_destroy(a); sim_destroy(b);
+    }
+}
+
+/* O-13 (D59): a job added with arrival == now AFTER the step for now has run
+ * gets a second selection step at the same tick, at the next sim_step. */
+static void test_o13_same_tick(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 0, 10, 4, 1000), late = mkjob(2, 0, 3, 4, 1000);
+    CHECK(sim_add_job(s, &a) == APRM_OK);
+    CHECK(sim_step(s) == 1 && s->now == 0 && heap_size(&s->running) == 1);
+    CHECK(sim_add_job(s, &late) == APRM_OK);   /* arrival == now: accepted */
+    CHECK(sim_step(s) == 1);                   /* second selection step at t=0 */
+    CHECK(s->now == 0 && heap_size(&s->running) == 2 && heap_size(&s->pending) == 0);
+    run_all(s);
+    expect_sched(s, 2, 0, 3);
+    sim_destroy(s);
+
+    /* If it does not fit at that tick it simply waits, as any waiting job. */
+    s = make(cfg_default());
+    a = mkjob(1, 0, 10, 16, 1000);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_step(s) == 1);
+    CHECK(sim_add_job(s, &late) == APRM_OK);
+    CHECK(sim_step(s) == 1 && s->now == 0 && heap_size(&s->waiting) == 1);
+    run_all(s);
+    expect_sched(s, 2, 10, 13);
+    sim_destroy(s);
+
+    /* Same on an idle machine after everything finished: the clock stays at
+     * the last event and the new job (arrival == now) starts immediately. */
+    s = make(cfg_default());
+    a = mkjob(1, 0, 4, 1, 1);
+    CHECK(sim_add_job(s, &a) == APRM_OK);
+    run_all(s);
+    CHECK(s->now == 4);
+    late = mkjob(2, 4, 2, 1, 1);
+    CHECK(sim_add_job(s, &late) == APRM_OK);
+    run_all(s);
+    expect_sched(s, 2, 4, 6);
+    sim_destroy(s);
+}
+
+/* The edge case behind D59: added BEFORE the step for its arrival time, the
+ * schedule equals "add all first"; added after, a lower-id job cannot jump
+ * ahead of a job the first pass already started. Both are deterministic. */
+static void test_o13_edge(void)
+{
+    SimConfig c = cfg_default();
+    Sim *all, *before, *after;
+    Job x = mkjob(5, 0, 10, 10, 1000), y = mkjob(1, 0, 10, 10, 1000);
+    c.cpu_cap = 16;
+    all = make(c); before = make(c); after = make(c);
+
+    CHECK(sim_add_job(all, &x) == APRM_OK && sim_add_job(all, &y) == APRM_OK);
+    run_all(all);
+    expect_sched(all, 1, 0, 10);   /* lower id first */
+    expect_sched(all, 5, 10, 20);
+
+    CHECK(sim_add_job(before, &x) == APRM_OK);
+    CHECK(sim_run_until(before, -1) == APRM_OK);          /* step for t=0 has NOT run */
+    CHECK(sim_add_job(before, &y) == APRM_OK);
+    run_all(before);
+    expect_sched(before, 1, 0, 10);
+    expect_sched(before, 5, 10, 20);
+
+    CHECK(sim_add_job(after, &x) == APRM_OK);
+    CHECK(sim_step(after) == 1);                          /* step for t=0 ran: x started */
+    CHECK(sim_add_job(after, &y) == APRM_OK);
+    run_all(after);
+    expect_sched(after, 5, 0, 10);   /* differs, by design: x already started */
+    expect_sched(after, 1, 10, 20);
+    sim_destroy(all); sim_destroy(before); sim_destroy(after);
+}
+
+/* Two Sims stepped alternately behave exactly like each one run alone. */
+static void test_step_two_sims_interleaved(void)
+{
+    SimConfig c1 = cfg_default(), c2 = cfg_default();
+    Sim *a, *b, *ra, *rb;
+    int i, ra_steps, rb_steps, rc1, rc2, na = 0, nb = 0;
+    c2.cpu_cap = 5; c2.mem_cap = 5000;
+    a = make(c1); b = make(c2); ra = make(c1); rb = make(c2);
+    rng_state = 12345;
+    for (i = 0; i < 40; i++) {
+        Job j1 = mkjob(i, rnd(0, 30), rnd(1, 9), rnd(1, 16), rnd(1, 20000));
+        Job j2 = mkjob(100 + i, rnd(0, 30), rnd(1, 9), rnd(1, 5), rnd(1, 5000));
+        CHECK(sim_add_job(a, &j1) == APRM_OK && sim_add_job(ra, &j1) == APRM_OK);
+        CHECK(sim_add_job(b, &j2) == APRM_OK && sim_add_job(rb, &j2) == APRM_OK);
+    }
+    ra_steps = run_all(ra); rb_steps = run_all(rb);
+    for (;;) {
+        rc1 = sim_step(a); rc2 = sim_step(b);
+        if (rc1 == 1) na++;
+        if (rc2 == 1) nb++;
+        if (rc1 != 1 && rc2 != 1) break;
+    }
+    CHECK(na == ra_steps && nb == rb_steps);
+    CHECK(a->fin_len == ra->fin_len && b->fin_len == rb->fin_len);
+    CHECK(a->fin_len == 40 && b->fin_len == 40);
+    for (i = 0; i < 40; i++) {
+        CHECK(a->fin[i].job.id == ra->fin[i].job.id && a->fin[i].start == ra->fin[i].start);
+        CHECK(b->fin[i].job.id == rb->fin[i].job.id && b->fin[i].start == rb->fin[i].start);
+    }
+    sim_destroy(a); sim_destroy(b); sim_destroy(ra); sim_destroy(rb);
+}
+
+#ifdef APRM_DEBUG
+/* The checker really detects each kind of corruption (and passes a good Sim). */
+static void test_checker_detects(void)
+{
+    Sim *s = make(cfg_default());
+    Job a = mkjob(1, 0, 10, 4, 1000), b = mkjob(2, 50, 10, 4, 1000);
+    const char *why = NULL;
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK);
+    CHECK(sim_check_invariants(s, &why) == 0);
+    CHECK(sim_step(s) == 1);
+    CHECK(sim_check_invariants(s, &why) == 0);
+
+    s->free_cpu += 1;  CHECK(sim_check_invariants(s, &why) == 1); s->free_cpu -= 1;
+    s->free_mem -= 1;  CHECK(sim_check_invariants(s, &why) == 1); s->free_mem += 1;
+    s->n_total += 1;   CHECK(sim_check_invariants(s, &why) == 1); s->n_total -= 1;
+    {
+        RunEntry *r = (RunEntry *)s->running.data;
+        r->finish += 1;  CHECK(sim_check_invariants(s, &why) == 1); r->finish -= 1;
+        r->start -= 1;   CHECK(sim_check_invariants(s, &why) == 1); r->start += 1;
+    }
+    CHECK(sim_check_invariants(s, &why) == 0);
+    run_all(s);
+    CHECK(sim_check_invariants(s, &why) == 0);
+    s->fin[0].finish += 1; CHECK(sim_check_invariants(s, &why) == 1); s->fin[0].finish -= 1;
+    s->n_finished += 1;    CHECK(sim_check_invariants(s, &why) == 1); s->n_finished -= 1;
+    s->fin[0].start = s->fin[0].job.arrival - 1; s->fin[0].finish = s->fin[0].start + 10;
+    CHECK(sim_check_invariants(s, &why) == 1);
+    sim_destroy(s);
+
+    /* a waiting job that fits but was not started breaks the post-condition */
+    s = make(cfg_default());
+    a = mkjob(1, 0, 10, 4, 1000);
+    CHECK(sim_add_job(s, &a) == APRM_OK);
+    CHECK(heap_pop(&s->pending, &a) == APRM_OK);
+    {
+        WaitEntry w; w.job = a; w.key = 0;
+        CHECK(heap_push(&s->waiting, &w) == APRM_OK);
+    }
+    CHECK(sim_check_invariants(s, &why) == 1);
+    sim_destroy(s);
+}
+#endif
+
 int main(void)
 {
     test_create_null();
@@ -394,5 +855,21 @@ int main(void)
     test_error_kept_until_reset();
     test_id_set_growth();
     test_reset_destroy();
+    test_step_null_and_policy();
+    test_step_empty();
+    test_step_single();
+    test_finish_before_arrival();
+    test_greedy_skip();
+    test_skip_pushback_order();
+    test_run_until();
+    test_reset_rerun();
+    test_overflow();
+    test_invariants_random();
+    test_o13_same_tick();
+    test_o13_edge();
+    test_step_two_sims_interleaved();
+#ifdef APRM_DEBUG
+    test_checker_detects();
+#endif
     return TEST_REPORT();
 }
