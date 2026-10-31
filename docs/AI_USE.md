@@ -12,3 +12,5 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-04 | Autonomous run: JSON writer, JsonBuf design (D53), UTF-8 handling after review; independent AI review | PR #58 as merged | to confirm |
 | 2026-11-01 | Krishna | K-05 | Autonomous run: CSV reader and writer; independent AI review | PR #59 as merged | to confirm |
 | 2026-11-01 | Krishna | K-06 | Autonomous run: GitHub Actions workflow with versions verified against official releases; independent AI review | PR #60 as merged | to confirm |
+| 2026-11-01 | Krishna | K-08 | Autonomous run: engine lifecycle (PR #61, not merged); two independent AI reviews | Branch k/K-08-engine-lifecycle, decisions D54/D55 | to confirm |
+| 2026-11-01 | Krishna | K-14 | Autonomous run: seeded workload generator and experiment parameters (PR #62, not merged); independent AI review | Branch k/K-14-gen-workload, decisions D56-D58 | to confirm |

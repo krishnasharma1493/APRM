@@ -14,7 +14,7 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-05 | #5 | Done, PR #59 merged | CSV reader/writer; defines CsvText and ResultRow (to reconcile with JsonBuf in K-08/K-12) |
 | K-06 | #6 | Done, PR #60 merged | CI on every push/PR (build-c, test-c, sanitize, python); first real GCC + newer Make: clean. Proven by throwaway branches: a core warning fails build-c/test-c/sanitize, a deliberate leak fails sanitize (LeakSanitizer). Action versions checked against GitHub releases (checkout v7, setup-python v7). Branch protection NOT enabled |
 | K-08 | #9 | PR #61 open, **waiting for Krishna** (`needs-krishna`) | Code, tests and CI are green. Not merged because it changes PRD §5 and DECISIONS (list below). Everything in Gate 2 after K-08 depends on it |
-| K-14 | #15 | PR #62 open (ready), review running | Seeded generator + O-12 values (D56-D58, decided autonomously). Will not be merged without Krishna either: it edits DECISIONS.md, and merges are being blocked |
+| K-14 | #15 | PR #62 open, reviewed, fixes applied, CI green, **not merged** | Seeded generator + O-12 values (D56-D58). Review found an arrival-overflow bug (int64 cast before range check; negative arrivals possible on Linux): fixed and tested. 31 tests |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
