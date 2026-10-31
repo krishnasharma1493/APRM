@@ -262,3 +262,194 @@ def test_cli_exit_codes(capsys):
     assert cp.main(["--runs", "5", "--binary", str(REAL)]) == 0
     assert "5 runs checked, 5 ok, 0 with violations" in capsys.readouterr().out
     assert cp.main(["--runs", "1", "--binary", str(ROOT / "nope")]) == 2
+
+
+# ---------------------------------------------------------------- the runner and CLI must DETECT violations
+# A fake console program: a tiny trusted FCFS greedy-fill simulator (time-stepped
+# over event ticks), then one chosen corruption of its results.
+FAKE_BIN = '''#!{py}
+import csv, json, sys
+MODE = {mode!r}
+a = sys.argv[1:]
+def opt(name, default=None):
+    return a[a.index(name) + 1] if name in a else default
+pol = opt("--policy")
+if pol not in ("fcfs",):
+    sys.stderr.write("policy %s is not implemented yet.\\n" % pol)
+    sys.exit(4)
+cpu_cap, mem_cap = int(opt("--cpu", 16)), int(opt("--mem", 32768))
+with open(opt("--in"), newline="") as fh:
+    jobs = [{{k: int(v) for k, v in r.items()}} for r in csv.DictReader(fh)]
+jobs.sort(key=lambda j: (j["arrival"], j["id"]))
+start, running, waiting, t, i = {{}}, [], [], 0, 0
+while i < len(jobs) or waiting or running:
+    cands = [j["arrival"] for j in jobs[i:i + 1]] + [f for f, _ in running]
+    t = min(cands) if cands else t
+    running = [(f, j) for f, j in running if f > t]
+    while i < len(jobs) and jobs[i]["arrival"] <= t:
+        waiting.append(jobs[i]); i += 1
+    for j in list(waiting):
+        uc = sum(x["cpu"] for _, x in running); um = sum(x["mem"] for _, x in running)
+        if uc + j["cpu"] <= cpu_cap and um + j["mem"] <= mem_cap:
+            start[j["id"]] = t; running.append((t + j["duration"], j)); waiting.remove(j)
+byid = {{j["id"]: j for j in jobs}}
+rows = {{k: [k, byid[k]["arrival"], s, s + byid[k]["duration"], 0, 0, byid[k]["priority"], byid[k]["cpu"], byid[k]["mem"]] for k, s in start.items()}}
+if MODE == "overuse":      # everybody starts on arrival, ignoring resources
+    for k, r in rows.items(): r[2] = r[1]; r[3] = r[1] + byid[k]["duration"]
+elif MODE == "wrong_finish" and rows:
+    rows[min(rows)][3] += 1
+elif MODE == "delay_last" and rows:   # one job starts after everything: only greedy fill notices
+    k = max(rows, key=lambda x: rows[x][2])
+    rows[k][2] = max(r[3] for r in rows.values()) + 1; rows[k][3] = rows[k][2] + byid[k]["duration"]
+for r in rows.values():
+    r[4] = r[2] - r[1]; r[5] = r[3] - r[1]
+out = opt("--out")
+if MODE == "empty":
+    open(out, "w").close()
+elif MODE == "nonutf8":
+    open(out, "wb").write(b"id,arrival\\n\\xff\\xfe\\x00\\xc3\\x28\\n")
+elif MODE == "malformed":
+    open(out, "w").write('id,arrival,start\\n"1,2,3\\n4,5,6,7,8,9\\n')
+elif MODE == "missing":
+    pass
+else:
+    with open(out, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["id","arrival","start","finish","wait","turnaround","priority","cpu","mem"])
+        for k in sorted(rows): w.writerow(rows[k])
+with open(opt("--metrics"), "w") as fh:
+    json.dump({{"ok": True, "data": {{}}}}, fh)
+'''
+
+
+def fake(tmp_path, mode):
+    p = tmp_path / f"fake_{mode}"
+    p.write_text(FAKE_BIN.format(py=sys.executable, mode=mode))
+    p.chmod(0o755)
+    return str(p)
+
+
+def test_fake_clean_passes_and_uses_distinct_seeds(tmp_path):
+    out = cp.random_runs(40, 100, ("fcfs",), fake(tmp_path, "clean"))
+    assert out["violations"] == [] and out["runs"] == 40 and out["ok"] == 40
+    assert len({cp.make_scenario(s)["label"] for s in range(100, 140)}) > 10  # seeds really differ
+
+
+def test_cli_clean_fake_exits_zero(tmp_path, capsys):
+    assert cp.main(["--runs", "10", "--binary", fake(tmp_path, "clean")]) == 0
+    assert "10 runs checked, 10 ok, 0 with violations" in capsys.readouterr().out
+
+
+def test_runner_detects_corrupt_results_with_every_seed(tmp_path):
+    mode, kind = "wrong_finish", "wrong duration"
+    out = cp.random_runs(12, 50, ("fcfs",), fake(tmp_path, mode))
+    assert {v["seed"] for v in out["violations"]} == set(range(50, 62))  # every distinct seed reported
+    assert len({v["label"] for v in out["violations"]}) > 3
+    assert all(any(kind in m for m in v["messages"]) for v in out["violations"])
+    assert out["ok"] == 0 and out["runs"] == 12
+
+
+def test_runner_detects_overuse(tmp_path):
+    out = cp.random_runs(30, 1, ("fcfs",), fake(tmp_path, "overuse"))
+    assert out["violations"], "starting everything on arrival must overuse on some seed"
+    assert all(any("overuse" in m for m in v["messages"]) for v in out["violations"])
+    assert {v["seed"] for v in out["violations"]} <= set(range(1, 31))
+
+
+def test_runner_detects_only_greedy_fill_violation(tmp_path):
+    out = cp.random_runs(30, 1, ("fcfs",), fake(tmp_path, "delay_last"))
+    assert out["violations"]
+    for v in out["violations"]:
+        assert any("greedy fill" in m for m in v["messages"]), v
+        assert not any("overuse" in m or "duration" in m for m in v["messages"]), v
+
+
+def test_greedy_check_only_for_listed_policies(tmp_path, monkeypatch):
+    # the same corruption goes unnoticed when the policy is not in GREEDY_FILL_POLICIES
+    assert cp.GREEDY_FILL_POLICIES == ("fcfs",)
+    monkeypatch.setattr(cp, "GREEDY_FILL_POLICIES", ())
+    assert cp.random_runs(30, 1, ("fcfs",), fake(tmp_path, "delay_last"))["violations"] == []
+
+
+def test_cli_exits_one_and_prints_seed_and_reproduce(tmp_path, capsys):
+    rc = cp.main(["--runs", "3", "--seed0", "7", "--binary", fake(tmp_path, "wrong_finish")])
+    out = capsys.readouterr().out
+    assert rc == 1
+    for seed in (7, 8, 9):
+        assert f"seed={seed}" in out
+        assert f"--runs 1 --seed0 {seed} --policy fcfs" in out
+    assert "3 with violations" in out
+
+
+def test_cli_zero_executed_runs_is_not_a_pass(tmp_path, capsys):
+    rc = cp.main(["--runs", "5", "--policy", "sjf,knapsack", "--binary", fake(tmp_path, "clean")])
+    cap = capsys.readouterr()
+    assert rc != 0
+    assert "not implemented" in cap.out and "no run was executed" in cap.err
+    assert "0 runs checked" not in cap.out
+
+
+@pytest.mark.parametrize("mode", ["empty", "nonutf8", "malformed", "missing"])
+def test_unreadable_results_is_a_violation_with_seed(tmp_path, mode):
+    out = cp.random_runs(4, 20, ("fcfs",), fake(tmp_path, mode), jobs=2)  # the pool must survive
+    assert {v["seed"] for v in out["violations"]} == {20, 21, 22, 23}
+    assert all("unreadable" in v["messages"][0] for v in out["violations"]), out["violations"]
+
+
+# ---------------------------------------------------------------- limits, types, edge cases
+def test_values_outside_int64_or_limits_are_violations():
+    huge = GOOD.copy().astype({"finish": "uint64"})
+    huge.loc[0, "finish"] = 2 ** 64 - 1
+    assert has(check(huge), "supported range")
+    big_obj = GOOD.copy().astype({"finish": object})
+    big_obj.loc[0, "finish"] = 2 ** 80
+    assert has(check(big_obj), "not numeric")
+    inf = GOOD.copy().astype({"start": float})
+    inf.loc[0, "start"] = float("inf")
+    assert has(check(inf), "non-integer")
+    late = JOBS.copy()
+    late.loc[0, "arrival"] = 10 ** 9 + 1
+    late.loc[1, "duration"] = 10 ** 6 + 1
+    late.loc[2, "priority"] = 10
+    msgs = cp.check_results(late, GOOD, *CAP)
+    assert has(msgs, "input arrival outside") and has(msgs, "input duration outside") \
+        and has(msgs, "input priority outside"), msgs
+
+
+def test_string_and_bool_cells_rejected():
+    s = GOOD.copy().astype({"mem": object})
+    s.loc[0, "mem"] = "60"
+    assert has(check(s), "not numeric")
+    b = GOOD.copy()
+    b["priority"] = True
+    assert has(check(b), "not numeric")
+
+
+def test_duplicate_id_in_input_flagged():
+    dup = pd.concat([JOBS, JOBS.iloc[[0]]], ignore_index=True)
+    assert has(check(GOOD, dup), "duplicated id in the input")
+
+
+def test_greedy_negative_span_row_does_not_crash():
+    jobs = mk_jobs([(1, 0, 5, 2, 10, 0), (2, 0, 5, 2, 10, 0)])
+    res = mk_results(jobs, {1: 0, 2: 0})
+    res.loc[1, "finish"] = -3  # negative span: ignored as a running interval
+    assert isinstance(cp.check_greedy_fill_postcondition(jobs, res, 4, 100), list)
+    assert has(cp.check_results(jobs, res, 4, 100), "wrong duration")
+
+
+def test_greedy_reports_at_most_five_violations():
+    rows = [(0, 0, 200, 1, 1, 0)] + [(i, 0, 1, 1, 1, 0) for i in range(1, 9)]
+    jobs = mk_jobs(rows)
+    res = mk_results(jobs, {0: 0, **{i: 100 for i in range(1, 9)}})
+    msgs = cp.check_greedy_fill_postcondition(jobs, res, 100, 100)
+    assert len(msgs) == cp.MAX_MESSAGES_PER_CHECK == 5
+
+
+def test_scenarios_include_large_times():
+    labels = [cp.make_scenario(s) for s in range(300)]
+    late = [sc for sc in labels if sc["label"].endswith("late")]
+    assert late
+    for sc in late:
+        assert max(j["arrival"] for j in sc["jobs"]) <= 10 ** 9
+        assert max(j["arrival"] for j in sc["jobs"]) >= 10 ** 9 - 5

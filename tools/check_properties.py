@@ -8,7 +8,8 @@ that are visible in the file:
   * start >= arrival;  finish - start == duration;
   * wait == start - arrival,  turnaround == finish - arrival;
   * the copied columns (arrival, priority, cpu, mem) equal the input;
-  * rows are sorted by id (the results.csv contract);
+  * rows are sorted by id (a results.csv convention of engine.h and the golden
+    files, not a PRD section 4 invariant);
   * resources: at every moment, the cpu and memory sums of the running jobs
     do not exceed the capacities.  A job runs on [start, finish): a finish and
     a start at the same tick are NOT an overlap (the engine handles finishes
@@ -42,24 +43,57 @@ import run_experiments
 
 RESULT_COLUMNS = run_experiments.RESULT_COLUMNS
 INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
-GREEDY_FILL_POLICIES = ("fcfs",)  # policies for which the post-condition is checked
+# Policies for which the greedy-fill post-condition is checked.  The check is
+# valid for every policy that uses the shared greedy fill (fcfs, priority, sjf,
+# aging) but never for reserve or knapsack.  K-19 widens this to
+# ("fcfs", "priority", "sjf", "aging") once those policies run.
+GREEDY_FILL_POLICIES = ("fcfs",)
 MAX_MESSAGES_PER_CHECK = 5        # keep reports short: first few offenders only
 
 
+_BOUND = 2 ** 53  # largest magnitude accepted: far inside int64, exact as a float
+
+
 def _ints(df: pd.DataFrame, cols: list[str], name: str, out: list[str]) -> dict[str, np.ndarray] | None:
-    """Return the columns of df as int64 arrays, or None (and a message) if impossible."""
+    """Return the columns of df as int64 arrays, or None (and a message) if impossible.
+
+    A column must be numeric (strings and booleans are rejected), finite, whole
+    and within +-2**53, so nothing overflows or wraps around later.
+    """
     missing = [c for c in cols if c not in df.columns]
     if missing:
         out.append(f"{name}: missing column(s) {', '.join(missing)}")
         return None
     arrays: dict[str, np.ndarray] = {}
     for c in cols:
-        col = pd.to_numeric(df[c], errors="coerce")
-        if col.isna().any() or not np.all(np.mod(col.to_numpy(dtype=float), 1) == 0):
+        col = df[c]
+        if len(col) and (pd.api.types.is_bool_dtype(col) or not pd.api.types.is_numeric_dtype(col)):
+            out.append(f"{name}: column {c} is not numeric (strings, booleans or huge integers)")
+            return None
+        f = col.to_numpy(dtype=float)
+        if not np.all(np.isfinite(f)) or not np.all(np.mod(f, 1) == 0):
             out.append(f"{name}: column {c} has a missing or non-integer value")
             return None
-        arrays[c] = col.to_numpy(dtype=np.int64)
+        if np.any(np.abs(f) > _BOUND):
+            out.append(f"{name}: column {c} has a value outside the supported range (+-2**53)")
+            return None
+        arrays[c] = f.astype(np.int64)
     return arrays
+
+
+def _input_limits(j: dict[str, np.ndarray]) -> list[str]:
+    """Messages for input cells outside the PRD section 3 limits, and duplicated input ids."""
+    msgs: list[str] = []
+    for col, lo, hi in (("arrival", 0, config.MAX_ARRIVAL), ("duration", 1, config.MAX_DURATION),
+                        ("cpu", 1, _BOUND), ("mem", 1, _BOUND),
+                        ("priority", config.PRIORITY_MIN, config.PRIORITY_MAX)):
+        bad = j["id"][(j[col] < lo) | (j[col] > hi)]
+        if len(bad):
+            msgs.append(f"input {col} outside the PRD limits {lo}..{hi}: id {_some(bad)}")
+    uniq, counts = np.unique(j["id"], return_counts=True)
+    if np.any(counts > 1):
+        msgs.append(f"duplicated id in the input jobs: {_some(uniq[counts > 1])}")
+    return msgs
 
 
 def _some(ids: np.ndarray, limit: int = MAX_MESSAGES_PER_CHECK) -> str:
@@ -101,6 +135,7 @@ def check_results(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_c
         return msgs
     j = _ints(jobs, INPUT_COLUMNS, "jobs", msgs)
     assert j is not None
+    msgs.extend(_input_limits(j))
 
     # --- ids: exactly once each, nothing extra, sorted ---------------------
     rid = r["id"]
@@ -203,9 +238,10 @@ def check_greedy_fill_postcondition(jobs: pd.DataFrame, results: pd.DataFrame,
     cpu <= free_cpu(t) and mem <= free_mem(t).  Between event ticks nothing
     changes (free grows only at finishes, waiting grows only at arrivals), so
     checking T is enough.  Jobs are not checked for order: that is the policy's
-    business (FCFS order is not checkable here).  The check holds for every
-    policy whose selection is greedy fill; it does NOT hold for policies with
-    a reservation or knapsack choice, so the runner uses it for fcfs only.
+    business (FCFS order is not checkable here).  The check applies to fcfs,
+    priority, sjf and aging (they share the greedy fill) and never to reserve
+    or knapsack (reservation / knapsack choice); the runner lists the policies
+    in GREEDY_FILL_POLICIES (fcfs only until K-19).
 
     Needs usable ids: only result rows whose id is in the input are looked at.
     Time O((n + m) log(n + m) + sum of the waiting spans in event ticks).
@@ -298,8 +334,17 @@ def make_scenario(seed: int) -> dict[str, Any]:
     mix[picked[-1]]["p"] = float(1.0 - sum(mix[k]["p"] for k in picked[:-1]))  # sums to 1 exactly
     prio = [0.1] * 10 if rng.random() < 0.5 else [1.0] + [0.0] * 9
     jobs = gen_workload.generate(n, int(seed), rate, mix, prio, cpu, mem)
+    late = ""
+    rng2 = np.random.default_rng([seed, 17])  # separate stream: other scenarios stay as they were
+    if rng2.random() < 0.1:  # large times: arrivals near the PRD limit, durations up to the limit
+        shift = config.MAX_ARRIVAL - max(j["arrival"] for j in jobs) - int(rng2.integers(0, 5))
+        for j in jobs:
+            j["arrival"] += shift
+            if rng2.random() < 0.3:
+                j["duration"] = int(rng2.integers(1, config.MAX_DURATION + 1))
+        late = " late"
     return {"jobs": jobs, "cpu": cpu, "mem": mem,
-            "label": f"n={n} machine={cpu}x{mem} rate={rate} classes={'+'.join(picked)}"}
+            "label": f"n={n} machine={cpu}x{mem} rate={rate} classes={'+'.join(picked)}{late}"}
 
 
 def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = None) -> dict[str, Any]:
@@ -331,10 +376,18 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
             rec["violations"] = [f"console program failed: {err}"]
             return rec
         jobs = pd.read_csv(jobs_csv)
-        results = pd.read_csv(res["paths"]["results"])
-    msgs = check_results(jobs, results, sc["cpu"], sc["mem"])
-    if policy in GREEDY_FILL_POLICIES:
-        msgs += check_greedy_fill_postcondition(jobs, results, sc["cpu"], sc["mem"])
+        try:
+            results = pd.read_csv(res["paths"]["results"])
+        except Exception as err:  # empty, non-UTF8, malformed or missing: a finding, not a crash
+            rec["status"] = "violation"
+            rec["violations"] = [f"results.csv unreadable: {type(err).__name__}: {str(err)[:200]}"]
+            return rec
+    try:
+        msgs = check_results(jobs, results, sc["cpu"], sc["mem"])
+        if policy in GREEDY_FILL_POLICIES:
+            msgs += check_greedy_fill_postcondition(jobs, results, sc["cpu"], sc["mem"])
+    except Exception as err:  # a checker crash must name its seed too
+        msgs = [f"checker crashed: {type(err).__name__}: {str(err)[:200]}"]
     if msgs:
         rec["status"] = "violation"
         rec["violations"] = msgs
@@ -402,6 +455,10 @@ def main(argv: list[str] | None = None) -> int:
               f"--policy {v['policy']} --keep results/repro")
     if len(out["violations"]) > 20:
         print(f"... and {len(out['violations']) - 20} more runs with violations")
+    if out["runs"] == 0:
+        print("check_properties: WARNING: no run was executed (every policy is not implemented "
+              "or nothing was requested); this is not a pass", file=sys.stderr)
+        return 2
     print(f"{out['runs']} runs checked, {out['ok']} ok, {len(out['violations'])} with violations, "
           f"{out['seconds']:.1f} s (seed0={args.seed0}, policies={','.join(pols)})")
     return 1 if out["violations"] else 0
