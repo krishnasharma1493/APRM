@@ -14,7 +14,7 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-05 | #5 | Done, PR #59 merged | CSV reader/writer; defines CsvText and ResultRow (to reconcile with JsonBuf in K-08/K-12) |
 | K-06 | #6 | Done, PR #60 merged | CI on every push/PR (build-c, test-c, sanitize, python); first real GCC + newer Make: clean. Proven by throwaway branches: a core warning fails build-c/test-c/sanitize, a deliberate leak fails sanitize (LeakSanitizer). Action versions checked against GitHub releases (checkout v7, setup-python v7). Branch protection NOT enabled |
 | K-08 | #9 | PR #61 open, **waiting for Krishna** (`needs-krishna`) | Code, tests and CI are green. Not merged because it changes PRD §5 and DECISIONS (list below). Everything in Gate 2 after K-08 depends on it |
-| K-14 | #15 | In progress | Independent of K-08 (needs only K-01); decision numbers D56+ because D54/D55 belong to PR #61 |
+| K-14 | #15 | PR #62 open (ready), review running | Seeded generator + O-12 values (D56-D58, decided autonomously). Will not be merged without Krishna either: it edits DECISIONS.md, and merges are being blocked |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -43,3 +43,10 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | PRD §10 | Capacity-rejection golden case is console-level (input CSV, expected exit code 3, expected stderr text) plus an API test, not a schedule CSV | Consequence of D54 |
 
 Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UTF-8 handling).
+- 2026-11-01: **Merging is blocked.** Two attempts to merge PR #61 (K-08) were refused by the permission classifier ("Merge Without Review"), the second after a full second-round review had approved the final head. The run stopped trying; no workaround was used. PR #61 is the root of the rest of Gate 2 (K-09..K-13, K-15..K-18 and everything after depend on K-08), so nothing further can be built.
+
+## What Krishna needs to do to resume
+
+1. Read the "Contract and decision changes waiting for Krishna's approval" table above (PR #61) and the decisions D56-D58 in PR #62 (K-14).
+2. Merge PR #61, then PR #62 (`gh pr merge 61 --squash --delete-branch`; expect a trivial conflict in docs/DECISIONS.md for #62: D54/D55 and D56-D58 are inserted at the same place; keep both, in number order). Or allow merging for this run, for example by adding a permission rule for `gh pr merge` in the Claude Code settings.
+3. Tell the next session to resume from `docs/RUN_INSTRUCTIONS.md`: it continues with K-09 (event loop), the first issue that depends on K-08.
