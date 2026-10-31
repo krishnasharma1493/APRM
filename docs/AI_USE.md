@@ -8,3 +8,6 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-07 | Autonomous run: write the four FCFS golden cases and worked timelines; a second AI session independently re-derived the schedules | Four cases, expected files, README timelines (draft PR #54) | to confirm; Ahaana's paper check pending |
 | 2026-11-01 | Krishna | K-01 | Autonomous run: verify tool versions against official sources, record them in TOOLCHAIN.md, write requirements.txt; independent AI review of the PR | requirements.txt, Krishna's TOOLCHAIN.md column and notes (PR #55) | to confirm |
 | 2026-11-01 | Krishna | K-02 | Autonomous run: Makefile, config.h, job.h, test helpers; independent AI review | PR #56 as merged (plus literal MIN checks from the review) | to confirm |
+| 2026-11-01 | Krishna | K-03 | Autonomous run: generic binary heap and tests; independent AI review with mutation testing | PR #57 as merged | to confirm |
+| 2026-11-01 | Krishna | K-04 | Autonomous run: JSON writer, JsonBuf design (D53), UTF-8 handling after review; independent AI review | PR #58 as merged | to confirm |
+| 2026-11-01 | Krishna | K-05 | Autonomous run: CSV reader and writer; independent AI review | PR #59 as merged | to confirm |

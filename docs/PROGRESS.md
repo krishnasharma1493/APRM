@@ -9,7 +9,10 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-01 | #1 | Done, PR #55 merged | emsdk installed by Krishna; Ahaana's laptop column deferred to A-01 by Krishna's decision (2026-11-01) |
 | K-07 | #7 | Done, PR #54 merged | Ahaana's paper check deferred to K-17 (#18) because Krishna asked the run not to wait; independent AI re-derivation and review matched |
 | K-02 | #2 | Done, PR #56 merged | Makefile (Make 3.81 compatible), config.h, job.h; tests 74 checks |
-| K-03, K-04, K-05 | #3–#5 | In progress (parallel round) | |
+| K-03 | #3 | Done, PR #57 merged | Heap; 44,488 checks; reviewer mutation-tested 8 bugs, all caught |
+| K-04 | #4 | Done, PR #58 merged | JSON writer; settled O-11 as D53 (decided autonomously); review found invalid-UTF-8 pass-through, fixed with U+FFFD replacement; follow-up review of the fix running |
+| K-05 | #5 | Done, PR #59 merged | CSV reader/writer; defines CsvText and ResultRow (to reconcile with JsonBuf in K-08/K-12) |
+| K-06 | #6 | In progress | CI baseline, runs alone (shared workflow folder) |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -24,3 +27,4 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 - 2026-11-01: Krishna installed emsdk (6.0.13) and chose to defer Ahaana's toolchain column to A-01. K-01 reviewed (approved, 4 cleanups applied), merged as PR #55, issue #1 closed.
 - 2026-11-01: Krishna is away and asked the run not to ask or wait. Rules applied: open decisions assigned to an issue are settled by the issue's implementer (recorded as "decided autonomously, to review"); human-only steps (Ahaana's paper checks, demo video, rehearsals) are deferred to a later tracked issue instead of blocking.
 - 2026-11-01: K-02 (#56) and K-07 (#54) reviewed (both approve) and merged. Next round: K-03, K-04, K-05 in parallel.
+- 2026-11-01: K-03, K-04, K-05 merged (#57, #58, #59). A worktree-creation bug on my side (zsh word splitting) briefly broke the round; fixed, no work lost. K-06 started.
