@@ -77,3 +77,19 @@ Branch is up to date with main, conflict-free, all tests and CI green. PRD §5 c
 | (next) | K-15 #16 experiment runner | k/K-12-cli | in progress |
 
 Order to merge: #66, then #68, then #67 (after you approve its PRD §5 row). New follow-up: issue #69 (K-42, engine speed, Nice-to-have).
+
+## Status at the end of this stretch (all of Gate 2 that can be built is built)
+
+Merge order (each PR is stacked on the one before; after the previous one is merged and its branch deleted, GitHub retargets the next to `main`):
+
+| Order | PR | Issue | What | Needs Krishna? |
+| --- | --- | --- | --- | --- |
+| 1 | #66 | K-11 #12 | Metrics and JSON outputs; D61-D63 | **Yes: changes PRD §5** (nine-decimal numbers, nulls, score) |
+| 2 | #68 | K-12 #13 | Console program, golden runner, 70 CLI checks | No (auto-merge after #66) |
+| 3 | #67 | K-13 #14 | WebAssembly build, 28 JS tests, native ASan driver, CI job; D64 | **Yes: one PRD §5 row** (`aprm_last_error`) |
+| 4 | #70 | K-15 #16 | Experiment runner | No |
+| 5 | #71 | K-16 #17 | Invariant checker; 10,000 real runs, 0 violations | No |
+
+Not started (blocked): K-18 (freeze API and toolchain; needs the above merged and your sign-off, and all Gate 2 boxes incl. Ahaana's paper check of the golden cases), then all of Gate 3 and later (K-19 depends on K-18). Ahaana's issues A-01..A-06 are hers. Follow-up filed: #69 (K-42, engine speed).
+
+Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (misattributed proof), K-08 (missing error record), K-10 (unbounded skip log: up to 25M entries), K-12 (partial outputs on failure; input could be overwritten), K-13 (CSV parser differed from C on a trailing carriage return), K-14 (arrival overflow), K-15 (stale results after an engine rebuild), K-16 (tests could not detect a broken checker).

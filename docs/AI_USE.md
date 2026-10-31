@@ -18,3 +18,7 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-09 | Autonomous run: event loop, invariant checker, decision D59; independent AI review with differential and mutation testing | PR #64 (not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-10 | Autonomous run: event log, decision D60, skip-log bound after review; independent AI review (fuzz, fault injection, mutation) | PR #65 as merged | to confirm |
 | 2026-11-01 | Krishna | K-11 | Autonomous run: metrics and JSON outputs, decisions D61-D63; independent AI review (reference arithmetic, mutation) | PR #66 (not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-12 | Autonomous run: console program, atomic outputs, golden and CLI test runners; independent AI review | PR #68 (stacked; not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-13 | Autonomous run: WebAssembly exports, build, Node tests, CI job, decision D64; independent AI review incl. real-browser check | PR #67 (stacked; not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-15 | Autonomous run: experiment runner; independent AI review | PR #70 (stacked; not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-16 | Autonomous run: invariant property checker; independent AI review with differential and mutation testing | PR #71 (stacked; not yet merged) | to confirm |
