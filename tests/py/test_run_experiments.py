@@ -326,7 +326,6 @@ def test_interrupted_run_is_redone(fake, tmp_path):
 
 
 def test_keep_going(fake, tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("FAKE_IMPL", "fcfs,boom")  # policy "boom" is not in the grid; use exit 3 below
     monkeypatch.setenv("FAKE_MODE", "fail3")
     kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["fcfs", "priority"],
               settings=["light"])
