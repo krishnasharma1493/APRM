@@ -15,8 +15,10 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-06 | #6 | Done, PR #60 merged | CI on every push/PR (build-c, test-c, sanitize, python); first real GCC + newer Make: clean. Proven by throwaway branches: a core warning fails build-c/test-c/sanitize, a deliberate leak fails sanitize (LeakSanitizer). Action versions checked against GitHub releases (checkout v7, setup-python v7). Branch protection NOT enabled |
 | K-08 | #9 | Done, PR #61 merged (by Krishna) | Engine lifecycle; D54/D55 |
 | K-14 | #15 | Done, PR #62 merged (by Krishna) | Generator; D56-D58; arrival-overflow bug fixed after review |
-| K-09 | #10 | PR #64 ready, reviewed (approve + fixes applied), CI green, **waiting for merge** | Event loop, invariant checker, D59 (O-13). Reviewer: 40,000-workload differential test, 5,828 injected out-of-memory failures, all clean |
-| K-17 | #18 | PR #63 ready, independently re-derived (all 20 expected files match), CI green, **waiting for merge** | Ahaana's paper check of ALL golden cases deferred to K-18 (#19) |
+| K-09 | #10 | Done, PR #64 merged (by Krishna) | Event loop; D59 |
+| K-17 | #18 | Done, PR #63 merged (by Krishna) | Golden cases; Ahaana's paper check of all cases deferred to K-18 |
+| K-10 | #11 | In progress | Event log; settles O-7 (D60) |
+| K-11 | #12 | In progress | Metrics and JSON; settles O-4, O-5, O-6 (D61+) |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -54,3 +56,4 @@ Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UT
 3. Tell the next session to resume from `docs/RUN_INSTRUCTIONS.md`: it continues with K-09 (event loop), the first issue that depends on K-08.
 - 2026-11-01: Krishna merged #61 and #62 by hand (the permission system refuses merges by the run). Rule for the rest of the run: each finished PR waits for Krishna to merge it; work that does not depend on an unmerged PR continues. Started K-09 and K-17 in parallel (disjoint files).
 - 2026-11-01: PR #63 (K-17) and PR #64 (K-09) are finished and waiting for Krishna to merge. Merging by the run is blocked by the permission system; adding a project permission rule for `gh pr merge` was also blocked ("Self-Modification"), so Krishna has to add it (`/permissions`, rule `Bash(gh pr merge *)`) or merge in the browser. After they are merged the next eligible issues are K-10 and K-11 (both depend on K-09), then K-12, K-13 (K-13 needs K-10, K-11), K-15, K-16.
+- 2026-11-01: Krishna merged #63 and #64 and asked the run to merge its own PRs from now on. Started K-10 and K-11 in parallel (both touch core/engine.c; the second PR to merge resolves the conflict). If merging is still refused by the permission system the run stops again at the first finished PR.
