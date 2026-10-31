@@ -79,6 +79,8 @@ static void test_create_null(void)
     CHECK(sim_last_error(NULL) == NULL);
     s = make(c);
     CHECK(sim_add_job(s, NULL) == APRM_INVALID_ARGUMENT);
+    CHECK(sim_last_error(s)->code == APRM_INVALID_ARGUMENT);
+    CHECK(strcmp(sim_last_error(s)->message, "Job is missing.") == 0);
     sim_destroy(s);
 }
 
@@ -246,9 +248,9 @@ static void test_add_limit(void)
     sim_destroy(s);
     c.max_jobs = APRM_MAX_JOBS_WEB;
     s = make(c);
-    s->n_total = APRM_MAX_JOBS_WEB;  /* pretend the web limit was reached */
+    s->n_total = APRM_MAX_JOBS_WEB;  /* pretend the limit was reached */
     expect_reject(s, job_ok(1), APRM_LIMIT_REACHED, "");
-    CHECK(strcmp(sim_last_error(s)->message, "Website limit is 5000 jobs.") == 0);
+    CHECK(strcmp(sim_last_error(s)->message, "Limit is 5000 jobs.") == 0);
     s->n_total = 0;
     sim_destroy(s);
 }
@@ -295,14 +297,23 @@ static void test_reject_unchanged(void)
     Snap before;
     Job j;
     int32_t i;
+    int32_t *slots_before;
+    size_t ncap;
     for (i = 1; i <= 20; i++) { j = job_ok(i); j.arrival = i * 3; CHECK(sim_add_job(s, &j) == APRM_OK); }
     s->now = 5;
     before = snap(s);
+    ncap = s->ids.cap;
+    slots_before = malloc(ncap * sizeof *slots_before);
+    CHECK(slots_before != NULL);
+    if (!slots_before) { sim_destroy(s); return; }
+    memcpy(slots_before, s->ids.slot, ncap * sizeof *slots_before);
     j = job_ok(100); j.priority = 99;          expect_reject(s, j, APRM_INVALID_FIELD, "priority");
     j = job_ok(100); j.mem = 99999999;         expect_reject(s, j, APRM_CAPACITY_EXCEEDED, "mem");
     j = job_ok(100); j.arrival = 1;            expect_reject(s, j, APRM_ARRIVAL_IN_PAST, "arrival");
     j = job_ok(7);   j.arrival = 50;           expect_reject(s, j, APRM_DUPLICATE_ID, "id");
     CHECK(same(before, snap(s)));
+    CHECK(s->ids.cap == ncap && memcmp(slots_before, s->ids.slot, ncap * sizeof *slots_before) == 0);
+    free(slots_before);
     /* The rejected id 100 was never remembered: the corrected job is accepted. */
     j = job_ok(100); j.arrival = 6;
     CHECK(sim_add_job(s, &j) == APRM_OK);

@@ -20,7 +20,7 @@ typedef struct Sim Sim;  /* opaque */
 /* The last failed call on a Sim: code, the field that caused it (empty when
  * no single field applies) and one sentence for the user. This is the
  * storage behind aprm_last_error (K-13), which renders it as the JSON error
- * envelope. Extra to PRD section 5 (see DECISIONS D54). */
+ * envelope. Extra to PRD section 5 (see DECISIONS D55). */
 typedef struct {
     int  code;           /* 0 = no error yet, else a negative APRM_* code */
     char field[24];      /* e.g. "priority"; "" when not tied to one field */
@@ -37,7 +37,8 @@ int  sim_validate_config(const SimConfig *cfg, SimError *err);
 
 /* Create an empty simulation with a copy of *cfg and store the handle in
  * *out. Validation order: cfg/out non-NULL, then sim_validate_config. On
- * failure *out is set to NULL (when out is non-NULL) and nothing is leaked. O(1). The caller owns the Sim; free it with sim_destroy. */
+ * failure *out is set to NULL (when out is non-NULL) and nothing is
+ * leaked. O(1). The caller owns the Sim; free it with sim_destroy. */
 int  sim_create(const SimConfig *cfg, Sim **out);
 
 /* Add one job, before or during a run (arrival >= now). Validation order and

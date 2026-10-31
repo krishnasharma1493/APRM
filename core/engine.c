@@ -211,8 +211,9 @@ int sim_add_job(Sim *s, const Job *job)
 {
     SimError *e;
     int rc;
-    if (!s || !job) return APRM_INVALID_ARGUMENT;
+    if (!s) return APRM_INVALID_ARGUMENT;
     e = &s->err;
+    if (!job) return fail(e, APRM_INVALID_ARGUMENT, "", "Job is missing.");
 
     /* 1-2: every field range (PRD section 3). Nothing is modified below this
      * line until the final block. */
@@ -251,8 +252,7 @@ int sim_add_job(Sim *s, const Job *job)
 
     /* 6: job limit. */
     if (s->n_total >= s->cfg.max_jobs) {
-        if (s->cfg.max_jobs == APRM_MAX_JOBS_WEB)
-            return fail(e, APRM_LIMIT_REACHED, "", "Website limit is %d jobs.", APRM_MAX_JOBS_WEB);
+        /* Generic wording: the CLI and the website choose their own (D54). */
         return fail(e, APRM_LIMIT_REACHED, "", "Limit is %lld jobs.", (long long)s->cfg.max_jobs);
     }
 
