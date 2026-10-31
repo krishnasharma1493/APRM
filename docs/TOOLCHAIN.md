@@ -21,9 +21,9 @@ Never write a version here from memory. For each row, record where it was checke
 
 **Notes (decisions for the freeze in K-18; nothing here is changed yet).**
 
-1. **Make 3.81 is old.** Linux CI will have a newer GNU Make. Until K-18, write the Makefile so it also works with 3.81 (no features added after it), and let CI catch differences. Homebrew's `gmake` is not needed.
+1. **Make 3.81 is old.** CI on Linux will probably have a newer GNU Make (not yet checked). Until K-18, write the Makefile so it also works with 3.81 (no features added after it) and let CI catch differences. Whether to use Homebrew's newer GNU Make instead is to be decided at K-18.
 2. **Node differs from the current LTS.** The latest LTS on nodejs.org is 26.x, while emsdk bundles 24.19.0. The PRD asks for the current Active LTS for CI. Decide at K-18 whether CI uses the latest LTS and whether the laptop's `run_wasm.mjs` runs need the same one; the check in K-21 compares outputs, so a difference would show up.
-3. **Python 3.13 is security-only.** The PRD allows "bugfix or security support", so 3.13.7 is acceptable. The python.org page also reports newer 3.13 patch releases and a bundled-pip update for a certificate security incident; this laptop's `.venv` has pip 25.2 and pip 26.2.2 is available. Decide at K-18 whether to move to a bugfix line (3.14) and upgrade pip, then freeze the same version on both laptops and in CI.
+3. **Python 3.13 is security-only.** The PRD allows "bugfix or security support", so 3.13.7 is acceptable. The [python.org release announcement of 21 Oct 2026](https://blog.python.org/2026/10/python-3151-3149-31317/) reports newer patch releases (3.13.17, 3.14.9, 3.15.1) that bundle pip 26.2.2 because of a certificate security incident; this laptop's `.venv` has pip 25.2 (pip itself reported 26.2.2 as available). Decide at K-18 whether to move to a bugfix line (3.14) and upgrade pip, then freeze the same version on both laptops and in CI.
 4. **Advisories.** No security advisory lookup was done for numpy, pandas, matplotlib or pytest in this issue. The PRD schedules `pip-audit` before the final submission; K-18 should run it once at the freeze.
 
 **Freeze record.** Gate 2 freeze date: ____ · Lock file: `requirements.lock.txt` · Last `pip-audit` run: ____
