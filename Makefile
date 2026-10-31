@@ -12,8 +12,8 @@
 # Generic by design: later issues only add files.
 #  - core: every core/*.c is compiled and linked into the CLI and into each test.
 #  - tests: each tests/c/test_*.c is its own executable (it has its own main).
-#  - CLI: built only if cli/main.c exists; otherwise a clear message is printed
-#    and `make` still succeeds.
+#  - CLI: linked only if cli/main.c exists; otherwise core/ is still compiled
+#    (so warnings-as-errors apply), a clear message is printed and `make` succeeds.
 #  - Override the compiler with CC=clang. Set RUNNER to wrap test runs, e.g.
 #    RUNNER="leaks --atExit --" on macOS.
 
@@ -74,8 +74,8 @@ clean:
 # ---- internal targets (run with MODE set) ----
 
 ifeq ($(HAVE_CLI),)
-cli-build:
-	@echo "note: cli/main.c does not exist yet; skipping the console program (build/aprm)."
+cli-build: $(CORE_OBJ)
+	@echo "note: cli/main.c does not exist yet; compiled core/ only, skipping the console program ($(BIN))."
 else
 cli-build: $(BIN)
 endif

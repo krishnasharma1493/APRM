@@ -18,32 +18,44 @@ permissions:
 jobs:
   build-c:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build with -Wall -Wextra -Werror
         run: make
 
   test-c:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Run the C tests
         run: make test
 
   sanitize:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
       # LeakSanitizer is available on Linux, so also report leaks.
       ASAN_OPTIONS: detect_leaks=1
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build and test under ASan + UBSan
         run: make sanitize
 
   python:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
