@@ -68,7 +68,7 @@ Status of the paper check by Ahaana: **pending** for every case (deferred to K-1
 
 ## Cases added in K-17 (all policies and named scenarios)
 
-Every expected file below was worked out by hand from the rules (BLUEPRINT §2, §3.2 to §3.5; PRD §4) and typed in; no program produced it (D44). Status of the paper check by Ahaana: **PENDING** for every case in this section and for the four FCFS cases above (the human second check, deferred to K-17; tick here when done).
+Every expected file below was worked out by hand from the rules (BLUEPRINT §2, §3.2 to §3.5; PRD §4) and typed in; no program produced it (D44). Status of the paper check by Ahaana: **PENDING** for every case (the human second check cannot be done by an autonomous run; deferred to K-18, the Gate 2 freeze, issue #19). See the status table below; tick it when done.
 
 ### Run settings (the golden runner needs these)
 
@@ -201,7 +201,7 @@ Own capacities: **6 cores, 6000 MB** (`--cpu 6 --mem 6000`). Five tiny jobs of (
 - t=0: only job 1 is present; it fits exactly (6, 6000) and starts, free 0 / 0, finishes 20. This is the same under every policy because no other job exists yet, so all five policies have the same expected rows (five files).
 - t=1: jobs 2 to 6 arrive; free is 0, nothing starts (for `reserve` too: the stop rule triggers on free cores 0 before any reservation matters).
 - t=20: job 1 finishes, free 6 / 6000. Jobs 2, 3, 4, 5, 6 all fit (5 cores, 5000 MB) and start at 20, finishing at 22. Each waits 19: total wait 95.
-- Better schedule that greedy cannot find (for the report): leave the machine idle for 1 tick, run the five tiny jobs 1 to 3 together, then job 1 runs 3 to 23. Total wait is 3, but job 1 has waited 3.
+- Better schedule that greedy cannot find (for the report; a clairvoyant schedule, job 1 not started at t=0, which no online policy can produce): leave the machine idle for 1 tick, run the five tiny jobs 1 to 3 together, then job 1 runs 3 to 23. Total wait is 3, but job 1 has waited 3.
 
 ### sjf_finish_arrival (shows: finish and arrival at the same tick under non-FCFS policies; the arrival competes in that selection)
 
@@ -289,10 +289,33 @@ No output file and no expected CSV (D54, part 5). Files: `capacity_reject.csv`, 
 | 4 | 4 | 2 | 1 | 1024 | 0 |
 
 - Job 3 asks for 40960 MB; the machine has 32768. It is on line 4 of the file (line 1 is the header). The expected stderr is `CAPACITY_EXCEEDED: Job 3 needs 40960 MB; machine has 32768 MB. (line 4)` and the exit code is 3.
-- API test (to be added in `tests/c/test_engine.c` or a golden test by the engine issues; this PR does not touch `tests/c/`): add jobs 1, 2, 3, 4 with `sim_add_job`; job 3 returns `CAPACITY_EXCEEDED`, the Sim is unchanged by that call, and with job 3 skipped by the caller the remaining jobs under FCFS (16 cores, 32768 MB) schedule as: job 1 start 0, finish 5; job 2 start 2, finish 5 (2 + 4 = 6 cores in use together, wait 0); job 4 start 4, finish 6 (wait 0). Worked: t=0 job 1 starts (free 12 / 28672); t=2 job 2 fits (free 10 / 26624); t=4 job 4 fits (free 9 / 25600); t=5 jobs 1 and 2 finish; t=6 job 4 finishes.
+- API test (to be added in the engine tests, `tests/c/test_engine.c`: K-09 (PR #64 in flight) for the API part, K-12 for the console exit/stderr part; this PR does not touch `tests/c/`): add jobs 1, 2, 3, 4 with `sim_add_job`; job 3 returns `CAPACITY_EXCEEDED`, the Sim is unchanged by that call, and with job 3 skipped by the caller the remaining jobs under FCFS (16 cores, 32768 MB) schedule as: job 1 start 0, finish 5; job 2 start 2, finish 5 (2 + 4 = 6 cores in use together, wait 0); job 4 start 4, finish 6 (wait 0). Worked: t=0 job 1 starts (free 12 / 28672); t=2 job 2 fits (free 10 / 26624); t=4 job 4 fits (free 9 / 25600); t=5 jobs 1 and 2 finish; t=6 job 4 finishes.
 
 ### Order of events that every case relies on, and the one open decision
 
 - Rules used everywhere: finishes, then arrivals, then selection (BLUEPRINT §2 rule 5); ties by earlier arrival then lower id; greedy fill as stated at the top of this file.
 - Reservation rules used (BLUEPRINT §3.5): the reservation is created at an event tick when the best waiting job does not fit and now - arrival >= T; it is checked only at event ticks (time jumps between events). While it exists, other jobs start only through the backfill rule. The shadow time and extra room count every running job that finishes at or before the shadow time as released.
+- **LOUD: `memory_hog.reserve` depends on the trigger being "at least T"** (now - arrival >= T). At t=11 the hog has waited exactly 10 = T. Under a strict "> T" the reservation would not exist at t=11, job 4 would start 11 to 21, and the hog would start at 21 or later, so other rows would differ too. The case deliberately catches an off-by-one in the trigger. `reserve_backfill.reserve` is robust to it: with "> T" the reservation is created one event later (t=12) and every row is the same.
 - **O-14 (open, assigned to K-26)** is whether a reservation is moved or cancelled when a newcomer outranks the reserved job. The cases `memory_hog` and `reserve_backfill` were designed so that this never happens (the reserved job always has the highest key); their expected files are the same whichever way O-14 is decided. This is the only dependence of K-17 on reservation semantics, and no case here settles O-14. They do assume the proposal's reading that the shadow time, once reached, starts the reserved job (nothing else about it changes).
+
+## Status of the paper check by Ahaana (every case)
+
+All PENDING; deferred to K-18 (Gate 2 freeze, issue #19). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
+
+| case | policy files | paper check by Ahaana |
+| --- | --- | --- |
+| fcfs_basic | fcfs | PENDING |
+| fcfs_finish_arrival | fcfs | PENDING |
+| fcfs_skip | fcfs | PENDING |
+| fcfs_tiebreak | fcfs | PENDING |
+| priority_order | priority | PENDING |
+| priority_skip | priority | PENDING |
+| sjf_order | sjf | PENDING |
+| sjf_starvation | sjf, fcfs | PENDING |
+| aging_tiebreak | aging, priority | PENDING |
+| priority_starvation | priority, aging | PENDING |
+| big_job_trap | fcfs, priority, sjf, aging, reserve | PENDING |
+| sjf_finish_arrival | sjf, priority | PENDING |
+| memory_hog | aging, reserve | PENDING |
+| reserve_backfill | reserve, aging | PENDING |
+| capacity_reject | console (exit 3, stderr) | PENDING |
