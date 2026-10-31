@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "engine.h"
+#include "eventlog.h"
 #include "heap.h"
 #include "job.h"
 #include "policy.h"
@@ -51,6 +52,7 @@ struct Sim {
     size_t fin_len, fin_cap;
     WaitEntry *skip;             /* scratch: jobs set aside in one greedy fill */
     size_t skip_cap;
+    EventLog log;                /* event log (K-10, D60); seq restarts at 1 on reset */
 };
 
 #ifdef APRM_DEBUG

@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include "job.h"
+#include "json.h"
 
 typedef struct Sim Sim;  /* opaque */
 
@@ -74,6 +75,14 @@ int  sim_step(Sim *s);
  * any arrival >= now. Returns APRM_OK, APRM_INVALID_ARGUMENT (NULL s) or the
  * first negative code sim_step returned. Same cost as the steps it takes. */
 int  sim_run_until(Sim *s, int64_t t);
+
+/* Write the event log as the PRD section 5 envelope {"ok":true,"data":[
+ * {"seq","t","kind","job","msg"}, ... ]} with the entries whose seq >
+ * since_seq (<= 0: all; at or beyond the last seq: []). Entries are added by
+ * sim_step: ARRIVE, START, SKIP, FINISH (D60). Does not change the Sim.
+ * Returns APRM_OK, APRM_INVALID_ARGUMENT (NULL s or out) or the JsonBuf
+ * error (APRM_OUT_OF_MEMORY). The caller owns out. O(k) for k entries. */
+int  sim_log_json(const Sim *s, int64_t since_seq, JsonBuf *out);
 
 /* Clear every job and restart the clock at 0, keeping the config. Also clears
  * the stored error. Cannot run out of memory (it reuses its buffers).
