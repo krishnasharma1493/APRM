@@ -202,6 +202,30 @@ static void test_heap_oom(void)
     heap_free(&h);
 }
 
+/* heap_reserve: grows without losing contents, never shrinks, and after it
+ * pushes up to n do not reallocate. */
+static void test_heap_reserve(void)
+{
+    Heap h;
+    int64_t v, out, i;
+    unsigned char *data;
+
+    CHECK(heap_reserve(NULL, 5) == APRM_INVALID_ARGUMENT);
+    CHECK(heap_init(&h, sizeof(int64_t), cmp_min, NULL) == APRM_OK);
+    for (i = 0; i < 10; i++) { v = 9 - i; CHECK(heap_push(&h, &v) == APRM_OK); }
+    CHECK(heap_reserve(&h, 4) == APRM_OK && h.cap >= 16);
+    CHECK(heap_reserve(&h, 1000) == APRM_OK && h.cap >= 1000 && h.len == 10);
+    data = h.data;
+    for (i = 10; i < 1000; i++) { v = 1000 - i; CHECK(heap_push(&h, &v) == APRM_OK); }
+    CHECK(h.data == data);
+    CHECK(heap_pop(&h, &out) == APRM_OK && out == 0);
+    /* overflow of the size product: heap unchanged */
+    CHECK(heap_reserve(&h, SIZE_MAX / 2) == APRM_OUT_OF_MEMORY);
+    CHECK(h.data == data && h.len == 999);
+    heap_free(&h);
+    CHECK(heap_reserve(&h, 5) == APRM_INVALID_ARGUMENT);
+}
+
 /* Growth and interleaving, checked against a counting reference: every pop
  * must return the smallest key currently stored. */
 static void test_heap_growth_and_interleave(void)
@@ -301,6 +325,7 @@ int main(void)
     test_heap_ties();
     test_heap_build();
     test_heap_oom();
+    test_heap_reserve();
     test_heap_growth_and_interleave();
     test_heap_big_elements();
     return TEST_REPORT();

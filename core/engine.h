@@ -6,8 +6,8 @@
  * Sim; there is no global or static mutable state, so several Sims can exist
  * at once. Functions return APRM_OK (0) or a negative APRM_* code from job.h.
  *
- * Declared here as they are implemented. sim_step, sim_run_until, the JSON
- * outputs and exact_solve arrive with K-09, K-11 and K-33.
+ * Declared here as they are implemented. The JSON outputs and exact_solve
+ * arrive with K-11 and K-33.
  */
 #ifndef APRM_ENGINE_H
 #define APRM_ENGINE_H
@@ -47,6 +47,33 @@ int  sim_create(const SimConfig *cfg, Sim **out);
  * sim_last_error. A rejected job leaves the simulation unchanged. O(log n)
  * amortised time (id-set lookup O(1) expected, pending-heap insert O(log n)). */
 int  sim_add_job(Sim *s, const Job *job);
+
+/* Advance to the next event time (the earlier of the first pending arrival
+ * and the first running finish) and handle it: finish every job ending then
+ * (freeing CPU and memory), add every job arriving then, run the greedy-fill
+ * selection step (BLUEPRINT 3.4: pop the best waiting job, start it if it
+ * fits, else set it aside; stop when none are left or free CPU or memory is
+ * 0; push the set-aside jobs back). Finishes come before arrivals at the same
+ * tick (D9). Returns 1 = an event was handled, 0 = nothing left to do (no
+ * pending, waiting or running job; the Sim is unchanged), or a negative
+ * code: APRM_INVALID_ARGUMENT (NULL s, or the policy is not implemented
+ * yet), APRM_OUT_OF_MEMORY, APRM_INVALID_FIELD (time too large to add a
+ * duration; unreachable within PRD section 3 limits). On a negative code the
+ * Sim is unchanged (every allocation is made before anything is modified).
+ * If a job was added with arrival == now after the step for now ran, the next
+ * call handles time now again: a second selection step at the same tick
+ * (D59). Debug builds (APRM_DEBUG) check every PRD section 4 invariant at the
+ * end and abort() on a violation (nothing is printed; call
+ * sim_check_invariants from a test to read the message). Cost O((s + k) log n) for s jobs started and
+ * k skipped; a full run has at most 2n events, so O(n^2 log n) worst case.
+ * Extra space O(live queue) for the skip list; the finished list is O(n). */
+int  sim_step(Sim *s);
+
+/* Call sim_step while the next event time is <= t. Does not move the clock
+ * to t: now stays at the last event handled, so a job can still be added at
+ * any arrival >= now. Returns APRM_OK, APRM_INVALID_ARGUMENT (NULL s) or the
+ * first negative code sim_step returned. Same cost as the steps it takes. */
+int  sim_run_until(Sim *s, int64_t t);
 
 /* Clear every job and restart the clock at 0, keeping the config. Also clears
  * the stored error. Cannot run out of memory (it reuses its buffers).
