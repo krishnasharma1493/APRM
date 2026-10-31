@@ -160,9 +160,9 @@ static void test_heap_build(void)
 
 /*
  * Allocation failure without touching the real allocator: the sizes involved
- * either overflow size_t (checked before multiplying) or ask malloc for an
- * impossible amount, so no hook is needed. In every case the heap must be
- * unchanged and still usable.
+ * overflow size_t (checked before multiplying), so no hook is needed. (Asking
+ * malloc for an absurd size instead would abort under AddressSanitizer.)
+ * In every case the heap must be unchanged and still usable.
  */
 static void test_heap_oom(void)
 {
@@ -183,20 +183,12 @@ static void test_heap_oom(void)
     /* build: n * elem_size overflows size_t; contents untouched */
     CHECK(heap_build(&h, src, SIZE_MAX / 2) == APRM_OUT_OF_MEMORY);
     CHECK(heap_size(&h) == 4);
-    /* build: no overflow but malloc cannot satisfy it (2^60 bytes) */
-    CHECK(heap_build(&h, src, (size_t)1 << 57) == APRM_OUT_OF_MEMORY);
-    CHECK(heap_size(&h) == 4);
-
     /* push: pretend the buffer is full at a size where doubling overflows */
     old_len = h.len; old_cap = h.cap; old_data = h.data;
     h.len = h.cap = SIZE_MAX / sizeof(int64_t);
     v = 0;
     CHECK(heap_push(&h, &v) == APRM_OUT_OF_MEMORY);
     CHECK(h.len == SIZE_MAX / sizeof(int64_t) && h.data == old_data);
-    /* push: doubling does not overflow size_t but malloc/realloc refuses */
-    h.len = h.cap = (SIZE_MAX / sizeof(int64_t)) / 2 - 1;
-    CHECK(heap_push(&h, &v) == APRM_OUT_OF_MEMORY);
-    CHECK(h.data == old_data);
     h.len = old_len; h.cap = old_cap;
 
     /* still valid and in order */
@@ -218,7 +210,7 @@ static void test_heap_growth_and_interleave(void)
         it.key = rng_next();
         it.id = i;
         CHECK(heap_push(&h, &it) == APRM_OK);
-        if (i % 3 == 2) {  /* pop smallest-so-far; it must never be below previous pops' floor if no smaller was pushed, so just check validity */
+        if (i % 3 == 2) {  /* interleave pops with pushes */
             CHECK(heap_pop(&h, &out) == APRM_OK);
         }
     }
