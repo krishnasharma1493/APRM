@@ -13,8 +13,10 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-04 | #4 | Done, PR #58 merged | JSON writer; settled O-11 as D53 (decided autonomously); review found invalid-UTF-8 pass-through, fixed with U+FFFD replacement; follow-up review of the fix: approve (1.8M fuzz cases, no defects) |
 | K-05 | #5 | Done, PR #59 merged | CSV reader/writer; defines CsvText and ResultRow (to reconcile with JsonBuf in K-08/K-12) |
 | K-06 | #6 | Done, PR #60 merged | CI on every push/PR (build-c, test-c, sanitize, python); first real GCC + newer Make: clean. Proven by throwaway branches: a core warning fails build-c/test-c/sanitize, a deliberate leak fails sanitize (LeakSanitizer). Action versions checked against GitHub releases (checkout v7, setup-python v7). Branch protection NOT enabled |
-| K-08 | #9 | PR #61 open, **waiting for Krishna** (`needs-krishna`) | Code, tests and CI are green. Not merged because it changes PRD §5 and DECISIONS (list below). Everything in Gate 2 after K-08 depends on it |
-| K-14 | #15 | PR #62 open, reviewed, fixes applied, CI green, **not merged** | Seeded generator + O-12 values (D56-D58). Review found an arrival-overflow bug (int64 cast before range check; negative arrivals possible on Linux): fixed and tested. 31 tests |
+| K-08 | #9 | Done, PR #61 merged (by Krishna) | Engine lifecycle; D54/D55 |
+| K-14 | #15 | Done, PR #62 merged (by Krishna) | Generator; D56-D58; arrival-overflow bug fixed after review |
+| K-09 | #10 | In progress | Plan-first, settles O-13 |
+| K-17 | #18 | In progress | Hand-worked golden cases; touches only tests/cases and docs; Ahaana's paper check deferred here from K-07 and for all cases |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -50,3 +52,4 @@ Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UT
 1. Read the "Contract and decision changes waiting for Krishna's approval" table above (PR #61) and the decisions D56-D58 in PR #62 (K-14).
 2. Merge PR #61, then PR #62 (`gh pr merge 61 --squash --delete-branch`; expect a trivial conflict in docs/DECISIONS.md for #62: D54/D55 and D56-D58 are inserted at the same place; keep both, in number order). Or allow merging for this run, for example by adding a permission rule for `gh pr merge` in the Claude Code settings.
 3. Tell the next session to resume from `docs/RUN_INSTRUCTIONS.md`: it continues with K-09 (event loop), the first issue that depends on K-08.
+- 2026-11-01: Krishna merged #61 and #62 by hand (the permission system refuses merges by the run). Rule for the rest of the run: each finished PR waits for Krishna to merge it; work that does not depend on an unmerged PR continues. Started K-09 and K-17 in parallel (disjoint files).
