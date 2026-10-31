@@ -18,12 +18,16 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "engine.h"
+#include "eventlog.h"
 #include "heap.h"
 #include "job.h"
 #include "policy.h"
 
 /* Waiting-heap element: the job and its policy key (smaller = served first). */
-typedef struct { Job job; int64_t key; } WaitEntry;
+/* skipmask: which resources were short at this job's last logged SKIP
+ * (bit 0 = cpu, bit 1 = memory; 0 = never skipped). Not part of the ordering;
+ * it travels with the entry and decides whether a new SKIP is logged (D60). */
+typedef struct { Job job; int64_t key; int skipmask; } WaitEntry;
 
 /* Running-heap element: ordered by finish time. */
 typedef struct { Job job; int64_t start, finish; } RunEntry;
@@ -51,6 +55,7 @@ struct Sim {
     size_t fin_len, fin_cap;
     WaitEntry *skip;             /* scratch: jobs set aside in one greedy fill */
     size_t skip_cap;
+    EventLog log;                /* event log (K-10, D60); seq restarts at 1 on reset */
 };
 
 #ifdef APRM_DEBUG

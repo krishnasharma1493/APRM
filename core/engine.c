@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "config.h"
+#include "eventlog.h"
 #include "policy.h"
 
 /* ---- error storage ---- */
@@ -177,6 +178,7 @@ int sim_create(const SimConfig *cfg, Sim **out)
     s->cfg = *cfg;
     sim_clear_scalars(s);
     s->policy_cmp = policy_compare_for(cfg->policy);
+    eventlog_init(&s->log);
     if (heap_init(&s->pending, sizeof(Job), cmp_pending, NULL) != APRM_OK ||
         heap_init(&s->waiting, sizeof(WaitEntry), cmp_waiting, s) != APRM_OK ||
         heap_init(&s->running, sizeof(RunEntry), cmp_running, NULL) != APRM_OK) {
@@ -196,6 +198,7 @@ void sim_destroy(Sim *s)
     free(s->ids.slot);
     free(s->fin);
     free(s->skip);
+    eventlog_free(&s->log);
     free(s);
 }
 
@@ -209,6 +212,7 @@ int sim_reset(Sim *s)
     s->running.len = 0;
     for (i = 0; i < s->ids.cap; i++) s->ids.slot[i] = -1;
     s->ids.len = 0;
+    eventlog_clear(&s->log);
     sim_clear_scalars(s);
     return APRM_OK;
 }
@@ -379,7 +383,9 @@ int sim_step(Sim *s)
     if (heap_reserve(&s->waiting, (size_t)w_max) != APRM_OK ||
         heap_reserve(&s->running, (size_t)r_max) != APRM_OK ||
         reserve_skip(s, (size_t)w_max) != APRM_OK ||
-        reserve_fin(s, s->fin_len + heap_size(&s->running)) != APRM_OK) {
+        reserve_fin(s, s->fin_len + heap_size(&s->running)) != APRM_OK ||
+        /* log entries: <= one per finish, arrival and examined waiting job (D60) */
+        eventlog_reserve(&s->log, heap_size(&s->running) + heap_size(&s->pending) + (size_t)w_max) != APRM_OK) {
         fail(&s->err, APRM_OUT_OF_MEMORY, "", "Out of memory.");
         return APRM_OUT_OF_MEMORY;
     }
@@ -390,19 +396,23 @@ int sim_step(Sim *s)
      * Loop until no running job finishes at t (several can share a tick).
      * Finished-list order: by finish time, and within one tick by the
      * running-heap order (arrival, then id): K-10's FINISH lines rely on it.
-     * K-10 hook: FINISH log line here. */
+     * One FINISH log entry each, in that order. */
     while (heap_peek(&s->running, &re) == APRM_OK && re.finish <= t) {
         heap_pop(&s->running, &re);
         s->free_cpu += re.job.cpu;
         s->free_mem += re.job.mem;
+        eventlog_push(&s->log, t, LOG_FINISH, re.job.id, re.finish - re.start,
+                      re.job.cpu, re.job.mem, 0);  /* cannot fail: reserved above */
         s->fin[s->fin_len++] = re;
         s->n_finished++;
     }
 
-    /* 2. Arrivals at t join the waiting heap. K-10 hook: ARRIVE log line. */
+    /* 2. Arrivals at t join the waiting heap (one ARRIVE log entry each). */
     while (heap_peek(&s->pending, &jb) == APRM_OK && jb.arrival <= t) {
         heap_pop(&s->pending, &jb);
         we.job = jb;
+        eventlog_push(&s->log, t, LOG_ARRIVE, jb.id, jb.priority, 0, 0, 0);  /* reserved above */
+        we.skipmask = 0;
         we.key = 0;  /* FCFS has no key; the compare is arrival, then id */
         rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
         if (rc != APRM_OK) return rc;
@@ -410,10 +420,12 @@ int sim_step(Sim *s)
 
     /* 3. Greedy fill (BLUEPRINT 3.4). A job that does not fit is parked in
      * the skip list and pushed back only after the loop, so it is never
-     * popped twice in one step. K-10 hook: START and WAIT log lines. */
+     * popped twice in one step. One START or SKIP log entry per job popped. */
     while (heap_size(&s->waiting) > 0 && s->free_cpu > 0 && s->free_mem > 0) {
         heap_pop(&s->waiting, &we);
         if (we.job.cpu <= s->free_cpu && we.job.mem <= s->free_mem) {
+            eventlog_push(&s->log, t, LOG_START, we.job.id, we.job.cpu, we.job.mem,
+                          s->free_cpu, s->free_mem);  /* free before it starts; reserved above */
             re.job = we.job;
             re.start = t;
             re.finish = t + we.job.duration;  /* cannot overflow: guarded above */
@@ -422,6 +434,14 @@ int sim_step(Sim *s)
             rc = heap_push(&s->running, &re);  /* cannot fail: reserved above */
             if (rc != APRM_OK) return rc;
         } else {
+            /* Log a SKIP only the first time, and again only when the set of
+             * short resources changes (D60): at most 3 per job. */
+            int mask = (we.job.cpu > s->free_cpu ? 1 : 0) | (we.job.mem > s->free_mem ? 2 : 0);
+            if (mask != we.skipmask) {
+                eventlog_push(&s->log, t, LOG_SKIP, we.job.id, we.job.cpu, we.job.mem,
+                              s->free_cpu, s->free_mem);  /* reserved above */
+                we.skipmask = mask;
+            }
             s->skip[skipped++] = we;
         }
     }
@@ -439,6 +459,13 @@ int sim_step(Sim *s)
     }
 #endif
     return 1;
+}
+
+int sim_log_json(const Sim *s, int64_t since_seq, JsonBuf *out)
+{
+    if (!s || !out) return APRM_INVALID_ARGUMENT;
+    json_reset(out);  /* replace the buffer's contents, like the other sim_*_json */
+    return eventlog_json(&s->log, since_seq, out);
 }
 
 int sim_run_until(Sim *s, int64_t t)

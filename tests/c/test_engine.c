@@ -883,7 +883,7 @@ static void test_checker_detects(void)
     CHECK(sim_add_job(s, &a) == APRM_OK);
     CHECK(heap_pop(&s->pending, &a) == APRM_OK);
     {
-        WaitEntry w; w.job = a; w.key = 0;
+        WaitEntry w; w.job = a; w.key = 0; w.skipmask = 0;
         CHECK(heap_push(&s->waiting, &w) == APRM_OK);
     }
     CHECK(sim_check_invariants(s, &why) == 1);
