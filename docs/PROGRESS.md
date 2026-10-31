@@ -13,7 +13,8 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-04 | #4 | Done, PR #58 merged | JSON writer; settled O-11 as D53 (decided autonomously); review found invalid-UTF-8 pass-through, fixed with U+FFFD replacement; follow-up review of the fix: approve (1.8M fuzz cases, no defects) |
 | K-05 | #5 | Done, PR #59 merged | CSV reader/writer; defines CsvText and ResultRow (to reconcile with JsonBuf in K-08/K-12) |
 | K-06 | #6 | Done, PR #60 merged | CI on every push/PR (build-c, test-c, sanitize, python); first real GCC + newer Make: clean. Proven by throwaway branches: a core warning fails build-c/test-c/sanitize, a deliberate leak fails sanitize (LeakSanitizer). Action versions checked against GitHub releases (checkout v7, setup-python v7). Branch protection NOT enabled |
-| K-08 | #9 | In progress | Plan-first, settles O-8; runs alone (DECISIONS/PRD) |
+| K-08 | #9 | PR #61 open, **waiting for Krishna** (`needs-krishna`) | Code, tests and CI are green. Not merged because it changes PRD §5 and DECISIONS (list below). Everything in Gate 2 after K-08 depends on it |
+| K-14 | #15 | In progress | Independent of K-08 (needs only K-01); decision numbers D56+ because D54/D55 belong to PR #61 |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -30,3 +31,15 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 - 2026-11-01: K-02 (#56) and K-07 (#54) reviewed (both approve) and merged. Next round: K-03, K-04, K-05 in parallel.
 - 2026-11-01: K-03, K-04, K-05 merged (#57, #58, #59). A worktree-creation bug on my side (zsh word splitting) briefly broke the round; fixed, no work lost. K-06 started.
 - 2026-11-01: K-06 merged (#60) after a review round (evidence corrected, build-c made to compile core/ in release mode). Gate 1 is complete except A-01 (Ahaana's; blocks nothing of Krishna's). Gate 2 started with K-08.
+- 2026-11-01: K-08 NOT merged: an attempted merge was blocked (it changes PRD §5 and DECISIONS and its second round of fixes had no re-review). Marked needs-krishna, fresh review of the final head requested. Working on K-14 in the meantime.
+
+## Contract and decision changes waiting for Krishna's approval (PR #61, K-08)
+
+| Where | Change | Why |
+| --- | --- | --- |
+| DECISIONS D54, D55 | O-8 settled: a rejected add changes nothing, produces no log entry and no results row; its one sentence is the error message; the CLI is all-or-nothing (exit 3 on the first invalid job, one stderr line with the CSV line number, no output file); extra API `SimError`, `sim_last_error`, `sim_validate_config`; LIMIT_REACHED wording chosen by the caller | Issue K-08 was assigned O-8 |
+| PRD §1A M5 | Reworded: every reject has one error sentence (not a log sentence) | Consequence of D54 |
+| PRD §5 | `REJECT` log kind reserved, never emitted; the three extras listed under "Additions (D55)" | Consequence of D54/D55 |
+| PRD §10 | Capacity-rejection golden case is console-level (input CSV, expected exit code 3, expected stderr text) plus an API test, not a schedule CSV | Consequence of D54 |
+
+Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UTF-8 handling).
