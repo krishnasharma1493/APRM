@@ -66,6 +66,9 @@ def generate(n_jobs: int, seed: int, arrival_rate: float, size_mix: dict,
     ValueError for bad arguments or any class larger than the machine.
     Time O(n); the returned list is owned by the caller.
     """
+    for name, val in (("n_jobs", n_jobs), ("seed", seed)):
+        if isinstance(val, bool) or not isinstance(val, (int, np.integer)):
+            raise ValueError(f"{name} must be an integer, got {type(val).__name__}")
     if n_jobs < 0:
         raise ValueError("n_jobs must be >= 0")
     if seed < 0:
@@ -81,8 +84,17 @@ def generate(n_jobs: int, seed: int, arrival_rate: float, size_mix: dict,
     names = _check_size_mix(size_mix, cpu_cap, mem_cap)
 
     rng = np.random.default_rng(seed)
-    gaps = rng.exponential(1.0 / arrival_rate, n_jobs)
-    arrivals = np.rint(np.cumsum(gaps)).astype(np.int64)
+    with np.errstate(all="ignore"):
+        scale = 1.0 / arrival_rate
+        if not math.isfinite(scale):
+            raise ValueError("arrival_rate is too small (mean gap overflows)")
+        gaps = rng.exponential(scale, n_jobs)
+        cum = np.cumsum(gaps)  # float, non-decreasing: the last value is the largest
+    # Validate in float BEFORE the integer cast (casting inf or huge floats is undefined).
+    if n_jobs and (not np.all(np.isfinite(gaps)) or not math.isfinite(float(cum[-1]))
+                   or float(np.rint(cum[-1])) > config.MAX_ARRIVAL):
+        raise ValueError("arrival exceeds the PRD limit; lower n_jobs or raise the rate")
+    arrivals = np.rint(cum).astype(np.int64)
     probs = np.array([size_mix[k]["p"] for k in names], dtype=float)
     cls_idx = rng.choice(len(names), size=n_jobs, p=probs / probs.sum())
     # Draw each field for all jobs from every class, then pick by class, so the
@@ -96,8 +108,6 @@ def generate(n_jobs: int, seed: int, arrival_rate: float, size_mix: dict,
             out = np.where(cls_idx == c, draw, out)
         fields[field] = out
     prios = rng.choice(len(priority_dist), size=n_jobs, p=np.array(priority_dist))
-    if n_jobs and int(arrivals[-1]) > config.MAX_ARRIVAL:
-        raise ValueError("arrival exceeds the PRD limit; lower n_jobs or the rate")
     return [{"id": i, "arrival": int(arrivals[i]), "duration": int(fields["duration"][i]),
              "cpu": int(fields["cpu"][i]), "mem": int(fields["mem"][i]),
              "priority": int(prios[i]) + config.PRIORITY_MIN}
@@ -128,7 +138,7 @@ def _params(experiment: str, setting: str, seed: int, n_jobs: int, rate: float,
         "experiment": experiment, "setting": setting, "seed": seed,
         "n_jobs": n_jobs, "arrival_rate": rate, "size_mix": mix,
         "priority_dist": prio, "cpu_cap": config.CPU_CAP, "mem_cap": config.MEM_CAP,
-        "generator": "tools/gen_workload.py"}
+        "generator": "tools/gen_workload.py", "numpy_version": np.__version__}
     if extra:
         params.update(extra)
     return params
@@ -202,6 +212,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.family:
             if args.setting is None:
                 raise ValueError("--family needs --setting")
+            if args.cpu_cap != config.CPU_CAP or args.mem_cap != config.MEM_CAP:
+                raise ValueError("--cpu-cap/--mem-cap cannot be combined with --family "
+                                 "(experiments use the default machine)")
             p = family_params(args.family, args.setting, args.seed)
             if args.n != config.JOBS_PER_WORKLOAD:
                 p["n_jobs"] = args.n

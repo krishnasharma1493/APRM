@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 import sys
 from pathlib import Path
 
@@ -177,3 +178,41 @@ def test_cli(tmp_path: Path) -> None:
     assert len(out.read_text().strip().split("\n")) == 21
     meta = json.loads(Path(str(out) + ".meta.json").read_text())
     assert meta["seed"] == 1 and meta["n_jobs"] == 20
+
+
+@pytest.mark.parametrize("rate,n", [(1e-300, 10), (5e-324, 10), (1e-5, 20_000), (1e-12, 5)])
+def test_arrival_overflow_rejected(rate: float, n: int) -> None:
+    """Arrival sums beyond 1e9 (or inf) raise ValueError, with no warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(ValueError):
+            gw.generate(n, 1, rate, config.DEFAULT_SIZE_MIX,
+                        config.PRIORITY_UNIFORM, 16, 32768)
+
+
+@pytest.mark.parametrize("bad", [{"n_jobs": 2.5}, {"seed": "1"}, {"seed": 1.0}, {"n_jobs": None}])
+def test_non_integer_args(bad: dict) -> None:
+    """Non-integer n_jobs or seed raise ValueError, not TypeError."""
+    args = dict(n_jobs=10, seed=1, arrival_rate=0.3, size_mix=config.DEFAULT_SIZE_MIX,
+                priority_dist=config.PRIORITY_UNIFORM, cpu_cap=16, mem_cap=32768)
+    args.update(bad)
+    with pytest.raises(ValueError, match="integer"):
+        gw.generate(**args)
+
+
+def test_cli_caps_with_family_rejected(tmp_path: Path) -> None:
+    """--cpu-cap with --family is an error (exit 2), no file written."""
+    out = tmp_path / "x.csv"
+    rc = gw.main(["--seed", "1", "--out", str(out), "--family", "E1",
+                  "--setting", "light", "--cpu-cap", "8"])
+    assert rc == 2 and not out.exists()
+
+
+def test_meta_has_numpy_version(tmp_path: Path) -> None:
+    """The sidecar records the numpy version; CSV bytes do not depend on it."""
+    import numpy as np
+    jobs, params = gw.generate_family("E1", "light", 1)
+    path = tmp_path / "m.csv"
+    gw.write_jobs_csv(jobs, str(path), params)
+    meta = json.loads(Path(str(path) + ".meta.json").read_text())
+    assert meta["numpy_version"] == np.__version__
