@@ -56,6 +56,7 @@ void json_i64(JsonBuf *j, int64_t v);
 void json_bool(JsonBuf *j, int b);
 void json_null(JsonBuf *j);
 void json_milli(JsonBuf *j, int64_t milli); /* 6200 -> 6.200, -500 -> -0.500, 0 -> 0.000 */
+void json_fixed9(JsonBuf *j, uint64_t whole, uint32_t frac); /* (12, 400000000) -> 12.400000000; frac must be < 10^9 (K-11, D61) */
 
 /* Envelope helpers (PRD section 5). Compact output, no spaces.
  * json_ok_begin writes {"ok":true,"data": and the caller then writes exactly

@@ -287,6 +287,19 @@ void json_milli(JsonBuf *j, int64_t milli)
     put(j, tmp, (size_t)n);
 }
 
+/* Write whole.frac with exactly nine decimals, integers only (K-11, D61).
+ * frac is the fractional part in billionths and must be below 10^9, else the
+ * value is a misuse and the buffer gets APRM_INVALID_ARGUMENT. Non-negative
+ * values only: metrics are never negative. O(1). */
+void json_fixed9(JsonBuf *j, uint64_t whole, uint32_t frac)
+{
+    char tmp[48];
+    int n;
+    if (frac >= 1000000000u) { fail(j, APRM_INVALID_ARGUMENT); return; }
+    n = snprintf(tmp, sizeof tmp, "%" PRIu64 ".%09" PRIu32, whole, frac);
+    put(j, tmp, (size_t)n);
+}
+
 /* Start the success envelope: {"ok":true,"data": ; then one value, then
  * json_ok_end. O(1). */
 void json_ok_begin(JsonBuf *j)
