@@ -225,6 +225,17 @@ static void test_log_since(void)
     CHECK(sim_log_json(s, INT64_MAX, &j) == APRM_OK);
     CHECK(strcmp(json_cstr(&j), "{\"ok\":true,\"data\":[]}") == 0);
 
+    /* a reused JsonBuf gives the same valid JSON again (json_reset inside) */
+    {
+        char first[8192];
+        json_reset(&j);
+        CHECK(sim_log_json(s, 0, &j) == APRM_OK);
+        CHECK(json_len(&j) < sizeof first);
+        snprintf(first, sizeof first, "%s", json_cstr(&j));
+        CHECK(sim_log_json(s, 0, &j) == APRM_OK);
+        CHECK(strcmp(first, json_cstr(&j)) == 0 && json_ok(first));
+    }
+
     /* argument checks */
     CHECK(sim_log_json(NULL, 0, &j) == APRM_INVALID_ARGUMENT);
     CHECK(sim_log_json(s, 0, NULL) == APRM_INVALID_ARGUMENT);

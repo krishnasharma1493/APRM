@@ -464,6 +464,7 @@ int sim_step(Sim *s)
 int sim_log_json(const Sim *s, int64_t since_seq, JsonBuf *out)
 {
     if (!s || !out) return APRM_INVALID_ARGUMENT;
+    json_reset(out);  /* replace the buffer's contents, like the other sim_*_json */
     return eventlog_json(&s->log, since_seq, out);
 }
 
