@@ -8,20 +8,26 @@
  * This file is the only place that touches files, stdout and stderr; core/
  * stays pure. The program is all-or-nothing (DECISIONS D54): jobs are added
  * in file order, the first rejected job stops everything, nothing runs and
- * no output file is written. Output files are written to "<name>.tmp" and
- * renamed only when every output was written, so a failed run never leaves a
- * partial file (and never touches an existing one).
+ * no output file is written. Before anything is written every output path is
+ * checked (it must not exist, or be a regular file), every output is built in
+ * memory and written to "<name>.tmp", and only then are the temp files renamed
+ * (log, metrics, then --out last). So an argument, input, job, policy or
+ * write error never leaves or changes an output file. A rename that fails
+ * after the first rename succeeded (different file system, permissions
+ * changed meanwhile) cannot be undone: that is best effort.
  *
  * Exit codes: 0 success, 1 bad arguments, 2 input file error (cannot open or
  * read, too large, CSV PARSE_ERROR), 3 invalid job, 4 internal error (out of
  * memory, unimplemented policy, cannot write an output file). Every error is
  * one line on stderr: "<NAME>: <message>" with the PRD section 5 error name.
  */
+#define _POSIX_C_SOURCE 200809L   /* stat, st_dev, st_ino */
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "config.h"
 #include "csv.h"
@@ -151,6 +157,30 @@ static int eps_flag(const char *val, double *dst)
     return 0;
 }
 
+/* 1 if the two paths name the same file: equal strings, or both exist and
+ * have the same device and inode (catches ./x vs x, hard links, symlinks).
+ * O(1). */
+static int same_file(const char *p, const char *q)
+{
+    struct stat a, b;
+    if (strcmp(p, q) == 0) return 1;
+    if (stat(p, &a) != 0 || stat(q, &b) != 0) return 0;
+    return a.st_dev == b.st_dev && a.st_ino == b.st_ino;
+}
+
+/* Checks that an output path is safe to replace: it does not exist, or it is
+ * a regular file (not a directory, device or FIFO). Returns 0 or EXIT_INTERNAL
+ * after printing the error. Nothing is created or changed. O(1). */
+static int check_output_path(const char *path)
+{
+    struct stat st;
+    char msg[300];
+    if (stat(path, &st) != 0) return 0;   /* missing: write_temp reports real problems */
+    if (S_ISREG(st.st_mode)) return 0;
+    snprintf(msg, sizeof msg, "output '%.200s' exists and is not a regular file.", path);
+    return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", msg, 0);
+}
+
 /* Parses argv into *a with the defaults from config.h. Returns 0 or an exit
  * code (error already printed). O(argc). */
 static int parse_args(int argc, char **argv, Args *a)
@@ -212,11 +242,21 @@ static int parse_args(int argc, char **argv, Args *a)
     if (a->out == NULL) return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "missing --out (the results.csv file).", 0);
     if (a->in[0] == '\0' || a->out[0] == '\0' || (a->log && a->log[0] == '\0') || (a->metrics && a->metrics[0] == '\0'))
         return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "a file name must not be empty.", 0);
-    /* Two outputs with one name would overwrite each other. */
-    if ((a->log && strcmp(a->log, a->out) == 0) || (a->metrics && strcmp(a->metrics, a->out) == 0) ||
-        (a->log && a->metrics && strcmp(a->log, a->metrics) == 0) || strcmp(a->in, a->out) == 0 ||
-        (a->log && strcmp(a->log, a->in) == 0) || (a->metrics && strcmp(a->metrics, a->in) == 0))
-        return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "--in, --out, --log and --metrics must be different files.", 0);
+    /* Two files that are the same file would overwrite each other (or the
+     * input). Same name, or same device and inode when both exist. */
+    {
+        const char *names[4];
+        int n = 0, x, y;
+        names[n++] = a->in;
+        names[n++] = a->out;
+        if (a->log) names[n++] = a->log;
+        if (a->metrics) names[n++] = a->metrics;
+        for (x = 0; x < n; x++)
+            for (y = x + 1; y < n; y++)
+                if (same_file(names[x], names[y]))
+                    return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT",
+                                     "--in, --out, --log and --metrics must be different files.", 0);
+    }
     return 0;
 }
 
@@ -238,7 +278,7 @@ static int read_input(const char *path, char **buf, size_t *len)
     if (f == NULL) {
         snprintf(msg, sizeof msg, "cannot open input file '%.120s': %s.", path, strerror(errno));
         free(p);
-        return fail_line(EXIT_INPUT, "INVALID_ARGUMENT", msg, 0);
+        return fail_line(EXIT_INPUT, "INTERNAL_ERROR", msg, 0);
     }
     for (;;) {
         size_t got;
@@ -260,7 +300,7 @@ static int read_input(const char *path, char **buf, size_t *len)
             fclose(f);
             free(p);
             snprintf(msg, sizeof msg, "input file '%.120s' is larger than %zu MiB.", path, MAX_INPUT_BYTES / (1024 * 1024));
-            return fail_line(EXIT_INPUT, "INVALID_ARGUMENT", msg, 0);
+            return fail_line(EXIT_INPUT, "INTERNAL_ERROR", msg, 0);
         }
         if (got == 0 || feof(f)) break;
     }
@@ -268,7 +308,7 @@ static int read_input(const char *path, char **buf, size_t *len)
         snprintf(msg, sizeof msg, "cannot read input file '%.120s': %s.", path, strerror(errno));
         fclose(f);
         free(p);
-        return fail_line(EXIT_INPUT, "INVALID_ARGUMENT", msg, 0);
+        return fail_line(EXIT_INPUT, "INTERNAL_ERROR", msg, 0);
     }
     fclose(f);
     p[n] = '\0';
@@ -285,11 +325,11 @@ static int write_temp(const char *path, const char *data, size_t len)
     FILE *f;
     int ok;
     if (snprintf(tmp, sizeof tmp, "%s.tmp", path) >= (int)sizeof tmp)
-        return fail_line(EXIT_INTERNAL, "INVALID_ARGUMENT", "output file name is too long.", 0);
+        return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", "output file name is too long.", 0);
     f = fopen(tmp, "wb");
     if (f == NULL) {
         snprintf(msg, sizeof msg, "cannot write '%.200s': %s.", tmp, strerror(errno));
-        return fail_line(EXIT_INTERNAL, "INVALID_ARGUMENT", msg, 0);
+        return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", msg, 0);
     }
     ok = (len == 0 || fwrite(data, 1, len, f) == len);
     ok = (fflush(f) == 0) && ok;
@@ -297,7 +337,7 @@ static int write_temp(const char *path, const char *data, size_t len)
     if (!ok) {
         snprintf(msg, sizeof msg, "cannot write '%.200s': %s.", tmp, strerror(errno));
         remove(tmp);
-        return fail_line(EXIT_INTERNAL, "INVALID_ARGUMENT", msg, 0);
+        return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", msg, 0);
     }
     return 0;
 }
@@ -310,7 +350,7 @@ static int commit_temp(const char *path)
     if (rename(tmp, path) != 0) {
         snprintf(msg, sizeof msg, "cannot replace '%.200s': %s.", path, strerror(errno));
         remove(tmp);
-        return fail_line(EXIT_INTERNAL, "INVALID_ARGUMENT", msg, 0);
+        return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", msg, 0);
     }
     return 0;
 }
@@ -422,6 +462,11 @@ static int run(const Args *a)
         goto done;
     }
 
+    /* Refuse unsafe output paths before anything is written. */
+    if ((exit_code = check_output_path(a->out)) != 0) goto done;
+    if (a->log != NULL && (exit_code = check_output_path(a->log)) != 0) goto done;
+    if (a->metrics != NULL && (exit_code = check_output_path(a->metrics)) != 0) goto done;
+
     /* Build every output in memory first. */
     rc = sim_results_rows(sim, &rows, &n_rows);
     if (rc == APRM_OK) rc = csv_write_results(&results, rows, n_rows);
@@ -432,9 +477,9 @@ static int run(const Args *a)
     }
     if (a->log != NULL && (exit_code = build_log_text(sim, &logtxt)) != 0) goto done;
 
-    /* Write to temp names, then rename: either every file is replaced or
-     * none is. (A rename can still fail after another succeeded; that is
-     * reported as an internal error.) */
+    /* Write every temp file first, then rename. A failure while writing
+     * leaves every real file untouched. A rename failing after an earlier
+     * rename succeeded cannot be undone (best effort; reported as internal). */
     if (a->metrics != NULL) {
         if (csv_text_append(&mettxt, json_cstr(&metrics), json_len(&metrics)) != APRM_OK ||
             csv_text_append(&mettxt, "\n", 1) != APRM_OK) {
@@ -445,9 +490,10 @@ static int run(const Args *a)
     if ((exit_code = write_temp(a->out, results.data, results.len)) != 0) goto cleanup_temps;
     if (a->log != NULL && (exit_code = write_temp(a->log, logtxt.data, logtxt.len)) != 0) goto cleanup_temps;
     if (a->metrics != NULL && (exit_code = write_temp(a->metrics, mettxt.data, mettxt.len)) != 0) goto cleanup_temps;
-    if ((exit_code = commit_temp(a->out)) != 0) goto cleanup_temps;
+    /* Commit order: log, metrics, then results last (the most important). */
     if (a->log != NULL && (exit_code = commit_temp(a->log)) != 0) goto cleanup_temps;
     if (a->metrics != NULL && (exit_code = commit_temp(a->metrics)) != 0) goto cleanup_temps;
+    if ((exit_code = commit_temp(a->out)) != 0) goto cleanup_temps;
     goto done;
 
 cleanup_temps:

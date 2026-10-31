@@ -30,6 +30,17 @@ fail=0
 skip=0
 skipped_list=""
 
+# Safety: a skipped policy must really be unimplemented. Probe the CLI once per
+# skipped policy; if it succeeds, the policy exists and its cases must run.
+probe_failed=0
+for p in $SKIP_POLICIES; do
+    "$BIN" --policy "$p" --in "$DIR/fcfs_basic.csv" --out "$TMP/probe.csv" >/dev/null 2>"$TMP/probe.err"
+    if [ $? -ne 4 ] || ! grep -q "not implemented yet" "$TMP/probe.err"; then
+        echo "NOTE: policy '$p' is implemented now; remove $p from SKIP_POLICIES in tests/cases/run_golden.sh" >&2
+        probe_failed=1
+    fi
+done
+
 echo "golden: policies not implemented yet, their cases are skipped: $SKIP_POLICIES"
 
 # --- schedule cases ---
@@ -107,4 +118,4 @@ if [ $skip -gt 0 ]; then
     echo "SKIPPED $skip case(s) (policy not implemented yet):$skipped_list"
 fi
 echo "golden: $pass passed, $fail failed, $skip skipped"
-[ $fail -eq 0 ]
+[ $fail -eq 0 ] && [ $probe_failed -eq 0 ]

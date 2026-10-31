@@ -24,6 +24,7 @@ expect() {
     "$BIN" "$@" >"$T/stdout" 2>"$T/stderr"
     got=$?
     lines=$(wc -l <"$T/stderr" | tr -d ' ')
+    if [ -s "$T/stdout" ]; then bad "$name: stdout is not empty"; return; fi
     if [ "$got" != "$want" ]; then bad "$name: exit $got, want $want ($(cat "$T/stderr"))"; return; fi
     if [ "$lines" != "1" ]; then bad "$name: stderr has $lines lines, want 1"; return; fi
     if ! grep -qF -- "$sub" "$T/stderr"; then bad "$name: stderr '$(cat "$T/stderr")' lacks '$sub'"; return; fi
@@ -95,6 +96,42 @@ rm -f "$T/l.txt" "$T/m.json"
 "$BIN" --in $CASES/capacity_reject.csv --out $OUT --log "$T/l.txt" --metrics "$T/m.json" 2>/dev/null
 if [ $? = 3 ] && [ ! -e "$T/l.txt" ] && [ ! -e "$T/m.json" ] && [ ! -e $OUT ]; then echo "ok    exit-3 writes no log or metrics file"; ok; else bad "exit-3 left a file behind"; fi
 
+# Same file by another name (./ prefix, hard link, symlink) is exit 1.
+cp $GOOD "$T/cp.csv"
+ln "$T/cp.csv" "$T/hard.csv"
+ln -s "$T/cp.csv" "$T/sym.csv"
+expect "exit-1 --out is --in via ./"  1 "different files" -- --in "$T/cp.csv" --out "$T/./cp.csv"
+expect "exit-1 --out hard link of --in" 1 "different files" -- --in "$T/cp.csv" --out "$T/hard.csv"
+expect "exit-1 --out symlink of --in" 1 "different files" -- --in "$T/cp.csv" --out "$T/sym.csv"
+expect "exit-1 --log is --in"         1 "different files" -- --in "$T/cp.csv" --out $OUT --log "$T/./cp.csv"
+if cmp -s "$T/cp.csv" $GOOD; then echo "ok    input intact after same-file refusals"; ok; else bad "input was changed"; fi
+
+# Output path is a directory or device: exit 4, nothing written, nothing changed.
+mkdir "$T/ldir" "$T/mdir"
+echo old >"$T/prev.csv"
+for spec in "--log $T/ldir" "--metrics $T/mdir" "--log /dev/null" "--metrics /dev/null"; do
+    rm -f "$OUT"
+    "$BIN" --in $GOOD --out "$OUT" $spec >"$T/stdout" 2>"$T/stderr"
+    rc=$?
+    if [ $rc = 4 ] && [ ! -e "$OUT" ] && [ ! -e "$OUT.tmp" ] && [ "$(wc -l <"$T/stderr" | tr -d ' ')" = 1 ] &&
+       grep -q "not a regular file" "$T/stderr" && [ ! -s "$T/stdout" ]; then
+        echo "ok    exit-4 $spec leaves no --out file"; ok
+    else bad "exit-4 $spec (rc $rc): $(cat "$T/stderr")"; fi
+    "$BIN" --in $GOOD --out "$T/prev.csv" $spec 2>/dev/null
+    if [ $? = 4 ] && [ "$(cat "$T/prev.csv")" = "old" ] && [ ! -e "$T/prev.csv.tmp" ]; then
+        echo "ok    exit-4 $spec leaves an existing --out untouched"; ok
+    else bad "exit-4 $spec changed an existing --out"; fi
+done
+rm -f "$OUT"
+"$BIN" --in $GOOD --out "$T/ldir" 2>/dev/null
+if [ $? = 4 ] && [ -d "$T/ldir" ]; then echo "ok    exit-4 --out is a directory"; ok; else bad "--out directory"; fi
+# --out existing regular file is untouched on every kind of failure.
+for spec in "--policy aging" "--cpu 1" "--cpu 0"; do
+    echo old >"$T/prev.csv"
+    "$BIN" --in $GOOD --out "$T/prev.csv" $spec 2>/dev/null
+    if [ $? != 0 ] && [ "$(cat "$T/prev.csv")" = "old" ]; then echo "ok    failed run ($spec) leaves --out untouched"; ok; else bad "$spec changed --out"; fi
+done
+
 # ---- exit 4: internal error (unimplemented policy) ----
 for p in priority sjf aging reserve knapsack; do
     expect "exit-4 policy $p not implemented" 4 "INVALID_ARGUMENT: policy $p is not implemented yet." -- --policy $p --in $GOOD --out $OUT
@@ -108,14 +145,24 @@ rm -f "$OUT" "$T/l.txt" "$T/m.json"
 rc=$?
 if [ $rc = 0 ] && [ ! -s "$T/stderr" ] && cmp -s "$OUT" $CASES/fcfs_skip.fcfs.expected.csv; then echo "ok    success: results match"; ok; else bad "success run (rc $rc)"; fi
 if [ ! -e "$OUT.tmp" ] && [ ! -e "$T/l.txt.tmp" ] && [ ! -e "$T/m.json.tmp" ]; then echo "ok    success: no temp files left"; ok; else bad "temp files left behind"; fi
-if [ "$(wc -l <"$T/l.txt" | tr -d ' ')" = "10" ] &&
-   [ "$(sed -n 1p "$T/l.txt")" = "Job 1 arrived with priority 2." ] &&
-   [ "$(sed -n 4p "$T/l.txt")" = "Job 2 skipped: needs 16000 MB, only 8768 MB free." ] &&
-   [ "$(sed -n 10p "$T/l.txt")" = "Job 2 finished after 6 ticks; freed 4 cores and 16000 MB." ]; then
+cat >"$T/want_log.txt" <<'LOGEOF'
+Job 1 arrived with priority 2.
+Job 1 started: needs 4 cores and 24000 MB; 16 cores and 32768 MB free.
+Job 2 arrived with priority 5.
+Job 2 skipped: needs 16000 MB, only 8768 MB free.
+Job 3 arrived with priority 1.
+Job 3 started: needs 2 cores and 4000 MB; 12 cores and 8768 MB free.
+Job 3 finished after 3 ticks; freed 2 cores and 4000 MB.
+Job 1 finished after 10 ticks; freed 4 cores and 24000 MB.
+Job 2 started: needs 4 cores and 16000 MB; 16 cores and 32768 MB free.
+Job 2 finished after 6 ticks; freed 4 cores and 16000 MB.
+LOGEOF
+if cmp -s "$T/l.txt" "$T/want_log.txt"; then
     echo "ok    --log: one sentence per line"; ok
 else bad "--log content"; fi
 want='{"ok":true,"data":{"avg_wait":3.000000000,"max_wait":9,"avg_turnaround":9.333333333,"weighted_completion":136,"makespan":16,"util_cpu":0.273437500,"util_mem":0.663757324,"avg_wait_by_priority":[null,0.000000000,0.000000000,null,null,9.000000000,null,null,null,null]}}'
-if [ "$(cat "$T/m.json")" = "$want" ]; then echo "ok    --metrics: PRD shape and values"; ok; else bad "--metrics content: $(cat "$T/m.json")"; fi
+printf '%s\n' "$want" >"$T/want_m.json"
+if cmp -s "$T/m.json" "$T/want_m.json"; then echo "ok    --metrics: PRD shape and values"; ok; else bad "--metrics content: $(cat "$T/m.json")"; fi
 
 # Existing files are replaced on success.
 echo old >"$OUT"
@@ -132,7 +179,10 @@ expect "exit-3 --cpu 1 too small"   3 "CAPACITY_EXCEEDED: Job 1 needs 16 cores; 
 
 # ---- --help ----
 "$BIN" --help >"$T/stdout" 2>"$T/stderr"
-if [ $? = 0 ] && [ ! -s "$T/stderr" ] && grep -q "^usage: aprm --in" "$T/stdout" && grep -q "exit codes" "$T/stdout"; then echo "ok    --help"; ok; else bad "--help"; fi
+rc=$?
+"$BIN" -h >"$T/stdout2" 2>/dev/null
+if [ $rc = 0 ] && [ ! -s "$T/stderr" ] && grep -q "^usage: aprm --in" "$T/stdout" && grep -q "exit codes" "$T/stdout" &&
+   [ "$(wc -l <"$T/stdout" | tr -d ' ')" = 4 ] && cmp -s "$T/stdout" "$T/stdout2"; then echo "ok    --help"; ok; else bad "--help"; fi
 
 echo "cli: $pass passed, $fail failed"
 [ $fail -eq 0 ]
