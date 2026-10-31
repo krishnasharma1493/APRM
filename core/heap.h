@@ -33,7 +33,8 @@ typedef struct {
 /* Initialise an empty heap with a small initial capacity.
  * Returns APRM_OK, APRM_INVALID_ARGUMENT (NULL h or cmp, elem_size == 0) or
  * APRM_OUT_OF_MEMORY (on failure *h is a valid empty heap with no storage).
- * O(1) time, O(1) space. The heap owns its buffer; release it with heap_free. */
+ * Do not call it on a live heap: that would leak its buffer (call heap_free
+ * first). O(1) time, O(1) space. The heap owns its buffer; release it with heap_free. */
 int heap_init(Heap *h, size_t elem_size, HeapCmp cmp, void *ctx);
 
 /* Free the buffer and reset *h to an empty, storage-less state; call

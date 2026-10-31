@@ -87,10 +87,12 @@ static void random_order(HeapCmp cmp, int want_min)
 {
     Heap h;
     int64_t i, prev = 0, v, top;
-    int ok = 1;
+    int ok = 1, k;
+    int counts[1000] = {0};  /* multiset of pushed keys */
     CHECK(heap_init(&h, sizeof(int64_t), cmp, NULL) == APRM_OK);
     for (i = 0; i < N; i++) {
         v = rng_next();
+        counts[v]++;
         CHECK(heap_push(&h, &v) == APRM_OK);
     }
     CHECK(heap_size(&h) == N);
@@ -98,7 +100,9 @@ static void random_order(HeapCmp cmp, int want_min)
         if (heap_peek(&h, &top) != APRM_OK || heap_pop(&h, &v) != APRM_OK || top != v) ok = 0;
         if (i > 0 && (want_min ? v < prev : v > prev)) ok = 0;
         prev = v;
+        counts[v]--;
     }
+    for (k = 0; k < 1000; k++) if (counts[k] != 0) ok = 0;  /* popped == pushed */
     CHECK(ok);
     CHECK(heap_size(&h) == 0);
     heap_free(&h);
@@ -198,27 +202,93 @@ static void test_heap_oom(void)
     heap_free(&h);
 }
 
-/* Growth: several doublings, larger elements, interleaved push and pop. */
+/* Growth and interleaving, checked against a counting reference: every pop
+ * must return the smallest key currently stored. */
 static void test_heap_growth_and_interleave(void)
 {
     Heap h;
     Item it, out;
-    int i, ok = 1;
-    int64_t last = -1;
-    CHECK(heap_init(&h, sizeof(Item), cmp_item, NULL) == APRM_OK);
+    int i, k, ok = 1, stored = 0;
+    int counts[1000] = {0};
+    long calls = 0;
+    CHECK(heap_init(&h, sizeof(Item), cmp_item, &calls) == APRM_OK);
     for (i = 0; i < 5000; i++) {
         it.key = rng_next();
         it.id = i;
         CHECK(heap_push(&h, &it) == APRM_OK);
+        counts[it.key]++;
+        stored++;
         if (i % 3 == 2) {  /* interleave pops with pushes */
+            for (k = 0; counts[k] == 0; k++) {}
             CHECK(heap_pop(&h, &out) == APRM_OK);
+            if (out.key != k) ok = 0;
+            counts[out.key]--;
+            stored--;
+        }
+    }
+    while (stored > 0) {
+        for (k = 0; counts[k] == 0; k++) {}
+        if (heap_pop(&h, &out) != APRM_OK || out.key != k) ok = 0;
+        counts[out.key]--;
+        stored--;
+    }
+    CHECK(ok);
+    CHECK(heap_size(&h) == 0);
+    heap_free(&h);
+}
+
+/* Element larger than the 64-byte swap buffer: payload must survive every
+ * swap (covers the chunked swap_slots path). */
+typedef struct { int64_t key; int32_t id; unsigned char payload[120]; } Big;
+
+static void fill_payload(Big *b)
+{
+    int j;
+    for (j = 0; j < (int)sizeof b->payload; j++) b->payload[j] = (unsigned char)(b->id * 31 + j * 7 + 1);
+}
+static int payload_ok(const Big *b)
+{
+    Big ref;
+    ref.id = b->id;
+    fill_payload(&ref);
+    return memcmp(ref.payload, b->payload, sizeof ref.payload) == 0;
+}
+static int cmp_big(const void *a, const void *b, void *ctx)
+{
+    const Big *x = a, *y = b;
+    (void)ctx;
+    if (x->key != y->key) return x->key < y->key ? -1 : 1;
+    return (x->id > y->id) - (x->id < y->id);
+}
+
+static void test_heap_big_elements(void)
+{
+    Heap h;
+    Big e, out, prev;
+    int i, ok = 1, have_prev = 0, popped = 0;
+    CHECK(sizeof(Big) > 64);
+    CHECK(heap_init(&h, sizeof(Big), cmp_big, NULL) == APRM_OK);
+    for (i = 0; i < 3000; i++) {
+        memset(&e, 0, sizeof e);
+        e.key = rng_next();
+        e.id = i;
+        fill_payload(&e);
+        CHECK(heap_push(&h, &e) == APRM_OK);
+        if (i % 4 == 3) {
+            CHECK(heap_pop(&h, &out) == APRM_OK);
+            if (!payload_ok(&out)) ok = 0;
+            popped++;
         }
     }
     while (heap_pop(&h, &out) == APRM_OK) {
-        if (out.key < last) ok = 0;
-        last = out.key;
+        if (!payload_ok(&out)) ok = 0;
+        if (have_prev && cmp_big(&prev, &out, NULL) >= 0) ok = 0;
+        prev = out;
+        have_prev = 1;
+        popped++;
     }
     CHECK(ok);
+    CHECK(popped == 3000);
     heap_free(&h);
 }
 
@@ -232,5 +302,6 @@ int main(void)
     test_heap_build();
     test_heap_oom();
     test_heap_growth_and_interleave();
+    test_heap_big_elements();
     return TEST_REPORT();
 }

@@ -57,8 +57,10 @@ static void sift_up(Heap *h, size_t i)
 }
 
 /* Move the element at i down until neither child compares before it.
- * Children of i are 2i+1 and 2i+2; len is far below SIZE_MAX/2 whenever the
- * buffer exists, so 2i+2 cannot overflow. O(log n) compares, O(1) space. */
+ * Children of i are 2i+1 and 2i+2. Since i < len, 2i+2 <= 2*len, which fits in
+ * size_t when elem_size >= 2 (the buffer holds len*elem_size bytes, so
+ * len <= SIZE_MAX/2). For elem_size == 1 it would need a heap of more than
+ * SIZE_MAX/2 bytes, which no real address space has. O(log n) compares, O(1) space. */
 static void sift_down(Heap *h, size_t i)
 {
     size_t left, right, best;
