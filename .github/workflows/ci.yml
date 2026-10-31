@@ -81,7 +81,9 @@ jobs:
           persist-credentials: false
       - name: Install the emsdk version recorded in docs/TOOLCHAIN.md
         run: |
-          # The version is read from the Emscripten row of docs/TOOLCHAIN.md (frozen in K-18).
+          # The version is read from the Emscripten row of docs/TOOLCHAIN.md. The regex takes the FIRST
+          # version number in the row, which is the Krishna's-laptop column; K-18 must move it to the
+          # CI column when that column is filled in.
           ver=$(grep '^| Emscripten' docs/TOOLCHAIN.md | sed -E 's/^\|[^|]*\| *([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
           echo "emsdk version: $ver"
           test -n "$ver"
@@ -99,11 +101,24 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           node --version
           node wasm/test_api.mjs
-      - name: FCFS golden case through Node equals its expected file
+      - name: Every FCFS golden case through Node equals its expected file
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
-          node wasm/run_wasm.mjs --policy fcfs --in tests/cases/fcfs_basic.csv > "$RUNNER_TEMP/w.csv"
-          diff "$RUNNER_TEMP/w.csv" tests/cases/fcfs_basic.fcfs.expected.csv
+          for exp in tests/cases/*.fcfs.expected.csv; do
+            name=$(basename "$exp" .fcfs.expected.csv)
+            args=""
+            if [ -f "tests/cases/$name.args" ]; then args=$(cat "tests/cases/$name.args"); fi
+            # shellcheck disable=SC2086
+            node wasm/run_wasm.mjs --policy fcfs --in "tests/cases/$name.csv" $args > "$RUNNER_TEMP/w.csv"
+            diff "$RUNNER_TEMP/w.csv" "$exp"
+            echo "ok $name"
+          done
+      - name: api.c natively under ASan and UBSan (no Node)
+        run: |
+          mkdir -p build
+          cc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Icore \
+            core/*.c wasm/api.c wasm/native_check.c -o build/native_check -lm
+          ASAN_OPTIONS=detect_leaks=1 build/native_check
 
   # deploy: added in K-37 (main only, publish web/ to GitHub Pages).
   # deploy:

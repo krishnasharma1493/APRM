@@ -11,10 +11,13 @@
 // arguments, 2 input file or CSV error, 3 invalid job, 4 internal error.
 // Difference from the CLI: the website build allows at most 5,000 jobs
 // (APRM_MAX_JOBS_WEB), so a larger CSV is exit 3 (LIMIT_REACHED).
+// CSV reading is in csv_parse.mjs (same rules and first error as core/csv.c).
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { parseJobs, CsvFail } from './csv_parse.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -25,11 +28,8 @@ const CODE_NAMES = {
   '-4': 'ARRIVAL_IN_PAST', '-5': 'DUPLICATE_ID', '-6': 'LIMIT_REACHED',
   '-7': 'OUT_OF_MEMORY', '-8': 'PARSE_ERROR', '-9': 'TOO_LARGE',
 };
-const JOBS_HEADER = 'id,arrival,duration,cpu,mem,priority';
 const RESULTS_HEADER = 'id,arrival,start,finish,wait,turnaround,priority,cpu,mem';
-const MAX_LINE = 256;                    // same limit as core/csv.h CSV_MAX_LINE
-const INT64_MIN = -(2n ** 63n);
-const INT64_MAX = 2n ** 63n - 1n;
+const MAX_JOBS_WEB = 5000;               // APRM_MAX_JOBS_WEB, as set in wasm/api.c
 
 class Fail extends Error {
   constructor(exit, text) { super(text); this.exit = exit; }
@@ -56,39 +56,6 @@ function parseArgs(argv) {
   return opt;
 }
 
-// Parse jobs.csv text like core/csv.c: exact header, \n or \r\n, one optional
-// final terminator, six integer fields per line. Range checks are left to the
-// engine (aprm_add_job). Throws Fail(2, ...) with line (and column) in the text.
-function parseJobs(text) {
-  const names = JOBS_HEADER.split(',');
-  const lines = text.split('\n');
-  if (lines[lines.length - 1] === '') lines.pop();
-  const jobs = [];
-  for (let n = 0; n < lines.length; n++) {
-    let line = lines[n];
-    if (line.endsWith('\r')) line = line.slice(0, -1);
-    const lineNo = n + 1;
-    if (Buffer.byteLength(line) > MAX_LINE) throw new Fail(2, `PARSE_ERROR: Line ${lineNo}: line is too long.`);
-    if (n === 0) {
-      if (line !== JOBS_HEADER) throw new Fail(2, `PARSE_ERROR: Line 1: header must be ${JOBS_HEADER}.`);
-      continue;
-    }
-    if (line === '') throw new Fail(2, `PARSE_ERROR: Line ${lineNo}: empty line.`);
-    const f = line.split(',');
-    if (f.length !== names.length) throw new Fail(2, `PARSE_ERROR: Line ${lineNo}: expected ${names.length} columns.`);
-    const row = { line: lineNo };
-    for (let c = 0; c < names.length; c++) {
-      if (!/^-?\d+$/.test(f[c])) throw new Fail(2, `PARSE_ERROR: Line ${lineNo}, column ${names[c]}: not a number.`);
-      const big = BigInt(f[c]);
-      if (big < INT64_MIN || big > INT64_MAX) throw new Fail(2, `PARSE_ERROR: Line ${lineNo}, column ${names[c]}: number too large.`);
-      row[names[c]] = Number(big);   // above 2^53 the engine rejects it as INVALID_FIELD
-    }
-    jobs.push(row);
-  }
-  if (lines.length === 0) throw new Fail(2, 'PARSE_ERROR: Line 1: header must be ' + JOBS_HEADER + '.');
-  return jobs;
-}
-
 // Exit code for an engine status, as the console program uses them (D54).
 function exitFor(code) {
   return code === -7 ? 4 : 3;
@@ -108,9 +75,15 @@ function resultsCsv(json) {
 async function main() {
   const opt = parseArgs(process.argv.slice(2));
   let text;
-  try { text = readFileSync(opt.in, 'utf8'); }
+  try { text = readFileSync(opt.in, 'latin1'); }   // one char per byte, like the C reader
   catch (e) { throw new Fail(2, `PARSE_ERROR: cannot read ${opt.in}: ${e.code || e.message}`); }
-  const jobs = parseJobs(text);
+  let jobs;
+  try { jobs = parseJobs(text, MAX_JOBS_WEB); }
+  catch (e) {
+    // PARSE_ERROR is exit 2; a range or limit error is exit 3 (D54), first error in file order wins
+    if (e instanceof CsvFail) throw new Fail(e.code === 'PARSE_ERROR' ? 2 : 3, e.message);
+    throw e;
+  }
 
   const createAprm = require(resolve(here, '..', 'web', 'vendor', 'aprm.js'));
   const M = await createAprm();

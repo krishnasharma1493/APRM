@@ -3,7 +3,9 @@
 // Only node:assert and the standard library; no framework.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { CsvFail, parseJobs } from './csv_parse.mjs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -388,6 +390,83 @@ test('golden cases for other policies are skipped (not implemented yet)', () => 
   console.log(`  skipped ${others.length} golden files of policies other than fcfs`);
   const run = spawnSync('node', [runner, '--policy', 'sjf', '--in', join(casesDir, 'sjf_order.csv')]);
   assert.equal(run.status, 4);
+});
+
+const H = 'id,arrival,duration,cpu,mem,priority';
+const parseCode = (text, max = 5000) => {
+  try { return ['ok', parseJobs(text, max).length]; }
+  catch (e) { if (e instanceof CsvFail) return [e.code, e.line, e.column]; throw e; }
+};
+test('CSV: "\\r" is stripped only before "\\n" (as core/csv.c)', () => {
+  assert.deepEqual(parseCode(H + '\r'), ['PARSE_ERROR', 1, '']);                       // header-only ending in \r
+  assert.deepEqual(parseCode(H + '\n1,0,5,4,1000,0\r'), ['PARSE_ERROR', 2, 'priority']); // last row ending in \r
+  assert.deepEqual(parseCode(H + '\r\n1,0,5,4,1000,0\r\n2,0,5,4,1000,0\r\n'), ['ok', 2]);   // CRLF everywhere
+  assert.deepEqual(parseCode(H + '\r\n1,0,5,4,1000,0'), ['ok', 1]);
+  assert.deepEqual(parseCode(H + '\n'), ['ok', 0]);
+  assert.deepEqual(parseCode(H + '\n\n'), ['PARSE_ERROR', 2, '']);
+  assert.deepEqual(parseCode(''), ['PARSE_ERROR', 1, '']);
+});
+
+test('CSV: first error in file order wins, range errors at parse time (as core/csv.c)', () => {
+  // row 2 range error comes before row 3 parse error: INVALID_FIELD
+  assert.deepEqual(parseCode(H + '\n1,0,5,4,1000,10\n2,x,5,4,1000,0'), ['INVALID_FIELD', 2, 'priority']);
+  // within a row, columns go left to right
+  assert.deepEqual(parseCode(H + '\n-1,x,5,4,1000,0'), ['INVALID_FIELD', 2, 'id']);
+  assert.deepEqual(parseCode(H + '\n1,x,5,4,1000,99'), ['PARSE_ERROR', 2, 'arrival']);
+  assert.deepEqual(parseCode(H + '\n1,0,5,4,1000,0\n2,0,5,4,1000,0', 1), ['LIMIT_REACHED', 3, '']);
+  assert.deepEqual(parseCode(H + '\n1,0,0,4,1000,0'), ['INVALID_FIELD', 2, 'duration']);
+  assert.deepEqual(parseCode(H + '\n1,0,5,4,1000,0\n' + '9223372036854775808,0,1,1,1,0'), ['PARSE_ERROR', 3, 'id']);
+});
+
+test('run_wasm.mjs exit codes follow that order (range error before later parse error is 3)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aprm-'));
+  const f1 = join(dir, 'a.csv'), f2 = join(dir, 'b.csv'), f3 = join(dir, 'c.csv');
+  writeFileSync(f1, H + '\n1,0,5,4,1000,10\n2,x,5,4,1000,0\n');
+  writeFileSync(f2, H + '\n1,0,5,4,1000,0\r');
+  writeFileSync(f3, H + '\r\n1,0,5,4,1000,0\r\n');
+  const run = (f) => spawnSync('node', [runner, '--in', f]);
+  assert.equal(run(f1).status, 3);
+  assert.equal(run(f2).status, 2);
+  assert.equal(run(f3).status, 0);
+});
+
+test('number boundaries and exact messages (2^53, 32 bits)', () => {
+  const h = mk(FCFS, 4, 100);
+  const msg = () => lastErr(h).error.message;
+  // 2^53 passes the number check; the engine then decides
+  assert.equal(add(h, 1, 0, 1, 1, MAXSAFE, 0), -3);
+  assert.equal(add(h, 1, 0, 1, 1, MAXSAFE + 2, 0), -2);
+  assert.equal(msg(), 'mem must be a whole number within 2^53 either way.');
+  assert.equal(add(h, 1, 0, 1, 1, -(MAXSAFE + 2), 0), -2);
+  assert.equal(add(h, 1, 0.5, 1, 1, 1, 0), -2);
+  assert.equal(msg(), 'arrival must be a whole number.');
+  // 32-bit boundaries for id and priority
+  assert.equal(add(h, 2 ** 31 - 1, 0, 1, 1, 1, 0), 0);          // largest valid id
+  assert.equal(add(h, 2 ** 31, 0, 1, 1, 1, 0), -2);
+  assert.equal(msg(), 'id does not fit in 32 bits.');
+  assert.equal(add(h, -(2 ** 31) - 1, 0, 1, 1, 1, 0), -2);
+  assert.equal(msg(), 'id does not fit in 32 bits.');
+  assert.equal(add(h, -(2 ** 31), 0, 1, 1, 1, 0), -2);          // fits 32 bits; the engine range check rejects it
+  assert.notEqual(msg(), 'id does not fit in 32 bits.');
+  assert.equal(lastErr(h).error.field, 'id');
+  assert.equal(add(h, 3, 0, 1, 1, 1, 2 ** 31), -2);
+  assert.equal(msg(), 'priority does not fit in 32 bits.');
+  assert.equal(add(h, 3, 0, 1, 1, 1, 10), -2);
+  assert.notEqual(msg(), 'priority does not fit in 32 bits.');
+  assert.equal(M._aprm_create(MAXSAFE, 1, 0, 0, 0, 0.1), -2);
+  assert.equal(lastErr(0).error.message, 'cpu_cap must be 1 to 1000000.');
+  assert.equal(M._aprm_create(MAXSAFE + 2, 1, 0, 0, 0, 0.1), -2);
+  assert.equal(lastErr(0).error.message, 'cpu_cap must be a whole number within 2^53 either way.');
+  assert.equal(M._aprm_destroy(h), 0);
+});
+
+test('handle arguments are converted by JavaScript before C sees them (K-23 wrapper must validate)', () => {
+  const h = mk();
+  assert.ok(h >= 1);
+  // ToInt32: 2^32 + h and h + 0.5 both reach C as h. Documented in D64.
+  assert.equal(M._aprm_step(2 ** 32 + h), 0);
+  assert.equal(M._aprm_step(h + 0.5), 0);
+  assert.equal(M._aprm_destroy(h), 0);
 });
 
 test('run_wasm.mjs exit codes', () => {
