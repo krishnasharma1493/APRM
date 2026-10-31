@@ -123,6 +123,25 @@ int heap_push(Heap *h, const void *elem)
     return APRM_OK;
 }
 
+/* See heap.h. A failed realloc leaves the old buffer; sizes are overflow-checked. */
+int heap_reserve(Heap *h, size_t n)
+{
+    size_t new_cap;
+    unsigned char *grown;
+
+    if (!usable(h)) return APRM_INVALID_ARGUMENT;
+    if (n <= h->cap) return APRM_OK;
+    new_cap = h->cap;
+    if (new_cap <= SIZE_MAX / 2 && new_cap * 2 > n) new_cap *= 2;
+    else new_cap = n;
+    if (new_cap > SIZE_MAX / h->elem_size) return APRM_OUT_OF_MEMORY;
+    grown = realloc(h->data, new_cap * h->elem_size);
+    if (grown == NULL) return APRM_OUT_OF_MEMORY;
+    h->data = grown;
+    h->cap = new_cap;
+    return APRM_OK;
+}
+
 /* See heap.h. O(log n). out is caller-owned and written only on success. */
 int heap_pop(Heap *h, void *out)
 {

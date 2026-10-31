@@ -66,6 +66,14 @@ int heap_peek(const Heap *h, void *out);
  * elems stays caller-owned; the heap never keeps a pointer to it. */
 int heap_build(Heap *h, const void *elems, size_t n);
 
+/* Make sure the heap can hold at least n elements without growing again, so
+ * a later heap_push cannot fail for lack of memory. Never shrinks. Returns
+ * APRM_OK, APRM_INVALID_ARGUMENT (NULL or uninitialised heap) or
+ * APRM_OUT_OF_MEMORY (heap unchanged and valid). Growth is at least doubling,
+ * so repeated calls with a slowly rising n cost O(1) amortised per element;
+ * O(n) when it grows, O(1) when it does not. The heap owns the buffer. */
+int heap_reserve(Heap *h, size_t n);
+
 /* Number of elements stored; 0 for NULL. O(1). */
 size_t heap_size(const Heap *h);
 
