@@ -139,7 +139,7 @@ C for every algorithm, compiled twice; plain HTML, CSS and JavaScript for the we
 | M2 | Event-driven engine + step API | Krishna | `sim_create`, `sim_add_job`, `sim_step`, `sim_state_json`, `sim_results_json` work; invariants hold after every step |
 | M3 | Four policies: FCFS, static priority, SJF, adaptive aging | Krishna | Each passes its golden cases; aging uses the fixed integer key 1000·b − alpha_milli·r |
 | M4 | Reservation (EASY-style) | Krishna | Memory-hog golden case: the reserved job starts by its shadow time |
-| M5 | Event log with plain-English reasons | Krishna | Every start, skip, reserve, backfill, finish and reject has one sentence |
+| M5 | Event log with plain-English reasons | Krishna | Every start, skip, reserve, backfill and finish has one log sentence; every reject has one error sentence (the API error message, D54) |
 | M6 | Console program | Krishna | `aprm --policy aging --in jobs.csv --out results.csv` works on all golden cases |
 | M7 | Website: Build and Run modes on WebAssembly | Krishna | Any case can be built, edited, played, stepped and extended mid-run; every preset loads |
 | M8 | Website: Compare mode | Krishna | Two or more policies on the same jobs, side-by-side timelines and metrics table |
@@ -387,6 +387,11 @@ int  sim_metrics_json(const Sim *s, JsonBuf *out);
 int  sim_reset(Sim *s);                          /* keeps config, clears jobs */
 void sim_destroy(Sim *s);
 
+/* Additions (D55) */
+typedef struct { int code; char field[24]; char message[160]; } SimError;   /* last failed call */
+const SimError *sim_last_error(const Sim *s);   /* Sim-owned; code 0 = none; behind aprm_last_error */
+int  sim_validate_config(const SimConfig *cfg, SimError *err);   /* sim_create's checks, with the message */
+
 int  exact_solve(const SimConfig *cfg, const Job *jobs, int n, JsonBuf *out);
 ```
 
@@ -427,7 +432,7 @@ In the state, `reservation` is `null` when none is active. Event log entry:
   "msg": "Job 7 skipped: needs 20480 MB, only 8192 MB free." }
 ```
 
-Log kinds: `ARRIVE`, `START`, `SKIP`, `RESERVE`, `BACKFILL`, `FINISH`, `REJECT`, `BATCH_SELECT`, `PROMOTE_INFO`.
+Log kinds: `ARRIVE`, `START`, `SKIP`, `RESERVE`, `BACKFILL`, `FINISH`, `REJECT`, `BATCH_SELECT`, `PROMOTE_INFO`. `REJECT` is reserved and never emitted: a rejected job leaves no log entry, its reason is the error message (D54).
 
 Metrics:
 
@@ -660,7 +665,7 @@ Krishna proves the core from inside with C tests and from outside with Python ov
 
 ### Golden cases (`tests/cases/`, Krishna writes, Ahaana checks by hand)
 
-At least 10 small cases (3 to 6 jobs), each with the correct schedule worked out on paper and saved as `<case>.<policy>.expected.csv` next to its input `<case>.csv`: one per policy, plus big-job trap, priority starvation, memory hog, simultaneous finish and arrival, and a capacity-rejection case. Ahaana redoes each schedule on paper, without looking at the program's output, and signs off in the PR before it merges.
+At least 10 small cases (3 to 6 jobs), each with the correct schedule worked out on paper and saved as `<case>.<policy>.expected.csv` next to its input `<case>.csv`: one per policy, plus big-job trap, priority starvation, memory hog, simultaneous finish and arrival, and a capacity-rejection case. The capacity-rejection case is not a schedule (D54): it is a console-level case with the input `tests/cases/<case>.csv`, the expected exit code 3 in `tests/cases/<case>.expected.exit` and the expected one-line stderr text in `tests/cases/<case>.expected.stderr` (no output file is written), plus an API test that the other jobs still schedule when the caller skips the bad one; so the 10 cases with `<case>.<policy>.expected.csv` are 10 schedule cases, plus this one. Ahaana redoes each schedule on paper, without looking at the program's output, and signs off in the PR before it merges.
 
 ### Python checks (Krishna, `tests/py/`)
 
