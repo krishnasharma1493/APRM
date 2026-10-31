@@ -225,7 +225,7 @@ Static priority (`.priority.expected.csv`), same input:
 
 ### memory_hog (shows: aging alone starves a big-memory job; reservation starts it at its shadow time)
 
-T = 10 (`--threshold 10`), alpha_milli 100. Job 2 (the hog) has the highest key of any waiting job at all times (5000 - 100 = 4900 against 400, -100, -700 and -1100 for the small jobs: 1000 x 1 - 100 x arrival). So no newcomer ever outranks the reservation holder, and the answer to **O-14 does not change this case** (the proposal "a reservation holds until its shadow time" and the alternative give identical rows).
+T = 10 (`--threshold 10`), alpha_milli 100. Job 2 (the hog) has the highest key of any waiting job at all times (5000 - 100 = 4900 against 400, -100, -700 and -1200 for the small jobs: 1000 x 1 - 100 x arrival). So no newcomer ever outranks the reservation holder, and the answer to **O-14 does not change this case** (the proposal "a reservation holds until its shadow time" and the alternative give identical rows).
 
 | id | arrival | duration | cpu | mem | priority |
 | --- | --- | --- | --- | --- | --- |
