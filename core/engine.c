@@ -281,21 +281,46 @@ int sim_add_job(Sim *s, const Job *job)
 
 /* ---- event loop (issue K-09) ---- */
 
-/* Grow a plain array of elem-sized items to hold at least need items, at
- * least doubling. Returns APRM_OK or APRM_OUT_OF_MEMORY (array unchanged).
- * O(n) when it grows, O(1) otherwise. The Sim owns the array. */
-static int reserve_array(void **buf, size_t *cap, size_t need, size_t elem)
+/* New capacity for an array that must hold at least need items of elem
+ * bytes: at least double, minimum 16. Returns 0 if the byte size would
+ * overflow size_t. O(1). */
+static size_t grown_cap(size_t cap, size_t need, size_t elem)
 {
-    size_t ncap;
-    void *grown;
-    if (need <= *cap) return APRM_OK;
-    ncap = (*cap <= SIZE_MAX / 2 && *cap * 2 > need) ? *cap * 2 : need;
+    size_t ncap = (cap <= SIZE_MAX / 2 && cap * 2 > need) ? cap * 2 : need;
     if (ncap < 16) ncap = 16;
-    if (ncap > SIZE_MAX / elem) return APRM_OUT_OF_MEMORY;
-    grown = realloc(*buf, ncap * elem);
+    if (ncap > SIZE_MAX / elem) return 0;
+    return ncap;
+}
+
+/* Make the finished list hold at least need entries. Returns APRM_OK or
+ * APRM_OUT_OF_MEMORY (list unchanged). O(n) when it grows, else O(1). The
+ * Sim owns the array. */
+static int reserve_fin(Sim *s, size_t need)
+{
+    RunEntry *grown;
+    size_t ncap;
+    if (need <= s->fin_cap) return APRM_OK;
+    ncap = grown_cap(s->fin_cap, need, sizeof *grown);
+    if (ncap == 0) return APRM_OUT_OF_MEMORY;
+    grown = realloc(s->fin, ncap * sizeof *grown);
     if (!grown) return APRM_OUT_OF_MEMORY;
-    *buf = grown;
-    *cap = ncap;
+    s->fin = grown;
+    s->fin_cap = ncap;
+    return APRM_OK;
+}
+
+/* Same for the skip-list scratch buffer. */
+static int reserve_skip(Sim *s, size_t need)
+{
+    WaitEntry *grown;
+    size_t ncap;
+    if (need <= s->skip_cap) return APRM_OK;
+    ncap = grown_cap(s->skip_cap, need, sizeof *grown);
+    if (ncap == 0) return APRM_OUT_OF_MEMORY;
+    grown = realloc(s->skip, ncap * sizeof *grown);
+    if (!grown) return APRM_OUT_OF_MEMORY;
+    s->skip = grown;
+    s->skip_cap = ncap;
     return APRM_OK;
 }
 
@@ -353,9 +378,8 @@ int sim_step(Sim *s)
     if (r_max > s->cfg.cpu_cap) r_max = s->cfg.cpu_cap;  /* each running job uses >= 1 core */
     if (heap_reserve(&s->waiting, (size_t)w_max) != APRM_OK ||
         heap_reserve(&s->running, (size_t)r_max) != APRM_OK ||
-        reserve_array((void **)&s->skip, &s->skip_cap, (size_t)w_max, sizeof *s->skip) != APRM_OK ||
-        reserve_array((void **)&s->fin, &s->fin_cap, s->fin_len + heap_size(&s->running),
-                      sizeof *s->fin) != APRM_OK) {
+        reserve_skip(s, (size_t)w_max) != APRM_OK ||
+        reserve_fin(s, s->fin_len + heap_size(&s->running)) != APRM_OK) {
         fail(&s->err, APRM_OUT_OF_MEMORY, "", "Out of memory.");
         return APRM_OUT_OF_MEMORY;
     }
@@ -364,6 +388,8 @@ int sim_step(Sim *s)
 
     /* 1. Finishes first (D9): free resources, append to the finished list.
      * Loop until no running job finishes at t (several can share a tick).
+     * Finished-list order: by finish time, and within one tick by the
+     * running-heap order (arrival, then id): K-10's FINISH lines rely on it.
      * K-10 hook: FINISH log line here. */
     while (heap_peek(&s->running, &re) == APRM_OK && re.finish <= t) {
         heap_pop(&s->running, &re);
@@ -407,11 +433,9 @@ int sim_step(Sim *s)
 #ifdef APRM_DEBUG
     {
         const char *why = NULL;
-        if (sim_check_invariants(s, &why)) {
-            fprintf(stderr, "APRM invariant violated after step at t=%lld: %s\n",
-                    (long long)s->now, why);
-            abort();
-        }
+        /* A violation is a bug in the engine: stop at once. No printing in
+         * core/; a debugger shows `why`, and tests call the checker directly. */
+        if (sim_check_invariants(s, &why)) abort();
     }
 #endif
     return 1;

@@ -63,7 +63,8 @@ int  sim_add_job(Sim *s, const Job *job);
  * If a job was added with arrival == now after the step for now ran, the next
  * call handles time now again: a second selection step at the same tick
  * (D59). Debug builds (APRM_DEBUG) check every PRD section 4 invariant at the
- * end and abort on a violation. Cost O((s + k) log n) for s jobs started and
+ * end and abort() on a violation (nothing is printed; call
+ * sim_check_invariants from a test to read the message). Cost O((s + k) log n) for s jobs started and
  * k skipped; a full run has at most 2n events, so O(n^2 log n) worst case.
  * Extra space O(live queue) for the skip list; the finished list is O(n). */
 int  sim_step(Sim *s);

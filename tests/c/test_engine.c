@@ -685,10 +685,64 @@ static void test_invariants_random(void)
             const RunEntry *x = fin_of(a, rj[i].j.id), *y = fin_of(b, rj[i].j.id);
             CHECK(x && y && x->start == y->start && x->finish == y->finish);
         }
+        for (i = 1; i < n; i++) {  /* finished list sorted by (finish, arrival, id) */
+            const RunEntry *p = &a->fin[i - 1], *q = &a->fin[i];
+            CHECK(p->finish < q->finish || (p->finish == q->finish &&
+                  (p->job.arrival < q->job.arrival || (p->job.arrival == q->job.arrival && p->job.id < q->job.id))));
+        }
         /* and in the same order of finishing */
         for (i = 0; i < n && (size_t)i < b->fin_len; i++) CHECK(a->fin[i].job.id == b->fin[i].job.id);
         sim_destroy(a); sim_destroy(b);
     }
+}
+
+/* The stop conditions of greedy fill: a job needing exactly the 1 MB (or 1
+ * core) that is free starts, and the loop then stops with free == 0. */
+static void test_exact_one_free(void)
+{
+    SimConfig c = cfg_default();
+    Sim *s;
+    Job a, b, d;
+    c.cpu_cap = 10; c.mem_cap = 10;
+    s = make(c);
+    a = mkjob(1, 0, 5, 1, 9); b = mkjob(2, 0, 3, 1, 1); d = mkjob(3, 0, 2, 1, 1);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK && sim_add_job(s, &d) == APRM_OK);
+    CHECK(sim_step(s) == 1);
+    CHECK(s->free_mem == 0 && s->free_cpu == 8 && heap_size(&s->running) == 2);  /* a and b */
+    run_all(s);
+    expect_sched(s, 1, 0, 5);
+    expect_sched(s, 2, 0, 3);
+    expect_sched(s, 3, 3, 5);  /* d waited for memory although cores were free */
+    sim_destroy(s);
+
+    s = make(c);
+    a = mkjob(1, 0, 5, 9, 1); b = mkjob(2, 0, 3, 1, 1); d = mkjob(3, 0, 2, 1, 1);
+    CHECK(sim_add_job(s, &a) == APRM_OK && sim_add_job(s, &b) == APRM_OK && sim_add_job(s, &d) == APRM_OK);
+    CHECK(sim_step(s) == 1);
+    CHECK(s->free_cpu == 0 && s->free_mem == 8 && heap_size(&s->running) == 2);
+    run_all(s);
+    expect_sched(s, 2, 0, 3);
+    expect_sched(s, 3, 3, 5);
+    sim_destroy(s);
+}
+
+/* Finished-list order is part of the contract (K-10's FINISH lines use it):
+ * by finish time, and jobs finishing together by arrival, then id. */
+static void test_finished_order(void)
+{
+    Sim *s = make(cfg_default());
+    Job j[4];
+    const int32_t want[4] = { 7, 3, 9, 1 };
+    int i;
+    j[0] = mkjob(9, 0, 6, 1, 1);   /* finish 6, arrival 0, id 9 */
+    j[1] = mkjob(1, 1, 5, 1, 1);   /* finish 6, arrival 1 */
+    j[2] = mkjob(3, 0, 6, 1, 1);   /* finish 6, arrival 0, id 3 */
+    j[3] = mkjob(7, 2, 2, 1, 1);   /* finish 4 */
+    for (i = 0; i < 4; i++) CHECK(sim_add_job(s, &j[i]) == APRM_OK);
+    run_all(s);
+    CHECK(s->fin_len == 4);
+    for (i = 0; i < 4; i++) CHECK(s->fin[i].job.id == want[i]);
+    sim_destroy(s);
 }
 
 /* O-13 (D59): a job added with arrival == now AFTER the step for now has run
@@ -865,6 +919,8 @@ int main(void)
     test_reset_rerun();
     test_overflow();
     test_invariants_random();
+    test_exact_one_free();
+    test_finished_order();
     test_o13_same_tick();
     test_o13_edge();
     test_step_two_sims_interleaved();
