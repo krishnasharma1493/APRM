@@ -432,7 +432,7 @@ In the state, `reservation` is `null` when none is active. Event log entry:
   "msg": "Job 7 skipped: needs 20480 MB, only 8192 MB free." }
 ```
 
-Log kinds: `ARRIVE`, `START`, `SKIP`, `RESERVE`, `BACKFILL`, `FINISH`, `REJECT`, `BATCH_SELECT`, `PROMOTE_INFO`. `REJECT` is reserved and never emitted: a rejected job leaves no log entry, its reason is the error message (D54). `PROMOTE_INFO` is also reserved and never emitted (D60).
+Log kinds: `ARRIVE`, `START`, `SKIP`, `RESERVE`, `BACKFILL`, `FINISH`, `REJECT`, `BATCH_SELECT`, `PROMOTE_INFO`. `REJECT` is reserved and never emitted: a rejected job leaves no log entry, its reason is the error message (D54).
 
 Metrics:
 
