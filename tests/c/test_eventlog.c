@@ -603,8 +603,34 @@ static void test_log_step_all_or_nothing(void)
     sim_destroy(s);
 }
 
+/* sim_log_count / sim_log_message: the accessors the console --log uses. */
+static void test_log_accessors(void)
+{
+    Sim *s = make(16, 32768);
+    char buf[LOG_MSG_MAX], small[8];
+    int64_t i;
+    CHECK(sim_log_count(NULL) == 0);
+    CHECK(sim_log_count(s) == 0);
+    add(s, 1, 0, 10, 4, 24000, 2);
+    run_all(s);
+    CHECK(sim_log_count(s) == (int64_t)s->log.len && sim_log_count(s) >= 3);
+    CHECK(sim_log_message(s, 0, buf, sizeof buf) == strlen("Job 1 arrived with priority 2."));
+    CHECK(strcmp(buf, "Job 1 arrived with priority 2.") == 0);
+    for (i = 0; i < sim_log_count(s); i++) {
+        CHECK(sim_log_message(s, i, buf, sizeof buf) > 0);
+        CHECK(strchr(buf, '\n') == NULL);
+    }
+    CHECK(sim_log_message(s, sim_log_count(s), buf, sizeof buf) == 0);
+    CHECK(sim_log_message(s, -1, buf, sizeof buf) == 0);
+    CHECK(sim_log_message(s, 0, NULL, 10) == 0 && sim_log_message(s, 0, buf, 0) == 0);
+    CHECK(sim_log_message(NULL, 0, buf, sizeof buf) == 0);
+    CHECK(sim_log_message(s, 0, small, sizeof small) == 7 && small[7] == '\0');
+    sim_destroy(s);
+}
+
 int main(void)
 {
+    test_log_accessors();
     test_log_golden();
     test_log_since();
     test_log_one_per_decision();

@@ -240,6 +240,12 @@ bad:
     return code;
 }
 
+/* See csv.h. O(1). */
+int64_t csv_job_line(int64_t index)
+{
+    return index + 2;
+}
+
 /* ---- writer ----------------------------------------------------------- */
 
 /* See csv.h. Appends to out; rolls back on failure. O(n). */

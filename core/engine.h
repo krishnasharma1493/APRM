@@ -86,6 +86,17 @@ int  sim_run_until(Sim *s, int64_t t);
  * error (APRM_OUT_OF_MEMORY). The caller owns out. O(k) for k entries. */
 int  sim_log_json(const Sim *s, int64_t since_seq, JsonBuf *out);
 
+/* Number of entries in the event log (the largest seq so far, 0 if none).
+ * For the console program's --log file (K-12). NULL s gives 0. O(1). */
+int64_t sim_log_count(const Sim *s);
+
+/* Write the sentence of log entry `index` (0-based, in seq order, so entry
+ * index has seq index + 1) into buf (size n) with eventlog_format: always
+ * NUL-terminated when n > 0, cut if too long. Returns the length stored, or
+ * 0 if s or buf is NULL, n is 0 or index is out of range. Does not change the
+ * Sim. O(1). */
+size_t sim_log_message(const Sim *s, int64_t index, char *buf, size_t n);
+
 /* Clear every job and restart the clock at 0, keeping the config. Also clears
  * the stored error. Cannot run out of memory (it reuses its buffers).
  * Returns APRM_OK or APRM_INVALID_ARGUMENT (NULL s). O(capacity of the id set). */

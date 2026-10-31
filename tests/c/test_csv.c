@@ -1,5 +1,6 @@
 /* test_csv.c: jobs.csv reader and results.csv writer (K-05). */
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../../core/csv.h"
@@ -177,6 +178,30 @@ static void test_csv_crlf(void)
     expect_err("id,arrival,duration,cpu,mem,priority\r\n1,0,30,8,20480,2\r\n2,1,5,x,1024,7\r\n", APRM_PARSE_ERROR, 3, "cpu");
 }
 
+/* csv_job_line: row i is on line i + 2, also with CRLF and a missing final
+ * newline, and it matches the line the reader reports for a bad row. */
+static void test_csv_job_line(void)
+{
+    Job *j = NULL;
+    int64_t n = 0, i;
+    CsvError e;
+    CHECK(csv_job_line(0) == 2 && csv_job_line(1) == 3 && csv_job_line(999999) == 1000001);
+    CHECK(rd(H "1,0,3,1,1,0\r\n2,0,3,1,1,0\n3,0,3,1,1,0", 10, &j, &n, &e) == APRM_OK && n == 3);
+    for (i = 0; i < n; i++) CHECK(j[i].id == (int32_t)(i + 1));
+    free(j);
+    for (i = 0; i < 4; i++) {
+        char text[256], row[40];
+        int k;
+        snprintf(text, sizeof text, "%s", H);
+        for (k = 0; k < 4; k++) {
+            snprintf(row, sizeof row, k == i ? "%d,0,3,x,1,0\n" : "%d,0,3,1,1,0\n", k + 1);
+            strcat(text, row);
+        }
+        CHECK(rd(text, 10, &j, &n, &e) == APRM_PARSE_ERROR);
+        CHECK(e.line == csv_job_line(i));
+    }
+}
+
 static void test_csv_limit(void)
 {
     Job *j = NULL;
@@ -282,6 +307,7 @@ int main(void)
     test_csv_ranges();
     test_csv_long_line();
     test_csv_crlf();
+    test_csv_job_line();
     test_csv_limit();
     test_csv_bad_arguments();
     test_csv_text_buffer();
