@@ -55,7 +55,7 @@ def test_no_figures_left_open(tmp_path: Path) -> None:
 def _sample_figure():
     """Build the E1 figure from the sample file and return (fig, rows)."""
     rows = pf.read_summary(SAMPLE_DIR, "e1_summary.csv")
-    return pf.build_e1_figure(rows), rows
+    return pf.build_e1_figure(rows, " (SAMPLE DATA)"), rows
 
 
 def test_title_and_axis_labels() -> None:
@@ -68,14 +68,23 @@ def test_title_and_axis_labels() -> None:
     plt.close(fig)
 
 
+def policy_lines(ax) -> dict:
+    """Return {policy: mean line} for an axes (error-bar containers or plain lines)."""
+    # Error-bar figures keep each mean line inside a container named after the policy.
+    if ax.containers:
+        return {c.get_label(): c.lines[0] for c in ax.containers}
+    # Plain-line figures (the CDF) label the lines directly.
+    return {l.get_label(): l for l in ax.get_lines()}
+
+
 def test_plotted_y_equals_avg_wait_mean_and_six_lines() -> None:
     """Each line plots the CSV column avg_wait_mean, one line per policy."""
     fig, rows = _sample_figure()
-    lines = fig.axes[0].get_lines()
+    lines = policy_lines(fig.axes[0])
     assert len(lines) == rows["policy"].nunique() == 6
-    for line in lines:
-        mine = rows[rows["policy"] == line.get_label()].sort_values("x_value")
-        assert line.get_label() in pf.POLICY_LOOK
+    for policy, line in lines.items():
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        assert policy in pf.POLICY_LOOK
         assert list(line.get_xdata()) == list(mine["x_value"])
         assert list(line.get_ydata()) == list(mine["avg_wait_mean"])
     plt.close(fig)
@@ -174,11 +183,11 @@ def test_look_table_matches_literal_expected() -> None:
 def test_drawn_lines_use_the_policy_look() -> None:
     """Each drawn line has its policy's literal colour, dash pattern, marker."""
     fig, _ = _sample_figure()
-    for line in fig.axes[0].get_lines():
-        colour, _style, marker = EXPECTED_LOOK[line.get_label()]
+    for policy, line in policy_lines(fig.axes[0]).items():
+        colour, _style, marker = EXPECTED_LOOK[policy]
         assert line.get_color() == colour
         assert line.get_marker() == marker
-        assert line.get_linestyle() == DRAWN_LINESTYLE[line.get_label()]
+        assert line.get_linestyle() == DRAWN_LINESTYLE[policy]
     plt.close(fig)
 
 
@@ -227,3 +236,268 @@ def test_style_applied_by_plot_function(tmp_path: Path, monkeypatch) -> None:
     assert ax.xaxis.get_gridlines()[0].get_visible()
     assert ax.title.get_fontsize() == 13
     plt.rcdefaults()
+
+
+# ---------------------------------------------------------------------------
+# A-03: E1 (error bars), E2 max wait, E2 wait CDF, E3 wait by priority.
+# ---------------------------------------------------------------------------
+
+ALL_POLICIES = ["fcfs", "priority", "sjf", "aging", "reserve", "knapsack"]
+
+# One entry per figure: function, file stem, summary file, title start.
+FIGURES = [
+    (pf.plot_e1_avg_wait, "e1_avg_wait", "e1_summary.csv", "E1:"),
+    (pf.plot_e2_max_wait, "e2_max_wait", "e2_summary.csv", "E2:"),
+    (pf.plot_e2_wait_cdf, "e2_wait_cdf", "e2_wait_cdf.csv", "E2:"),
+    (pf.plot_e3_wait_by_priority, "e3_wait_by_priority", "e3_summary.csv", "E3:"),
+]
+
+
+@pytest.fixture(autouse=True)
+def _close_all_figures():
+    """Close any figure a test left open, so tests cannot affect each other."""
+    yield
+    plt.close("all")
+
+
+def _catch_figure(monkeypatch, func, summary_dir, out_dir):
+    """Run a plot function and return the figure it built (before closing)."""
+    caught = []
+    real_save = pf.save_figure
+
+    def spy(fig, name, folder):
+        caught.append(fig)
+        return real_save(fig, name, folder)
+
+    monkeypatch.setattr(pf, "save_figure", spy)
+    func(summary_dir, out_dir)
+    return caught[0]
+
+
+def test_four_figures_png_and_pdf(tmp_path: Path) -> None:
+    """four-figures: four PNG and four PDF files appear in out_dir."""
+    for func, stem, _file, _title in FIGURES:
+        png = Path(func(SAMPLE_DIR, str(tmp_path)))
+        assert png.name == stem + ".png"
+    names = sorted(p.name for p in tmp_path.iterdir())
+    expected = sorted([s + e for _f, s, _c, _t in FIGURES for e in (".png", ".pdf")])
+    assert names == expected
+    assert plt.get_fignums() == []
+
+
+@pytest.mark.parametrize("func,stem,csv_name,title", FIGURES)
+def test_missing_file_gives_clear_error(tmp_path, func, stem, csv_name, title) -> None:
+    """A folder without the needed summary file raises FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match=csv_name):
+        func(str(tmp_path), str(tmp_path / "out"))
+
+
+@pytest.mark.parametrize("func,stem,csv_name,title", FIGURES)
+def test_titles_labels_legend(monkeypatch, tmp_path, func, stem, csv_name, title) -> None:
+    """Every figure has a title, labelled axes with units and a legend."""
+    fig = _catch_figure(monkeypatch, func, SAMPLE_DIR, str(tmp_path))
+    for ax in fig.axes:
+        assert ax.get_xlabel() != ""
+        assert ax.get_ylabel() != "" or ax is not fig.axes[0]
+    assert "(" in fig.axes[0].get_xlabel() and ")" in fig.axes[0].get_xlabel()
+    assert "(" in fig.axes[0].get_ylabel() and ")" in fig.axes[0].get_ylabel()
+    assert fig.axes[0].get_legend() is not None
+    text = fig._suptitle.get_text() if fig._suptitle else fig.axes[0].get_title()
+    assert text.startswith(title)
+    assert "SAMPLE DATA" in text
+
+
+def test_exact_labels(monkeypatch, tmp_path) -> None:
+    """The axis labels are exactly the agreed words and units."""
+    fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, SAMPLE_DIR, str(tmp_path))
+    assert fig.axes[0].get_ylabel() == "Average wait (ticks)"
+    fig = _catch_figure(monkeypatch, pf.plot_e2_max_wait, SAMPLE_DIR, str(tmp_path))
+    assert fig.axes[0].get_xlabel() == "Arrival rate (jobs per tick)"
+    assert fig.axes[0].get_ylabel() == "Maximum wait (ticks)"
+    fig = _catch_figure(monkeypatch, pf.plot_e2_wait_cdf, SAMPLE_DIR, str(tmp_path))
+    assert fig.axes[0].get_xlabel() == "Wait (ticks)"
+    assert fig.axes[0].get_ylabel() == "Fraction of jobs (0 to 1)"
+    fig = _catch_figure(monkeypatch, pf.plot_e3_wait_by_priority, SAMPLE_DIR, str(tmp_path))
+    assert fig.axes[0].get_xlabel() == "Priority level (0-9)"
+    assert fig.axes[0].get_ylabel() == "Average wait (ticks)"
+
+
+def _expected_lines(rows, metric):
+    """Per policy: (x list, mean list) sorted by x, typed from the CSV rows."""
+    out = {}
+    for policy in rows["policy"].unique():
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        out[policy] = (list(mine["x_value"]), list(mine[metric + "_mean"]))
+    return out
+
+
+@pytest.mark.parametrize(
+    "func,csv_name,metric",
+    [
+        (pf.plot_e1_avg_wait, "e1_summary.csv", "avg_wait"),
+        (pf.plot_e2_max_wait, "e2_summary.csv", "max_wait"),
+    ],
+)
+def test_line_figures_plot_csv_columns(monkeypatch, tmp_path, func, csv_name, metric) -> None:
+    """Plotted x and y equal the CSV columns; error-bar lengths are distances."""
+    rows = pd.read_csv(SAMPLE_DIR + "/" + csv_name)
+    fig = _catch_figure(monkeypatch, func, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    expected = _expected_lines(rows, metric)
+    drawn = policy_lines(ax)
+    assert sorted(drawn) == sorted(ALL_POLICIES)
+    for policy, (xs, ys) in expected.items():
+        assert list(drawn[policy].get_xdata()) == xs
+        assert list(drawn[policy].get_ydata()) == ys
+    # Error bars: one container per policy, with asymmetric distances.
+    assert len(ax.containers) == 6
+    for container in ax.containers:
+        policy = container.get_label()
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        segs = container.lines[2][0].get_segments()
+        lows = [seg[0][1] for seg in segs]
+        highs = [seg[1][1] for seg in segs]
+        assert lows == list(mine[metric + "_ci_low"])
+        assert highs == list(mine[metric + "_ci_high"])
+    plt.close(fig)
+
+
+def test_error_bars_are_visible_and_asymmetric_when_csv_is(tmp_path, monkeypatch) -> None:
+    """Asymmetric CI in the CSV gives unequal lower and upper bar lengths."""
+    d = tmp_path / "in"
+    d.mkdir()
+    rows = pd.read_csv(SAMPLE_DIR + "/e1_summary.csv")
+    rows["avg_wait_ci_high"] = rows["avg_wait_mean"] + 5.0
+    rows["avg_wait_ci_low"] = rows["avg_wait_mean"] - 1.0
+    rows.to_csv(d / "e1_summary.csv", index=False)
+    fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, str(d), str(tmp_path / "o"))
+    segs = fig.axes[0].containers[0].lines[2][0].get_segments()
+    for seg in segs:
+        assert seg[1][1] - seg[0][1] == pytest.approx(6.0)
+    # The mean lies 1 above the low end and 5 below the high end.
+    line = fig.axes[0].containers[0].lines[0]
+    for seg, y in zip(segs, line.get_ydata()):
+        assert y - seg[0][1] == pytest.approx(1.0)
+        assert seg[1][1] - y == pytest.approx(5.0)
+    plt.close(fig)
+
+
+def test_cdf_curves_match_sorted_waits(monkeypatch, tmp_path) -> None:
+    """Each CDF curve is the sorted waits of one policy against rank / n."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e2_wait_cdf.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e2_wait_cdf, SAMPLE_DIR, str(tmp_path))
+    drawn = policy_lines(fig.axes[0])
+    assert sorted(drawn) == sorted(ALL_POLICIES)
+    for policy in ALL_POLICIES:
+        waits = sorted(rows[rows["policy"] == policy]["wait"])
+        n = len(waits)
+        assert list(drawn[policy].get_xdata()) == waits
+        assert list(drawn[policy].get_ydata()) == [(i + 1) / n for i in range(n)]
+        assert drawn[policy].get_ydata()[-1] == 1.0
+    plt.close(fig)
+
+
+def test_cdf_uses_one_setting_only(monkeypatch, tmp_path) -> None:
+    """Rows of a lighter setting are not mixed into the heavy-load curves."""
+    d = tmp_path / "in"
+    d.mkdir()
+    rows = pd.read_csv(SAMPLE_DIR + "/e2_wait_cdf.csv")
+    light = rows.copy()
+    light["setting"] = "light"
+    light["x_value"] = 0.3
+    light["wait"] = 999
+    pd.concat([rows, light]).to_csv(d / "e2_wait_cdf.csv", index=False)
+    fig = _catch_figure(monkeypatch, pf.plot_e2_wait_cdf, str(d), str(tmp_path / "o"))
+    for line in fig.axes[0].get_lines():
+        assert 999 not in list(line.get_xdata())
+        assert len(line.get_xdata()) == 20
+    plt.close(fig)
+
+
+def test_e3_three_panels_with_both_policies(monkeypatch, tmp_path) -> None:
+    """E3 has one panel per mix; each shows priority and aging from the CSV."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e3_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e3_wait_by_priority, SAMPLE_DIR, str(tmp_path))
+    assert len(fig.axes) == 3
+    assert [ax.get_title() for ax in fig.axes] == [
+        "Mix: uniform", "Mix: low_heavy", "Mix: high_heavy"]
+    for ax, mix in zip(fig.axes, ["uniform", "low_heavy", "high_heavy"]):
+        drawn = policy_lines(ax)
+        assert sorted(drawn) == ["aging", "priority"]
+        for policy in ["priority", "aging"]:
+            mine = rows[(rows["setting"] == mix) & (rows["policy"] == policy)]
+            mine = mine.sort_values("x_value")
+            assert list(drawn[policy].get_xdata()) == list(mine["x_value"])
+            assert list(drawn[policy].get_ydata()) == list(mine["avg_wait_mean"])
+    plt.close(fig)
+
+
+def test_e3_look_comes_from_the_table(monkeypatch, tmp_path) -> None:
+    """E3 lines use the literal look of 'priority' and 'aging'."""
+    fig = _catch_figure(monkeypatch, pf.plot_e3_wait_by_priority, SAMPLE_DIR, str(tmp_path))
+    for ax in fig.axes:
+        for policy, line in policy_lines(ax).items():
+            colour, _style, marker = EXPECTED_LOOK[policy]
+            assert line.get_color() == colour
+            assert line.get_marker() == marker
+    plt.close(fig)
+
+
+def test_every_figure_line_uses_literal_look(monkeypatch, tmp_path) -> None:
+    """E1, E2 and the CDF draw every policy with its literal look."""
+    for func in [pf.plot_e1_avg_wait, pf.plot_e2_max_wait, pf.plot_e2_wait_cdf]:
+        fig = _catch_figure(monkeypatch, func, SAMPLE_DIR, str(tmp_path))
+        seen = 0
+        for policy, line in policy_lines(fig.axes[0]).items():
+            colour, _style, _marker = EXPECTED_LOOK[policy]
+            assert line.get_color() == colour
+            seen += 1
+        assert seen == 6
+        plt.close(fig)
+
+
+def test_input_folder_is_one_setting(tmp_path: Path) -> None:
+    """run_all draws all four figures from whatever folder it is given."""
+    paths = pf.run_all(SAMPLE_DIR, str(tmp_path))
+    assert [Path(p).name for p in paths] == [s + ".png" for _f, s, _c, _t in FIGURES]
+
+
+def test_real_data_title_has_no_sample_note(monkeypatch, tmp_path) -> None:
+    """A folder not called sample_summaries gives titles without SAMPLE DATA."""
+    d = tmp_path / "summaries"
+    d.mkdir()
+    for name in ["e1_summary.csv", "e2_summary.csv", "e2_wait_cdf.csv", "e3_summary.csv"]:
+        (d / name).write_bytes(Path(SAMPLE_DIR, name).read_bytes())
+    fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, str(d), str(tmp_path / "o"))
+    assert "SAMPLE" not in fig.axes[0].get_title()
+    plt.close(fig)
+
+
+def test_band_equals_ci_low_to_ci_high(monkeypatch, tmp_path) -> None:
+    """The shaded band of each policy runs exactly from ci_low to ci_high."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e1_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    assert len(ax.collections) >= 6
+    bands = [c for c in ax.collections if c.get_paths() and len(c.get_paths()[0].vertices) > 4
+             and c.get_alpha() is not None]
+    assert len(bands) == 6
+    for band, policy in zip(bands, rows["policy"].unique()):
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        verts = band.get_paths()[0].vertices
+        ys = sorted(set(verts[:, 1]))
+        assert min(ys) == mine["avg_wait_ci_low"].min()
+        assert max(ys) == mine["avg_wait_ci_high"].max()
+        n = len(mine)
+        # fill_between path: low values going right, then high values going back.
+        assert list(verts[1:n + 1, 1]) == list(mine["avg_wait_ci_low"])
+        assert sorted(verts[n + 2:2 * n + 2, 1]) == sorted(mine["avg_wait_ci_high"])
+    plt.close(fig)
+
+
+def test_cdf_is_a_step_curve_with_post(monkeypatch, tmp_path) -> None:
+    """The CDF uses steps-post: the jump happens at each wait value."""
+    fig = _catch_figure(monkeypatch, pf.plot_e2_wait_cdf, SAMPLE_DIR, str(tmp_path))
+    for line in fig.axes[0].get_lines():
+        assert line.get_drawstyle() == "steps-post"
+    plt.close(fig)

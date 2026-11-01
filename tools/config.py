@@ -160,3 +160,79 @@ def summary_label(experiment: str, setting: str) -> str:
     if exp == "E6":
         return "n_jobs=" + setting
     return setting
+
+
+# ---------------------------------------------------------------------------
+# Website presets (K-22, D32, answer to O-9).  A preset is a machine (cpu_cap,
+# mem_cap), recommended aging settings, a story, and a job list.  The job list
+# is the master CSV data/presets/<name>.csv (plain PRD section 5 jobs.csv, so
+# `build/aprm --in <name>.csv --cpu .. --mem ..` runs it); the capacities and
+# settings live here and are copied into web/js/presets_data.js.
+# Hand-written jobs are tuples (id, arrival, duration, cpu, mem, priority).
+# ---------------------------------------------------------------------------
+PRESETS_DIR = "data/presets"
+PRESETS_JS = "web/js/presets_data.js"
+
+PRESET_HEAVY_SEED = 12  # the one explicit seed: heavy_load is drawn, then frozen in its CSV
+PRESET_HEAVY_RATE = 0.9  # jobs per tick on an 8-core machine: demand exceeds capacity
+PRESET_HEAVY_MIX = {
+    "small": {"p": 0.65, "duration": (2, 6), "cpu": (1, 2), "mem": (512, 1024)},
+    "big": {"p": 0.35, "duration": (6, 12), "cpu": (4, 6), "mem": (3000, 6000)},
+}
+
+PRESETS = [
+    {
+        "name": "big_job_trap", "title": "Big-job trap",
+        "description": ("Job 1 uses the whole machine and arrives first; nine tiny jobs arrive one "
+                        "tick later and would all fit together. Every online policy starts job 1 "
+                        "at once, so all nine tiny jobs wait 19 ticks (Fan and Liang, Lemma 4.1)."),
+        "cpu_cap": 10, "mem_cap": 10240, "alpha_milli": 100, "threshold": 50,
+        "jobs": [(1, 0, 20, 10, 10240, 5)] + [(i, 1, 2, 1, 1024, 5) for i in range(2, 11)],
+    },
+    {
+        "name": "priority_starvation", "title": "Priority starvation",
+        "description": ("One job at a time fits. Job 2 has priority 0; a stream of priority-8 jobs "
+                        "keeps arriving. Static priority runs job 2 dead last; aging (alpha 1.0) "
+                        "lets it overtake the late arrivals."),
+        "cpu_cap": 4, "mem_cap": 4096, "alpha_milli": 1000, "threshold": 50,
+        "jobs": [(1, 0, 6, 4, 1024, 5), (2, 1, 4, 4, 1024, 0)]
+        + [(i, 2 * (i - 1), 6, 4, 1024, 8) for i in range(3, 11)],
+    },
+    {
+        "name": "memory_hog", "title": "Memory hog",
+        "description": ("Job 3 (priority 9) needs 6000 of 8192 MB, but a stream of 3000 MB jobs "
+                        "always keeps memory busy. Aging puts job 3 first in line yet smaller jobs "
+                        "keep slipping past, so it starts last. Reservation (not built yet) "
+                        "should start it much earlier."),
+        "cpu_cap": 8, "mem_cap": 8192, "alpha_milli": 1000, "threshold": 5,
+        "jobs": [(1, 0, 6, 1, 3000, 3), (2, 1, 6, 1, 3000, 3), (3, 2, 8, 1, 6000, 9),
+                 (4, 3, 6, 1, 3000, 3), (5, 4, 6, 1, 3000, 3)]
+        + [(i, 6 + 2 * (i - 6), 6, 1, 3000, 3) for i in range(6, 13)],
+    },
+    {
+        "name": "sjf_starvation", "title": "SJF starvation",
+        "description": ("One job at a time fits and all priorities are equal. Job 2 is long "
+                        "(40 ticks); short 3-tick jobs keep arriving. Shortest-job-first runs "
+                        "job 2 last; aging starts it as soon as the machine frees at tick 3."),
+        "cpu_cap": 2, "mem_cap": 2048, "alpha_milli": 100, "threshold": 50,
+        "jobs": [(1, 0, 3, 2, 1024, 5), (2, 1, 40, 2, 1024, 5)]
+        + [(i, 2 * (i - 2), 3, 2, 1024, 5) for i in range(3, 11)],
+    },
+    {
+        "name": "heavy_load", "title": "Heavy load",
+        "description": ("Twelve jobs drawn once with seed 12 (small and big mix) on an 8-core "
+                        "machine. Demand exceeds capacity, so a queue forms and the policies "
+                        "give different average waits."),
+        "cpu_cap": 8, "mem_cap": 8192, "alpha_milli": 500, "threshold": 50,
+        "jobs": None,  # drawn by gen_workload.build_presets from PRESET_HEAVY_SEED
+    },
+    {
+        "name": "tiny_case", "title": "Tiny case",
+        "description": ("Eight hand-made jobs on 4 cores and 4096 MB, small enough for the exact "
+                        "solver (up to 9 jobs). Each policy picks a different order."),
+        "cpu_cap": 4, "mem_cap": 4096, "alpha_milli": 500, "threshold": 50,
+        "jobs": [(1, 0, 8, 3, 3000, 3), (2, 1, 2, 2, 1000, 5), (3, 1, 4, 1, 1000, 2),
+                 (4, 2, 3, 3, 2000, 9), (5, 2, 1, 1, 500, 1), (6, 3, 6, 2, 2500, 6),
+                 (7, 4, 2, 4, 1000, 4), (8, 5, 2, 1, 3000, 7)],
+    },
+]

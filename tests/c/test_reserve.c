@@ -497,6 +497,24 @@ static void test_boundary_finish_equals_shadow(void)
     sim_destroy(s);
 }
 
+/* The reserved job starts before a higher-ranked job that also fits at the
+ * shadow tick. Machine 10 / 100, alpha 0, T = 0.
+ *   1: arr 0 dur 10 cpu 1 mem 60 prio 0
+ *   2: arr 1 dur 3  cpu 1 mem 70 prio 1   (h, shadow 10)
+ *   3: arr 10 dur 5 cpu 1 mem 70 prio 9   (arrives at the shadow tick, outranks h)
+ * At t=10 job 1 finishes (100 MB free). Both jobs fit alone, not together.
+ * Job 2 must start first (10..13); job 3 starts at 13. */
+static void test_reserved_first_at_shadow_tick(void)
+{
+    Sim *s = mk(10, 100, 0, 0, POL_AGING_RESERVE);
+    addj(s, 1, 0, 10, 1, 60, 0);
+    addj(s, 2, 1, 3, 1, 70, 1);
+    addj(s, 3, 10, 5, 1, 70, 9);
+    run_all(s);
+    CHECK(start_of(s, 2) == 10 && start_of(s, 3) == 13);
+    sim_destroy(s);
+}
+
 /* sim_reset clears the reservation; the policy can be run again. */
 static void test_reset_clears_reservation(void)
 {
@@ -649,6 +667,7 @@ int main(void)
     test_cpu_binding_engine();
     test_same_tick_finishes_engine();
     test_boundary_finish_equals_shadow();
+    test_reserved_first_at_shadow_tick();
     test_reset_clears_reservation();
     test_other_policies_no_reservation();
     test_h_starts_on_time_random();

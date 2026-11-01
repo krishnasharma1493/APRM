@@ -127,7 +127,7 @@ size_t eventlog_format(const LogEntry *e, char *buf, size_t n)
         break;
     case LOG_BACKFILL:
         /* a0 <= a1: it ends in time. a0 > a1: it runs past the shadow time but
-         * fits the room the reserved job leaves free (K-26; D66). */
+         * fits the room the reserved job leaves free (K-26; D68). */
         if (a[0] <= a[1])
             w = snprintf(buf, n, "Job %lld backfilled: finishes at t=%lld, before the reservation at t=%lld.",
                          id, (long long)a[0], (long long)a[1]);

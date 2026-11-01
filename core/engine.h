@@ -56,7 +56,7 @@ int  sim_add_job(Sim *s, const Job *job);
  * selection step (BLUEPRINT 3.4: pop the best waiting job, start it if it
  * fits, else set it aside; stop when none are left or free CPU or memory is
  * 0; push the set-aside jobs back). The reserve policy adds the reservation
- * of BLUEPRINT 3.5 (reserve.h, D66). Finishes come before arrivals at the same
+ * of BLUEPRINT 3.5 (reserve.h, D68). Finishes come before arrivals at the same
  * tick (D9). Returns 1 = an event was handled, 0 = nothing left to do (no
  * pending, waiting or running job; the Sim is unchanged), or a negative
  * code: APRM_INVALID_ARGUMENT (NULL s, or the policy is not implemented
