@@ -85,7 +85,7 @@ Run these in order, from the repository folder, with the virtual environment act
 | 2. C tests | `make test` | Ends with "passed" lines, exit code 0 |
 | 3. Python tests | `pytest tests/py -q` | `passed`, no failures (about a minute) |
 | 4. Engine for the website | `make wasm` | `built web/vendor/aprm.js (... bytes)` |
-| 5. Website | double-click `web/index.html` | The page says "Engine ready" |
+| 5. Website | `make web`, then double-click `web/dist/index.html` | `built web/dist/index.html`; the page opens with the six examples, and works with Wi-Fi off |
 | 6. Figures | `python tools/plot_figures.py` | Prints the paths of `.png` and `.pdf` files in `docs/report/figures/` |
 
 Run step 1 before step 3: some Python tests call `build/aprm`. Step 6 reads `data/sample_summaries/` until real summaries exist in `results/summaries/`. A timed record of this procedure on a fresh clone is in `docs/FRESH_CLONE_TEST.md`.

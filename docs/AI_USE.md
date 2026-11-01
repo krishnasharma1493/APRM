@@ -57,3 +57,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-36 | Shareable links rebased onto the redesign: Share box in More ways to add jobs, copy keys, fallback for a link naming an unbuilt scheduler | PR #98 | to confirm |
 | 2026-11-02 | Krishna | K-49 follow-up | Run page: a scheduler the engine does not have yet cannot be chosen (same flag as Compare); test added | K-49 follow-up PR, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-50 | Run ends a stale run when the jobs or machine change; regression test | K-50 fix PR, issue #121 | to confirm |
+| 2026-11-02 | Krishna | K-50 | Website verification: click driver over 145 rows in real Chrome, console comparison, fixes #122 to #125, README first run, segfault retry for web tests | K-50 PR, issue #121 | to confirm |

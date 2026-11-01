@@ -2,10 +2,12 @@
 // It opens the built file from file:// with every external host unreachable, performs each row, and checks
 // the page after it: no console error, no uncaught exception, no blank panel. It never decides which job runs.
 //
-// Usage: node tests/demo/click_matrix_cdp.mjs <path-to-web/dist/index.html> [--out docs/design/K-50_CLICK_MATRIX.md]
+// Usage: node tests/demo/click_matrix_cdp.mjs <path-to-web/dist/index.html> [--out file.md] [--dark] [--width 1440]
+// With build/aprm present it also compares the website with the console program, row by row, for every
+// scheduler on every example.
 // Exit code 1 if any row fails.
-import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,6 +18,9 @@ const outAt = process.argv.indexOf('--out');
 const out = outAt > 0 ? process.argv[outAt + 1] : null;
 if (!page) { console.error('usage: node click_matrix_cdp.mjs <index.html> [--out file.md]'); process.exit(2); }
 const url = pathToFileURL(resolve(page)).href;
+const SCHEME = process.argv.includes('--dark') ? 'dark' : 'light';
+const widthAt = process.argv.indexOf('--width');
+const WIDTH = widthAt > 0 ? Number(process.argv[widthAt + 1]) : 1440;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PRESETS = ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case'];
@@ -44,7 +49,7 @@ const key = async (k, code, vk) => {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
 };
 
-async function load(hash = '', width = 1440) {
+async function load(hash = '', width = WIDTH) {
   await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: 'about:blank' });
   await send('Page.navigate', { url: url + hash });
@@ -94,6 +99,7 @@ async function main() {
     if (d.method === 'Log.entryAdded' && d.params.entry.level === 'error') { problems.push('log: ' + d.params.entry.text); }
   };
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: SCHEME }] });
   await load();
 
   // --- Build
@@ -117,7 +123,7 @@ async function main() {
   const header = 'id,arrival,duration,cpu,mem,priority\n';
   await row('Build', 'CSV import', 'good file', 'Jobs replaced', 'PRD 8', async () => { await upload('jobs.csv', header + '1,0,5,2,100,3\n2,1,5,2,100,4\n'); return waitFor(`APRM.store.get().jobs.length === 2`, 3000); });
   await row('Build', 'CSV import', 'bad rows', 'Bad rows listed, none silently dropped', 'PRD 8', async () => { await upload('jobs.csv', header + '1,0,5,2,100,3\n2,x,5,2,100,4\n3,0,5,2,100,99\n'); await waitFor(`!document.getElementById('csv-errors').hidden`, 3000); return [(await ev(`document.querySelectorAll('#csv-errors li').length`)) >= 2, await text('csv-errors')]; });
-  await row('Build', 'CSV import', 'over 1 MB', 'Refused with a message', 'PRD 8', async () => { await upload('big.csv', header + 'x'.repeat(1100000)); await waitFor(`/1 MB|too large|too big/i.test(document.getElementById('csv-status').textContent + document.getElementById('csv-errors').textContent)`, 3000); return [true, await text('csv-status')]; });
+  await row('Build', 'CSV import', 'over 1 MB', 'Refused with a message', 'PRD 8', async () => { await upload('big.csv', header + 'x'.repeat(1100000)); const ok = await waitFor(`/1 MB|too large|too big/i.test(document.getElementById('csv-status').textContent + document.getElementById('csv-errors').textContent)`, 3000); return [ok, await text('csv-status')]; });
   await row('Build', 'CSV import', 'empty file', 'Refused with a message', 'PRD 8', async () => { await upload('empty.csv', ''); await sleep(200); const s = (await text('csv-status')) + (await text('csv-errors')); return [/header|empty/i.test(s), s]; });
   await row('Build', 'CSV export', 'with jobs', 'Download starts, message shown', 'BLUEPRINT 5', async () => { await load(); await preset('tiny_case'); await click('csv-export'); return /Exported 8 jobs/.test(await text('csv-status')); });
   await row('Build', 'CSV export', 'no jobs', 'Plain message', 'PRD 7', async () => { await load(); await click('csv-export'); return [/empty/.test(await text('csv-status')), await text('csv-status')]; });
@@ -157,6 +163,28 @@ async function main() {
   });
   await row('Run', 'Add a job right now', 'duplicate id', 'Refused in plain words', 'PRD 7', async () => { await ev(`document.getElementById('ra-id').value = '500'; true`); await click('ra-submit'); return [!(await hidden('ra-error')), await text('ra-error')]; });
   await row('Run', 'Reset', 'click', 'Back to no run; board empty message', 'PRD 7', async () => { await click('run-reset'); return (await snap('status')) === 'idle' && !(await hidden('canvas-empty')); });
+
+  // --- First screen, and a new case during a run
+  await row('Run', 'Play', 'from the first screen', 'Starts and plays', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); if (await ev(`document.getElementById('run-play').disabled`)) { return [false, 'disabled']; } await click('run-play'); return ['playing', 'finished'].includes(await snap('status')); });
+  await row('Run', 'Step', 'from the first screen', 'Starts and takes one event', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-step'); return (await snap('events')) === 1; });
+  await row('Run', 'Space', 'from the first screen', 'Starts and plays', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await ev(`document.activeElement.blur(); true`); await key(' ', 'Space', 32); return ['playing', 'finished'].includes(await snap('status')); });
+  await row('Run', 'New example', 'loaded while a run exists', 'Old run ends; no stale board', 'K-50 #122', async () => { await load(); await preset('tiny_case'); await step('run'); await click('run-start'); await click('run-step'); await step('build'); await preset('big_job_trap'); await step('run'); return (await snap('status')) === 'idle' && !(await hidden('canvas-empty')); });
+  for (const [id, value, good, why] of [['run-alpha', '99999', '100', /alpha_milli must be 0 to 10000/], ['run-alpha', 'abc', '100', /whole number/], ['run-threshold', '-1', '50', /reserve_threshold must be/], ['run-eps', '5', '0.1', /knapsack_eps must be/]]) {
+    await row('Run', 'More settings', id + ' = ' + value, 'Plain message; More settings opens; Run works after fixing it', 'PRD 3, K-50 #124', async () => {
+      await load(); await preset('tiny_case'); await step('run');
+      await ev(`document.getElementById('${id}').value = '${value}'; true`); await click('run-start');
+      const m = await text('run-error'), open = await ev(`document.getElementById('run-more').open`);
+      await ev(`document.getElementById('${id}').value = '${good}'; true`); await click('run-start');
+      return [why.test(m) && m.startsWith('Check More settings.') && open && (await snap('status')) === 'paused' && (await hidden('run-error')), m];
+    });
+  }
+  await row('Run', 'Tray card', 'click, then again', 'Selects the job, log filters, second click clears', 'BLUEPRINT 5', async () => { await load(); await preset('memory_hog'); await step('run'); await click('run-start'); for (let i = 0; i < 8; i++) { await click('run-step'); } await ev(`document.querySelector('#tray-list li').click(); true`); const on = await snap('selected'); const filt = !(await hidden('whylog-filter')); await ev(`document.querySelector('#tray-list li').click(); true`); return on !== null && filt && (await snap('selected')) === null; });
+  await row('Run', 'Why log line', 'click, then Show all jobs', 'Filters to that job, then clears', 'BLUEPRINT 5', async () => { await ev(`document.querySelector('#whylog-list li').click(); true`); const on = await snap('selected'); await click('whylog-clear'); return on !== null && (await snap('selected')) === null; });
+  await row('Run', 'Board card', 'click', 'Selects the job', 'BLUEPRINT 5', async () => { const r = await ev(`(function(){ const c = document.getElementById('run-canvas'); const g = c.__regions[0]; const b = c.getBoundingClientRect(); return { x: b.left + g.x + g.w / 2, y: b.top + g.y + g.h / 2 }; })()`); await ev(`document.getElementById('run-canvas').dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: ${r.x}, clientY: ${r.y} })); true`); return (await snap('selected')) !== null; });
+  await row('Run', 'All jobs', 'click', 'Opens the job list', 'K-49', async () => { await ev(`document.querySelector('.tray details summary').click(); true`); return ev(`document.querySelector('.tray details').open && document.querySelectorAll('#job-list li').length === 12`); });
+  await row('Run', 'Add a job right now', 'bad priority', 'Refused in plain words, run continues', 'PRD 7', async () => { await ev(`document.getElementById('run-add').open = true; document.getElementById('ra-priority').value = '99'; true`); await click('ra-submit'); const m = await text('ra-error'); await ev(`document.getElementById('ra-priority').value = '5'; true`); return [m.length > 0 && (await snap('status')) !== 'error', m]; });
+  await row('Run', 'Show details', 'during a finished run', 'Exact engine numbers, raw kinds shown', 'K-49', async () => { await load(); await preset('memory_hog'); await step('run'); await click('run-start'); await click('run-jump'); await finished(); await click('details-switch'); const m = await ev(`APRM.player.snapshot().metrics.avg_wait`); const shown = await text('metrics-list'); await click('details-switch'); return [shown.includes(String(m)), String(m)]; });
+  await row('Compare', 'Stale note', 'jobs changed after comparing', 'Says press Compare again', 'K-27', async () => { await load(); await preset('tiny_case'); await step('compare'); await click('compare-start'); await waitFor(`APRM.compare.snapshot().status === 'done'`); await step('build'); await preset('memory_hog'); await step('compare'); return /press Compare again/.test(await text('compare-status')); });
 
   // --- Run controls out of order
   await row('Run', 'Step', 'after the run finished', 'Ignored, no error', 'K-50', async () => { await click('run-start'); await click('run-jump'); await finished(); return ev(`document.getElementById('run-step').disabled === false ? (document.getElementById('run-step').click(), APRM.player.snapshot().status === 'finished') : true`); });
@@ -199,6 +227,32 @@ async function main() {
     await row('Build', 'URL hash', 'oversized', 'Refused as too long', 'PRD 8', async () => { await load('#aprm1=' + 'A'.repeat(20000)); return [/too long/.test(await text('share-error')), (await text('share-error')).slice(0, 80)]; });
     await row('Build', 'URL hash', 'names knapsack', 'Falls back; Run still works', 'PR #98', async () => { await load(); const h = await ev(`APRM.share.encode({ machine: { cpu: 4, mem: 1024 }, settings: { alphaMilli: 100, threshold: 50, eps: 0.1 }, policies: ['knapsack'], jobs: [{ id: 1, arrival: 0, duration: 1, cpu: 1, mem: 1, priority: 1 }] }).hash`); await load(h); await step('run'); await click('run-start'); await click('run-jump'); return finished(); });
   }
+
+  // --- The website against the console program, row by row
+  const aprm = resolve(page, '..', '..', '..', 'build', 'aprm');
+  const root = resolve(page, '..', '..', '..');
+  let haveCli = false; try { haveCli = spawnSync(aprm, ['--help']).status !== null; } catch (e) { haveCli = false; }
+  if (haveCli) {
+    for (const p of PRESETS) {
+      await load(); await preset(p); await step('compare');
+      const cfg = await ev(`JSON.stringify(APRM.presets.find('${p}'))`); const c = JSON.parse(cfg);
+      await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
+      await waitFor(`APRM.compare.snapshot().status === 'done'`);
+      const cols = JSON.parse(await ev(`JSON.stringify(APRM.compare.snapshot().columns)`));
+      for (const col of cols) {
+        await row('Engine', 'Website = console program', col.policy + ' on ' + p, 'Every job: same start and finish; same makespan', 'K-50 step 4', async () => {
+          const csv = join(profile, p + '-' + col.policy + '.csv');
+          const r = spawnSync(aprm, ['--policy', col.policy === 'aging_reserve' ? 'reserve' : col.policy, '--in', join(root, 'data', 'presets', p + '.csv'), '--out', csv, '--cpu', String(c.cpu_cap), '--mem', String(c.mem_cap), '--alpha-milli', String(c.alpha_milli), '--threshold', String(c.threshold)], { encoding: 'utf8' });
+          if (r.status !== 0) { return [false, 'console program: ' + r.stderr]; }
+          const lines = readFileSync(csv, 'utf8').trim().split('\n').slice(1).map((l) => l.split(',').map(Number));
+          const web = {}; for (const w of col.rows) { web[w.id] = w; }
+          const bad = lines.filter((l) => !web[l[0]] || web[l[0]].start !== l[2] || web[l[0]].finish !== l[3]);
+          const maxFinish = Math.max(...lines.map((l) => l[3]));
+          return [bad.length === 0 && lines.length === col.rows.length && col.metrics.makespan === maxFinish, lines.length + ' rows compared, ' + bad.length + ' differ'];
+        });
+      }
+    }
+  } else { console.log('note: build/aprm not found; console comparison skipped'); }
 
   // --- Keyboard
   await row('Run', 'Keyboard', 'Space, Right arrow, Esc', 'Play or pause, step, clear', 'BLUEPRINT 5', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-start'); await ev(`document.activeElement.blur(); true`); await key('ArrowRight', 'ArrowRight', 39); const a = await snap('events'); await key(' ', 'Space', 32); const s = await snap('status'); await key(' ', 'Space', 32); await key('Escape', 'Escape', 27); return a === 1 && ['playing', 'finished'].includes(s); });
