@@ -413,7 +413,10 @@ int sim_step(Sim *s)
         we.job = jb;
         eventlog_push(&s->log, t, LOG_ARRIVE, jb.id, jb.priority, 0, 0, 0);  /* reserved above */
         we.skipmask = 0;
-        we.key = 0;  /* FCFS has no key; the compare is arrival, then id */
+        /* Aging stores -(1000 b - alpha_milli r), fixed for life (never re-sorted);
+         * the other policies have no key and order by their compare function. */
+        rc = policy_wait_key(s->cfg.policy, s->cfg.alpha_milli, &jb, &we.key);
+        if (rc != APRM_OK) return rc;  /* unreachable: the job was validated on entry */
         rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
         if (rc != APRM_OK) return rc;
     }

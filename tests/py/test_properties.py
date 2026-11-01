@@ -252,6 +252,15 @@ def test_random_runs():
 
 
 @needs_cli
+@pytest.mark.parametrize("policy", ["priority", "sjf", "aging"])
+def test_random_runs_new_policies(policy):
+    """K-19: the same property checks (including greedy fill) hold for the new policies."""
+    out = cp.random_runs(200, 1, (policy,), str(REAL), jobs=4)
+    assert out["violations"] == [], out["violations"][:3]
+    assert out["not_implemented"] == [] and out["runs"] == 200 and out["ok"] == 200
+
+
+@needs_cli
 def test_unimplemented_policy_is_skipped_not_failed():
     out = cp.random_runs(3, 1, ("knapsack",), str(REAL))
     assert out["violations"] == [] and out["not_implemented"] == ["knapsack"] and out["runs"] == 0
@@ -366,7 +375,7 @@ def test_runner_detects_only_greedy_fill_violation(tmp_path):
 
 def test_greedy_check_only_for_listed_policies(tmp_path, monkeypatch):
     # the same corruption goes unnoticed when the policy is not in GREEDY_FILL_POLICIES
-    assert cp.GREEDY_FILL_POLICIES == ("fcfs",)
+    assert cp.GREEDY_FILL_POLICIES == ("fcfs", "priority", "sjf", "aging")
     monkeypatch.setattr(cp, "GREEDY_FILL_POLICIES", ())
     assert cp.random_runs(30, 1, ("fcfs",), fake(tmp_path, "delay_last"))["violations"] == []
 
