@@ -433,6 +433,13 @@ All policy cases pass, website runs every preset.
   - [ ] Build, Run and Compare redesigned; every accepted finding fixed or deferred with a reason
   - [ ] Contrast, layout and offline rehearsal checks, `make test`, `make sanitize`, `pytest tests/py` green; before and after screenshots committed
 
+### K-50 End-to-end website verification · GitHub #121 ([link](https://github.com/krishnasharma1493/APRM/issues/121))
+- **Refs:** PRD §7, §8, §10, §10A; BLUEPRINT §5; `docs/design/K-50_CLICK_MATRIX.md`
+- **Files:** `tests/demo/click_matrix_cdp.mjs`, `tests/web/run_suite.sh`, `README.md`
+- **Done when:**
+  - [ ] Every matrix row passes or is a stated deferral; console and website agree row by row
+  - [ ] All test commands green, demo path offline, fresh clone from the README, CI green
+
 ### Gate 4 check · tracker #52 ([link](https://github.com/krishnasharma1493/APRM/issues/52))
 C and WebAssembly outputs match, exact solver never beaten.
 
