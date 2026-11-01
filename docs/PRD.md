@@ -43,7 +43,7 @@ Never copy version numbers from this document or from memory into `requirements.
 | Node.js (only to run WebAssembly tests in CI) | Current Active LTS from nodejs.org. Exception: the emsdk-bundled Node is kept for laptop/CI parity (DECISIONS D65) |
 | Python | python.org, a release still in bugfix or security support |
 | `numpy`, `pandas`, `matplotlib`, `pytest` | PyPI latest stable + advisories |
-| Chart.js (website CDN) | npm or jsDelivr page; exact pinned version + SRI hash |
+| Chart.js (bundled by `make web`; CDN only for the unbuilt page) | npm registry `time` field; exact version in `web/package.json` and the lockfile; same version as the CDN pin + SRI hash |
 
 ## 0. Project brief and assumptions
 
@@ -193,7 +193,10 @@ aprm/
 │   └── run_wasm.mjs             K  Headless runner for CI conformance
 ├── web/                         K
 │   ├── index.html                  Page source; `make web` bundles it for file:// (D76)
-│   ├── css/style.css
+│   ├── package.json, package-lock.json  K  Website dependencies (chart library), exact versions (D78)
+│   ├── build.mjs                K  Inlines every script, stylesheet and the chart library into dist/index.html (D77)
+│   ├── dist/index.html          K  The built single file for the demo (never committed)
+│   ├── css/  tokens.css components.css style.css
 │   ├── vendor/aprm.js           K  Generated WebAssembly bundle (CI builds it)
 │   └── js/  wasm.js store.js editor.js presets_data.js presets.js
 │            generator.js player.js canvas.js whylog.js compare.js
@@ -267,6 +270,7 @@ There are no secrets and no environment variables to protect. Configuration live
 | `make sanitize` | Debug build with AddressSanitizer and UndefinedBehaviorSanitizer |
 | `make test` | Builds and runs all C tests and golden cases |
 | `make wasm` | Runs `wasm/build.sh` to produce `web/vendor/aprm.js` |
+| `make web` | Installs the website dependencies from `web/package-lock.json` and writes `web/dist/index.html`, one file that opens from `file://` with no network (needs `make wasm` first) |
 | `make clean` | Removes build output |
 
 **Emscripten flags (in `wasm/build.sh`).** Modular output with a named factory, single-file output (WebAssembly embedded in the JavaScript), memory growth allowed, and only the step API functions exported. Exact flag spellings are checked against the current Emscripten documentation when the script is written.
@@ -618,10 +622,10 @@ The website has no accounts or stored data, so the risks are bad input from file
 - [x] All text from users, files, URLs or the engine is shown as text, never as raw HTML (`textContent`; no `innerHTML`, `dangerouslySetInnerHTML` or `v-html`).
 - [x] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
 - [ ] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
-- [ ] No runtime network request: every library and font is bundled (K-49 moves Chart.js from the CDN into the bundle). Until then the only external request is Chart.js, pinned with an integrity hash, with a table fallback.
+- [x] No runtime network request from the built page: the chart library is bundled into `web/dist/index.html` (K-49, D78). The unbuilt `web/index.html` still loads it lazily from the CDN, pinned with an integrity hash, with a table fallback.
 - [x] No `eval`, no `new Function`, no inline event-handler attributes.
 - [x] `web/index.html` works from `file://` today: no `fetch`, nothing loaded from a server.
-- [ ] The built page (`make web`) works from `file://` with the network off; dependencies verified per the version safety rule, lockfile committed (K-49 PR 3).
+- [x] The built page (`make web`) works from `file://` with the network off (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`, also run in CI); dependencies verified per the version safety rule, lockfile committed.
 - [x] A failed WebAssembly load shows a clear error state, never a blank page.
 - [x] Long runs cannot freeze the tab: steps per frame are capped, and "jump to end" runs in slices.
 - [x] Nothing is stored in the browser beyond optional user preferences (theme, speed), wrapped in `try/catch`.
@@ -654,9 +658,9 @@ On every push and pull request:
 2. **test-c:** `make test` (unit tests + golden cases).
 3. **sanitize:** `make sanitize` and the full test suite under sanitizers.
 4. **build-wasm:** install the frozen emsdk version, `make wasm`.
-4a. **build-web (K-49):** install the frontend dependencies from the lockfile and run `make web`; the website tests run against the build.
+4a. **build-web (K-49, inside the build-wasm job):** `make web` from the lockfile, then the offline rehearsal (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`) in headless Chrome against the built file.
 5. **python:** install from the lock file (from `requirements.txt` names before the Gate 2 freeze), run `pytest tests/py` (property checks, summary-format checks, the figure smoke test on `data/sample_summaries/`, and conformance against the fresh WebAssembly build through `wasm/run_wasm.mjs`).
-6. **deploy (main only):** publish `web/` to GitHub Pages.
+6. **deploy (main only):** build with `make wasm` and `make web`, then publish `web/dist/` to GitHub Pages.
 
 ## 10. Testing guide
 

@@ -48,3 +48,7 @@ docs/report/figures/*.pdf
 .impeccable/review/
 .impeccable/build/
 .impeccable/critique/
+
+# Website build (K-49): dependencies and output are never committed
+web/node_modules/
+web/dist/

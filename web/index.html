@@ -237,9 +237,9 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
-       No external script here: compare.js injects the pinned, integrity-checked Chart.js the first
-       time Compare mode opens (D33), so Build and Run mode make no network request.
+  <!-- Scripts in a fixed order (PRD section 7). `make web` copies them inline into web/dist/index.html
+       with the chart library, so the built page needs no network (D77, D78). This source page finds no
+       chart library, so compare.js loads the pinned, integrity-checked one the first time Compare opens.
        Still to be added by a later issue, before app.js: share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
