@@ -77,7 +77,7 @@ function fakeDocument() {
   };
 }
 
-const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 // Real scripts except vendor and app.js; mount() is called by hand like app.js does.
 function page({ createAprm, wasm = false } = {}) {

@@ -64,7 +64,7 @@ function fakeDocument() {
   };
 }
 
-const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 // A page with the real scripts. start=false leaves out app.js (no engine needed); the Build
 // scripts are then mounted by hand, exactly as app.js does.
