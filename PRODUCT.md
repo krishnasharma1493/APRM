@@ -7,7 +7,7 @@
 web
 
 ## Stack
-Static HTML, CSS and classic `<script>` files on `window.APRM`; the C scheduler core compiled to WebAssembly. No framework, no build step, no network (works from `file://`).
+HTML, CSS and JavaScript bundled by a frontend build tool (`make web`; frameworks and self-hosted fonts allowed, D76); the C scheduler core compiled to WebAssembly. The built site needs no network and works from `file://`.
 
 ## Users
 Primary: an examiner at the viva of an ADA course project, watching a laptop demo. Secondary: classmates and Ahaana Arya, who open the site alone and need to understand it without anyone explaining.
