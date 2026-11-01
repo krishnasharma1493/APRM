@@ -12,6 +12,17 @@ HTML, CSS and JavaScript bundled by a frontend build tool (`make web`; framework
 ## Users
 Primary: an examiner at the viva of an ADA course project, watching a laptop demo. Secondary: classmates and Ahaana Arya, who open the site alone and need to understand it without anyone explaining.
 
+## Jobs to Be Done
+- Examiner (3 minutes): understand what an online two-resource scheduler does, see one decision explained, see two schedulers differ on the same jobs.
+- Krishna (demo, PRD §10A rows 4 to 6): open the site from the laptop with Wi-Fi off; big-job trap in Compare; memory hog, aging against aging with reservation, why log open; hand the laptop over so the examiner builds a case or adds a job mid-run.
+- Classmates later: open it alone and follow the three steps without help.
+
+## Viva Questions the Site Must Help Answer (PRD §10A)
+- Is the website really running your C code? (The engine is the WebAssembly build; the page only shows what it returns.)
+- Can a job starve? (Aging against aging with reservation on the memory hog: the reserved job's spot and start time.)
+- Is your scheduler optimal? (Compare shows the exact best order and each scheduler's gap for nine jobs or fewer.)
+- Doesn't aging change every priority each tick? (Show details: the live score the engine reports.)
+
 ## Product Purpose
 APRM (Adaptive Priority Resource Manager) is an online, non-preemptive job scheduler for one machine with CPU and memory. The website runs the same C code as the console program and shows how different schedulers choose jobs. Success: in one minute a viewer sees why schedulers differ, and can inspect that every number matches the engine exactly.
 
