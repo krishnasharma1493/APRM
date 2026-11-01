@@ -648,7 +648,7 @@
       var panel = byId('compare-panel');
       if (panel) { panel.hidden = s.mode !== 'compare'; }
       if (s.mode === 'compare') { ensureChart(); }
-      if (changed === 'theme' && status === 'done') { render(); }
+      if (changed === 'theme' && status === 'done' && s.mode === 'compare') { render(); }
       if (changed === 'mode' && s.mode !== 'compare') { destroyCharts(); }
       if (changed === 'mode' && s.mode === 'compare' && status === 'done') { drawCharts(); }
       if (changed === 'mode' && s.mode !== 'compare' && status === 'running') { cancel(); }

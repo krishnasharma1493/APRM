@@ -106,6 +106,13 @@ try {
   await ev(`localStorage.removeItem('aprm.theme'); true`);
   await load(1280);                                   // back to the system (day) look for the checks below
 
+  // 3c. with nothing saved, a dark system starts in night mode
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  await load(1280);
+  check('dark system, nothing saved: starts at night with the Day mode button', (await ev(`document.documentElement.getAttribute('data-theme')`)) === 'dark' && (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Day mode');
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  await load(1280);
+
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.card')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
