@@ -11,7 +11,7 @@ You only need Python 3 and a terminal, opened in the repository folder.
 python3 -m venv .venv                 # make a private box for the libraries
 source .venv/bin/activate             # step inside the box (Windows WSL: same command)
 pip install -r requirements.txt       # install pandas, matplotlib, ...
-python tools/plot_figures.py          # draw the figures
+python tools/plot_figures.py          # draw all the figures
 ```
 
 - You must run `source .venv/bin/activate` again every time you open a new terminal.
@@ -272,5 +272,139 @@ figure still works printed in black and white, and for colour-blind readers.
    that the font size is 11 (I ran this: 1 failed, 15 passed). That test is
    there to catch accidental style changes. If you really want 14, change the
    number in the test as well, in the same commit. Undo the change afterwards.
+
+</details>
+
+---
+
+## A-03: figures for E1, E2 (with CDF) and E3
+
+### The idea in one sentence
+
+Four figures answer three questions: which scheduler waits least on average
+(E1), which one stops jobs from waiting for ever (E2, two figures), and are
+priorities respected, with and without aging (E3). All four read only the
+summary CSV files and show how sure we are of each number.
+
+### What a confidence interval and an error bar are
+
+Each number in the summary is an average over 30 random runs (seeds). A
+different set of 30 seeds would give a slightly different average, so we also
+store a range: `ci_low` to `ci_high`, the 95% confidence interval. Read it as:
+"the true average very probably lies in this range". A short bar means the
+runs agreed; a long bar means they varied a lot. If the bars of two schedulers
+overlap, we cannot say for sure that one is better. You never calculate these
+numbers: Krishna's script writes them into the CSV and you only draw them.
+
+matplotlib's `yerr` does NOT take the two end points. It wants the two
+distances from the mean: lower length = `mean - ci_low`, upper length =
+`ci_high - mean`. Passing `ci_low` and `ci_high` directly is the classic
+mistake (Pitfalls in the issue). We draw the bars and also a light shaded band
+in the same colour, so the trend is easy to follow.
+
+### The code, function by function
+
+- **`draw_policy_line(ax, rows, policy, metric)`** draws one scheduler's mean
+  line, its error bars and its band. `metric` is `"avg_wait"` or `"max_wait"`:
+  the function builds the column names `avg_wait_mean`, `avg_wait_ci_low`,
+  `avg_wait_ci_high` from it. It sorts by `x_value` so the line does not
+  zig-zag, and takes the colour, dashes and marker from `policy_look`.
+- **`sample_note(summary_dir)`** returns " (SAMPLE DATA)" when the folder is
+  `data/sample_summaries`, and "" otherwise. So a figure from fake numbers says
+  so in its title, and a figure from real numbers does not.
+- **`build_load_figure`** is the shared body of E1 and E2: one set of axes, one
+  line per policy, title, labels with units, legend. `build_e1_figure` and
+  `build_e2_figure` only choose the metric, title and y label.
+- **`build_cdf_figure(rows, note)`** keeps one setting only (the largest
+  `x_value`, i.e. the heaviest load, so settings are never mixed), then for
+  every policy sorts the waits and draws a step curve.
+- **`build_e3_figure(rows, note)`** makes one panel per priority mix
+  (`uniform`, `low_heavy`, `high_heavy`), side by side with the same y axis so
+  heights can be compared. Each panel has two lines: `priority` (without
+  aging) and `aging`.
+- **`plot_e1_avg_wait`, `plot_e2_max_wait`, `plot_e2_wait_cdf`,
+  `plot_e3_wait_by_priority`** each take `(summary_dir, out_dir)`: read the
+  file, apply the style, build the figure, save PNG and PDF with
+  `save_figure`. One figure per function.
+- **`run_all(summary_dir, out_dir)`** calls the four of them.
+- **The input folder** is one setting: `--input`. Switching from fake to real
+  numbers is a single change.
+
+### How to run
+
+```sh
+python tools/plot_figures.py --input data/sample_summaries     # fake numbers (default)
+python tools/plot_figures.py --input results/summaries         # real numbers, after K-20
+python tools/plot_figures.py --out /tmp/my_figs                # choose where pictures go
+pytest tests/py/test_plot_figures.py
+```
+
+It writes `e1_avg_wait`, `e2_max_wait`, `e2_wait_cdf` and
+`e3_wait_by_priority`, each as `.png` and `.pdf`, into
+`docs/report/figures/` (git ignores them, so fake pictures never reach the
+report by accident). Until Krishna's real summaries exist, never use a figure
+whose title says SAMPLE DATA in the report.
+
+### How to read each figure
+
+**E1, average wait vs load.** x: how many jobs arrive per tick (0.3 light, 0.6
+medium, 0.9 heavy). y: average wait in ticks. One line per scheduler; lower is
+better. The bars show where the true mean probably lies. Where two lines are
+far apart and their bars do not touch, one scheduler really is better. The
+sample numbers are made up, so do not read results from them.
+
+**E2, maximum wait vs load.** Same axes, but y is the wait of the single
+unluckiest job (averaged over the runs). A line that shoots up at heavy load
+means some jobs are being starved. This is where aging should help: it should
+keep the worst wait low even though the average may be a little higher.
+
+**E2, wait CDF (heavy load).** CDF means "cumulative distribution". Take every
+job's wait, sort them from smallest to largest, and walk along: x is a wait in
+ticks, y is the fraction of jobs that waited that long or less. A curve that
+is further left and higher is better (many jobs waited little). The far right
+end of each curve is the worst wait, so a long flat tail to the right means
+starvation. In the sample data (checked by running it), fcfs reaches 1.0 at
+27 ticks while the others reach it at 35 or 36, and at wait 18 the fraction is
+0.7 for fcfs and priority, 0.6 for sjf, reserve and knapsack, and 0.5 for
+aging. Fake numbers, but it shows how to read values off the picture.
+Examiner question: "Why a CDF and not just the average?" The average hides the
+few jobs that waited very long; the CDF shows the whole distribution, as in
+Fan and Liang, Fig. 5.
+
+**E3, wait per priority level.** Three panels, one per priority mix. x: the
+priority level, 0 to 9. y: average wait of the jobs of that level. Each panel
+has the `priority` scheduler (orange, dashed: no aging) and the `aging`
+scheduler (green, dotted). Without aging the low levels wait the longest; the
+hope is that aging brings the low-priority waits down while the high-priority
+waits rise only a little (as Becker and Schule observed). In the sample data,
+uniform mix: level 0 waits 40 ticks without aging and 25 with aging; level 9
+waits 4 without and 7 with aging. That is exactly the shape we hope to see in
+the real data. The three sample panels are identical because the fake file
+repeats the same numbers.
+
+### Exercises
+
+1. **The classic mistake.** In `draw_policy_line`, change
+   `yerr=[lower_length, upper_length]` to `yerr=[low, high]`. What happens to
+   the picture and to the tests?
+2. **Which load does the CDF show?** In `build_cdf_figure`, change `.max()` to
+   `.min()`. What happens to the picture of the sample data, and to the tests?
+3. **Read the CDF.** In the sample `e2_wait_cdf.csv`, what fraction of fcfs
+   jobs waited 18 ticks or less, and what is aging's longest wait?
+
+<details>
+<summary>Answers (try first!)</summary>
+
+1. The script still runs, but the bars are wrong: matplotlib treats `low` and
+   `high` as lengths, so the bars become far too long (a bar of "length 9"
+   instead of 1). I ran this: 3 tests failed (the tests that check the
+   drawn bar ends against `ci_low` and `ci_high`). Undo it afterwards.
+2. The sample CDF file only contains the heavy setting (x = 0.9), so the
+   picture does not change. The test `test_cdf_uses_one_setting_only` fails
+   (I ran this: 1 failed, 35 passed), because that test adds a lighter fake
+   setting and checks it is not drawn. With `.min()` the lighter setting would
+   be drawn instead of the heavy one. Undo it afterwards.
+3. Using `e2_wait_cdf.csv`: 14 of the 20 fcfs waits are 18 or less, i.e. 0.7.
+   Aging's largest wait is 36 ticks. (I ran this with pandas.)
 
 </details>
