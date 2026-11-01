@@ -30,6 +30,7 @@
   var SLICE_STEPS = 500;
   var DASH = '—'; /* shown for a null metric (D62: no finished job, or makespan 0) */
   var MIN_POLICIES = 2;
+  var BOARD_HEIGHT = 260;    /* css pixels, each finished board */
 
   /* The ONE place the pinned Chart.js file is named (version, URL, SRI hash).
    * Verified for K-27 and recorded in docs/TOOLCHAIN.md. */
@@ -254,7 +255,7 @@
     } catch (err) {
       return fail(err);
     }
-    model = { jobs: st.jobs.map(copyJob), tmax: 0, columns: [] };
+    model = { jobs: st.jobs.map(copyJob), cap: { cpu: st.machine.cpu, mem: st.machine.mem }, tmax: 0, columns: [] };
     status = 'running';
     render();
     scheduleSlice(token);
@@ -431,6 +432,7 @@
       for (var k = 0; k < METRIC_COLUMNS.length; k++) {
         var v = col.metrics[METRIC_COLUMNS[k][0]];
         var td = cell('td', metricText(v), (v === null || v === undefined) ? 'na' : '');
+        td.setAttribute('data-label', words('metric.' + METRIC_COLUMNS[k][0], METRIC_COLUMNS[k][1]));
         if (isBest(METRIC_COLUMNS[k][0], v)) {
           td.setAttribute('data-best', words('compare.best', 'Best'));
           td.setAttribute('class', (td.getAttribute('class') ? td.getAttribute('class') + ' ' : '') + 'best');
@@ -443,51 +445,24 @@
 
   /* Colours from the CSS variables, with fixed fallbacks. */
   function themeColours() {
-    var out = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', jobs: ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'] };
+    var out = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', accent: '#0B5E6B', jobs: ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'] };
     if (typeof getComputedStyle !== 'function' || !document.documentElement) { return out; }
     try {
       var cs = getComputedStyle(document.documentElement);
       var pick = function (n, fb) { var v = String(cs.getPropertyValue(n) || '').trim(); return v || fb; };
-      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border);
+      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border); out.accent = pick('--accent', out.accent);
       for (var i = 0; i < 10; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
     } catch (e) { /* keep the fallbacks */ }
     return out;
   }
 
-  /* One Gantt picture: a row per job (arrival, then id), a thin line from
-   * arrival to start (waiting), a bar from start to finish. All columns share
-   * tmax so the pictures can be compared by eye. O(jobs). */
-  function drawTimeline(canvas, jobs, rows, tmax) {
-    if (typeof canvas.getContext !== 'function') { return false; }
-    var ctx = canvas.getContext('2d');
-    if (!ctx) { return false; }
-    var col = themeColours();
-    var W = canvas.width, H = canvas.height;
-    var padL = 6, padR = 6, padT = 6, padB = 16;
-    var order = jobs.slice().sort(function (a, b) { return a.arrival - b.arrival || a.id - b.id; });
-    var byIdMap = {};
-    for (var i = 0; i < rows.length; i++) { byIdMap[rows[i].id] = rows[i]; }
-    var span = Math.max(1, tmax);
-    var plotW = W - padL - padR, plotH = H - padT - padB;
-    var rowH = plotH / Math.max(1, order.length);
-    var sx = function (t) { return padL + (t / span) * plotW; };
-    ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = col.border; ctx.lineWidth = 1;
-    ctx.strokeRect(padL, padT, plotW, plotH);
-    for (var k = 0; k < order.length; k++) {
-      var job = order[k], res = byIdMap[job.id];
-      if (!res) { continue; }
-      var y = padT + k * rowH;
-      var bh = Math.max(1, Math.min(10, rowH - 1));
-      ctx.fillStyle = col.muted;
-      ctx.fillRect(sx(job.arrival), y + bh / 2, Math.max(0, sx(res.start) - sx(job.arrival)), 1);
-      ctx.fillStyle = col.jobs[APRM.canvas ? APRM.canvas.paletteIndex(job.id) : job.id % 10];
-      ctx.fillRect(sx(res.start), y, Math.max(1, sx(res.finish) - sx(res.start)), bh);
-    }
-    ctx.fillStyle = col.muted; ctx.font = '11px sans-serif';
-    ctx.fillText('0', padL, H - 3);
-    ctx.fillText(String(tmax), Math.max(padL, W - padR - 30), H - 3);
-    return true;
+  /* One finished board, in the same form as the Run page: the engine's start and finish times, on the
+   * time scale shared by every board, so the pictures can be compared by eye. Returns false with no canvas. */
+  function drawTimeline(canvas, jobs, rows, tmax, finished) {
+    var bars = {};
+    for (var i = 0; i < rows.length; i++) { bars[rows[i].id] = { start: rows[i].start, finish: rows[i].finish }; }
+    var st = { now: tmax, cap: model.cap, free: model.cap, waiting: [], running: [], reservation: null, done: rows.length, total: jobs.length };
+    return APRM.canvas.draw(canvas, { state: st, jobs: jobs, bars: bars, selected: null, events: 0, hideNow: true, endMark: finished, tmax: tmax }, BOARD_HEIGHT);
   }
 
   function drawTimelines() {
@@ -495,6 +470,7 @@
     if (!box) { return; }
     clear(box);
     if (status !== 'done' || model === null) { return; }
+    var boards = [];
     for (var c = 0; c < model.columns.length; c++) {
       var col = model.columns[c];
       var fig = document.createElement('figure');
@@ -502,17 +478,15 @@
       var cap = document.createElement('figcaption');
       cap.textContent = words('compare.timeline.cap', labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')', { name: labelOf(col.policy), t: metricText(col.metrics.makespan) });
       var cv = document.createElement('canvas');
-      cv.setAttribute('width', '420');
-      cv.width = 420;
-      cv.height = 240;
-      cv.setAttribute('height', '240');
       cv.setAttribute('role', 'img');
       cv.setAttribute('aria-label', words('compare.timeline.aria', 'Timeline of every job under ' + labelOf(col.policy), { name: labelOf(col.policy) }));
       fig.appendChild(cap);
       fig.appendChild(cv);
       box.appendChild(fig);
-      drawTimeline(cv, model.jobs, col.rows, model.tmax);
+      boards.push({ cv: cv, rows: col.rows, finished: col.metrics.makespan });
     }
+    /* Draw after every board is in the page: each one's width depends on how many share the row. */
+    for (var b = 0; b < boards.length; b++) { drawTimeline(boards[b].cv, model.jobs, boards[b].rows, model.tmax, boards[b].finished); }
   }
 
   /* Bar charts, only if Chart.js loaded. Any failure falls back to the table. */
@@ -535,7 +509,7 @@
     }
     var col = themeColours();
     try {
-      var labels = model.columns.map(function (c) { return labelOf(c.policy); });
+      var labels = model.columns.map(function (c) { return labelOf(c.policy).split(' ('); });   /* two short lines, never slanted */
       for (var m = 0; m < CHART_METRICS.length; m++) {
         var key = CHART_METRICS[m];
         var title = '';
@@ -550,12 +524,12 @@
         var data = model.columns.map(function (c) { var v = c.metrics[key]; return (typeof v === 'number') ? v : null; });
         charts.push(new window.Chart(cv, {
           type: 'bar',
-          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.jobs.slice(0, labels.length) }] },
+          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.accent }] },
           options: {
             animation: false, responsive: true, maintainAspectRatio: false, color: col.text,
             plugins: { legend: { display: false }, title: { display: true, text: title + ' (ticks)', color: col.text } },
             scales: {
-              x: { ticks: { color: col.muted }, grid: { color: col.border } },
+              x: { ticks: { color: col.muted, maxRotation: 0, minRotation: 0, autoSkip: false }, grid: { color: col.border } },
               y: { beginAtZero: true, ticks: { color: col.muted }, grid: { color: col.border } }
             }
           }
