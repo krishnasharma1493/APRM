@@ -421,11 +421,15 @@
     var startBtn = byId('run-start');
     if (startBtn) { startBtn.textContent = live ? copyText('run.restart', 'Start over') : copyText('run.start', 'Run'); }
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
-    set('run-play', (!live && !hasJobs) || status === 'jumping');
-    set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping');
+    set('run-play', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
+    set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping' || status === 'finished');
     set('run-jump', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-reset', !live);
     set('ra-submit', !live);
+    /* A button that just became disabled drops keyboard focus; Reset keeps it on the controls. */
+    var focused = document.activeElement;
+    var resetBtn = byId('run-reset');
+    if (focused && focused.disabled && resetBtn && !resetBtn.disabled) { resetBtn.focus(); }
   }
 
   /* ---------- starting and stopping ---------- */

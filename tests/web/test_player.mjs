@@ -793,6 +793,22 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     assert.ok(ms < 200, 'frame took ' + ms + ' ms');
     P.reset();
   });
+
+  test('real engine: Play and Step are disabled once finished, and Reset turns Play back on', async () => {
+    const p = await realPage();
+    p.A.store.setJobs([{ id: 1, arrival: 0, duration: 2, cpu: 1, mem: 1, priority: 1 }]);
+    p.A.store.setPolicies(['fcfs']);
+    const P = p.A.player;
+    P.start(); P.jumpToEnd();
+    while (p.sched.laters.length) p.sched.runLater();
+    assert.equal(P.snapshot().status, 'finished');
+    assert.equal(p.doc.byId['run-play'].disabled, true, 'nothing left to play');
+    assert.equal(p.doc.byId['run-step'].disabled, true, 'nothing left to step');
+    assert.equal(p.doc.byId['run-jump'].disabled, true);
+    assert.equal(p.doc.byId['run-reset'].disabled, false, 'Reset stays live');
+    P.reset();
+    assert.equal(p.doc.byId['run-play'].disabled, false, 'jobs are loaded, so Play is live again');
+  });
 } else {
   console.log('note: web/vendor/aprm.js not built (run `make wasm`); real-engine Run mode tests skipped');
 }
