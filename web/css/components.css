@@ -81,6 +81,9 @@ td.num-cell, th.num-cell { text-align: right; }
   border-radius: var(--r-2); box-shadow: var(--shadow); max-width: min(90vw, 28rem); z-index: 30;
 }
 
+/* An empty toast takes no room; the live region itself stays in the page so screen readers announce changes. */
+.toast:empty { display: none; }
+
 /* Empty state: one sentence and one action */
 .empty { color: var(--muted); margin: var(--s-2) 0; }
 

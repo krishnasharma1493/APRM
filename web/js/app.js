@@ -154,9 +154,8 @@
     var el = byId('toast');
     if (!el) { return; }
     el.textContent = text;
-    el.hidden = false;
     if (toastTimer !== null && typeof clearTimeout === 'function') { clearTimeout(toastTimer); }
-    if (typeof setTimeout === 'function') { toastTimer = setTimeout(function () { el.hidden = true; toastTimer = null; }, 4000); }
+    if (typeof setTimeout === 'function') { toastTimer = setTimeout(function () { el.textContent = ''; toastTimer = null; }, 4000); }
   }
 
   /* After a step change, move focus to that step's heading so Space and the arrow keys
