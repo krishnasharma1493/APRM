@@ -6,8 +6,8 @@
  * Sim; there is no global or static mutable state, so several Sims can exist
  * at once. Functions return APRM_OK (0) or a negative APRM_* code from job.h.
  *
- * Declared here as they are implemented. The JSON outputs and exact_solve
- * arrive with K-11 and K-33.
+ * Declared here as they are implemented. The JSON outputs arrive with K-11;
+ * exact_solve itself is in exact.h (K-33).
  */
 #ifndef APRM_ENGINE_H
 #define APRM_ENGINE_H
@@ -134,6 +134,16 @@ int  sim_results_json(const Sim *s, JsonBuf *out);
 /* Metrics over the finished jobs (metrics.h). O(n log n) time (it builds the
  * sorted rows first), O(n) temporary space. */
 int  sim_metrics_json(const Sim *s, JsonBuf *out);
+
+/* Run the exact solver (exact.h) on EVERY job the Sim has accepted (pending,
+ * waiting, running and finished), whatever the clock says, with this Sim's
+ * capacities: the offline optimum for the whole instance. Writes the
+ * exact_solve envelope into *out (replacing its contents). Returns APRM_OK,
+ * APRM_INVALID_ARGUMENT (NULL s or out), APRM_TOO_LARGE (more than
+ * APRM_EXACT_MAX_JOBS jobs; nothing is copied), APRM_OUT_OF_MEMORY, or any
+ * exact_solve code. Does not change the Sim. Extra to PRD section 5 (the
+ * engine behind aprm_exact, like D55). O(n) copy plus the cost of exact_solve. */
+int  sim_exact_json(const Sim *s, JsonBuf *out);
 
 /* The rows of results.csv for the finished jobs, sorted by id, for the
  * console program's csv_write_results (K-12). On success *rows is a malloc'd

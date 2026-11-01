@@ -353,6 +353,8 @@ def test_knapsack_window_rule():
     assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 0, 2: 1024, 3: 8})), "job 1")
     assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 1, 2: 600, 3: 8})), "job 2")
     assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 1, 2: 1024, 3: 5})), "job 3")
+    # a start that is neither a power of two nor any job's finish is flagged (1 + 1 = 2 finishes; 3 does not)
+    assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 1, 2: 1024, 3: 11})), "neither a power of two")
 
 
 @needs_cli

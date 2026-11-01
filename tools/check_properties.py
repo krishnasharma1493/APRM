@@ -425,13 +425,20 @@ def check_knapsack_windows(jobs: pd.DataFrame, results: pd.DataFrame) -> list[st
     chosen.  So start >= w(j), where w(j) is the smallest power of two that is
     at least max(arrival, duration, 1).  Flags every job that starts earlier.
     Resource feasibility, arrival order and completeness are checked by
-    check_results for every policy.  Time O(n).
+    check_results for every policy.  Also every start must be a window (a power
+    of two, or 0 is impossible) or the finish tick of some job: a chosen job that
+    does not fit starts only when room is freed.  Time O(n).
     """
     jn = _joined(jobs, results)
     if jn is None or not len(jn):
         return []
     msgs: list[str] = []
+    finishes = set(int(x) for x in jn["finish"])
     for row in jn.itertuples(index=False):
+        t = int(row.start)
+        if t & (t - 1) != 0 and t not in finishes:
+            msgs.append(f"job {int(row.id)} starts at {t}, which is neither a power of two (a window) "
+                        f"nor the finish time of any job (room freed for a chosen job)")
         need = max(int(row.arrival_in), int(row.duration_in), 1)
         window = 1 << (need - 1).bit_length()
         if int(row.start) < window:

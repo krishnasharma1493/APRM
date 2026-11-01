@@ -405,20 +405,11 @@ APRM_EXPORT const char *aprm_last_error(int h)
     return text_of(&s->buf);
 }
 
-/* The exact solver (n <= 9) arrives with K-33. Until then this returns a
- * TOO_LARGE-style error envelope saying so (and records it as the handle's
- * last error). */
-APRM_EXPORT const char *aprm_exact(int h)
-{
-    Slot *s = lookup(h);
-    if (!s) {
-        bad_handle(h);
-        return orphan_text();
-    }
-    set_err(&s->err, APRM_TOO_LARGE, NULL, "Exact solver is not built yet.");
-    render_error(&s->buf, &s->err);
-    return text_of(&s->buf);
-}
+/* The exact solver (K-33): the minimum-total-wait schedule for all jobs added
+ * to this handle (n <= 9), as the exact_solve envelope {"total_wait","schedule"}.
+ * More than 9 jobs is a TOO_LARGE error envelope. Does not change the
+ * simulation. Worst case O(n! * n^3), well under a second at n = 9. */
+APRM_EXPORT const char *aprm_exact(int h) { return report(h, sim_exact_json); }
 
 /* Remove every job and restart the clock at 0, keeping the config. Also
  * clears the handle's last error. Returns 0 or a negative code. */

@@ -132,4 +132,6 @@ No checklist item failed, so no checklist fix was needed. Review feedback on PR 
 
 ### Knapsack (K-34), reviewed
 
+The table cap changes the accuracy setting for big pools: above about 2,589 eligible jobs in one window at eps 0.1 (about 819 at eps 0.01) the effective epsilon n/C' replaces the requested one for that window (DECISIONS D72). The `--eps` flag now accepts only digits with an optional point and at most 3 decimals; `.5` and `1e-1` are rejected.
+
 The checks listed for K-34 are done and are in row 6.11. One thing to know: the worst-case run time is bounded by the table cap, not tiny. A window with the largest tables costs up to about 2^26 DP steps, and a run of 20,000 jobs at epsilon 0.01 took about 9 s on the laptop (the website limit is 5,000 jobs). `leaks --atExit` printed no leak count in the sandbox it was tried in, so the leak evidence is the allocation-failure injection (no leak found) and AddressSanitizer only.

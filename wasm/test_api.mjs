@@ -225,13 +225,40 @@ test('reserve policy: state JSON carries the reservation, cleared at the shadow 
   assert.equal(M._aprm_destroy(h), 0);
 });
 
-test('aprm_exact is an error envelope until K-33', () => {
-  const h = mk();
+test('aprm_exact: empty handle, big_job_trap optimum, state unchanged, TOO_LARGE above 9 jobs (K-33)', () => {
+  const h = mk(FCFS, 6, 6000);
+  assert.deepEqual(json(M._aprm_exact(h)), { ok: true, data: { total_wait: 0, schedule: [] } });
+  assert.equal(add(h, 1, 0, 20, 6, 6000, 0), 0);
+  for (let id = 2; id <= 6; id++) assert.equal(add(h, id, 1, 2, 1, 1000, 9), 0);
+  // online FCFS waits 5 * 19 = 95; the offline optimum idles at tick 0: small jobs at 1, big job at 3
+  const before = M._aprm_state ? str(M._aprm_state(h)) : '';
   const e = json(M._aprm_exact(h));
-  assert.equal(e.ok, false);
-  assert.equal(e.error.code, -9);
-  assert.match(e.error.message, /not built yet/);
+  assert.equal(e.ok, true);
+  assert.equal(e.data.total_wait, 3);
+  assert.deepEqual(e.data.schedule.map((r) => [r.id, r.start, r.finish, r.wait]),
+    [[1, 3, 23, 3], [2, 1, 3, 0], [3, 1, 3, 0], [4, 1, 3, 0], [5, 1, 3, 0], [6, 1, 3, 0]]);
+  assert.equal(str(M._aprm_state(h)), before, 'the simulation is not changed');
+  assert.equal(runAll(h), 0);
+  const online = json(M._aprm_results(h)).data.reduce((t, r) => t + r.wait, 0);
+  assert.equal(online, 95);
+  assert.equal(json(M._aprm_exact(h)).data.total_wait, 3, 'same answer after the run');
+  // jobs 7..10 make 10: TOO_LARGE with the contract message, recorded as the last error
+  for (let id = 7; id <= 10; id++) assert.equal(add(h, id, 100, 2, 1, 1000, 9), 0);
+  const big = json(M._aprm_exact(h));
+  assert.equal(big.ok, false);
+  assert.equal(big.error.code, -9);
+  assert.equal(big.error.message, 'Exact solver supports up to 9 jobs.');
   assert.equal(lastErr(h).error.code, -9);
+  assert.equal(M._aprm_destroy(h), 0);
+});
+
+test('aprm_exact: exactly 9 jobs is allowed and answers quickly', () => {
+  const h = mk(FCFS, 1, 1);
+  for (let id = 0; id < 9; id++) assert.equal(add(h, id, 0, 5, 1, 1, 0), 0);
+  const t0 = Date.now();
+  const e = json(M._aprm_exact(h));
+  assert.ok(Date.now() - t0 < 2000);
+  assert.equal(e.data.total_wait, 180);
   assert.equal(M._aprm_destroy(h), 0);
 });
 

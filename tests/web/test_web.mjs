@@ -274,6 +274,16 @@ test('wasm: create failure reads aprm_last_error(0); status failures read the ha
   assert.equal(w.lastError(0).code, -2);
 });
 
+test('wasm: create converts epsilon to thousandths and refuses a non-whole value with an epsilon message', async () => {
+  const w = await ready();
+  assert.equal(typeof w.create(16, 32768, 'knapsack', 100, 50, 0.1), 'number');
+  assert.equal(typeof w.create(16, 32768, 'knapsack', 100, 50, 0.125), 'number');
+  const e = throwsEngine(() => w.create(16, 32768, 'knapsack', 100, 50, 0.1234), -2, 'epsilon');
+  assert.match(e.message, /epsilon/);
+  assert.doesNotMatch(e.message, /knapsack_eps_milli/);
+  throwsEngine(() => w.create(16, 32768, 'knapsack', 100, 50, NaN), -1);
+});
+
 test('wasm: JSON accessors parse; error envelope throws; bad JSON throws', async () => {
   const w = await ready();
   const h = w.create(4, 1000, 0, 100, 50, 0.1);

@@ -149,12 +149,15 @@
   }
 
   /* Epsilon as typed (0.1) to integer thousandths (100) for aprm_create (D72).
-   * A value with more than 3 decimals is passed on unrounded, so the engine
-   * refuses it with its own message instead of silently changing it. */
+   * A value with more than 3 decimals is refused here with an 'epsilon'
+   * message instead of being silently rounded. */
   function epsToMilli(eps) {
     var scaled = eps * 1000;
     var rounded = Math.round(scaled);
-    return Math.abs(scaled - rounded) < 1e-6 ? rounded : scaled;
+    if (!isFinite(scaled) || Math.abs(scaled - rounded) >= 1e-6) {
+      throw new EngineError(-2, 'epsilon must be a whole number of thousandths, like 0.1 or 0.125.', 'epsilon');
+    }
+    return rounded;
   }
 
   /* Create a simulation: returns a handle (1..4096). eps is the knapsack

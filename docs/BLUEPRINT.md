@@ -166,11 +166,11 @@ This follows Fan & Liang: instead of starting jobs the moment they arrive, wait 
 2. Give each job a size, its volume v_j = p_j × (c_j / CPU_CAP + m_j / MEM_CAP), and a value, its weight (priority + 1).
 3. Solve 0/1 knapsack: the largest total value whose total volume is at most ζ_k = 2γ_k (R·M·γ_k with R = 2 resources, M = 1 machine).
 4. **Order inside the chosen batch:** weighted shortest job first, smallest duration / (priority + 1) first (Fan & Liang chose WSJF in their §7.3), then the usual tie-break (earlier arrival, then lower id).
-5. **Starting jobs.** At every event, greedy fill first tries the chosen jobs that have not started, in batch order; a chosen job that does not fit yet starts as soon as it fits, before any unchosen job. Unchosen jobs go back to the pool and are considered again at the next window boundary.
+5. **Starting jobs.** At every event, greedy fill first tries the chosen jobs that have not started, in batch order; only chosen jobs start; a chosen job that does not fit yet starts as soon as it fits, and other chosen jobs behind it may start first. Unchosen jobs never start between windows; they go back to the pool and are considered again at the next window boundary.
 
 **Consequences to report.** Because windows double from absolute time 0, a job arriving at t = 600 is not considered before t = 1024, and the gap between boundaries grows with time. Knapsack batching therefore waits on purpose ("exercising patience"); it can lose to greedy at light load, as Fan & Liang saw in their Fig. 3, and its waits grow with absolute time in long runs.
 
-The knapsack uses dynamic programming with scaled sizes (CADP, after Ibarra & Kim): with **K = ε·ζ / n**, each size becomes ⌊v_j / K⌋ and the capacity ⌊ζ / K⌋, then exact DP. (Fan & Liang §5.1 prints K = ζn/ε; that is a typo, since their proof of Lemma 6.1 uses nK = εζ.) It reaches the optimal value while using at most (1 + ε) times the capacity (Lemma 6.1), in O(n² / ε) per window. Integer representation of volumes, ε and the table-size limit are open: `DECISIONS.md` O-2. The paper's 8R(1 + ε) guarantee (16(1 + ε) for our two resources) applies to their exact version; our engine-integrated version is evaluated by experiment, and the report says so.
+The knapsack uses dynamic programming with scaled sizes (CADP, after Ibarra & Kim): with **K = ε·ζ / n**, each size becomes ⌊v_j / K⌋ and the capacity ⌊ζ / K⌋, then exact DP. (Fan & Liang §5.1 prints K = ζn/ε; that is a typo, since their proof of Lemma 6.1 uses nK = εζ.) It reaches the optimal value while using at most (1 + ε) times the capacity (Lemma 6.1), in O(n² / ε) per window. The integer representation of volumes, ε (`knapsack_eps_milli`) and the table-size limit are settled in `DECISIONS.md` D72. The paper's 8R(1 + ε) guarantee (16(1 + ε) for our two resources) applies to their exact version; our engine-integrated version is evaluated by experiment, and the report says so.
 
 ### 3.7 Exact solver (tiny inputs only)
 
@@ -180,7 +180,7 @@ This finds the true best schedule for up to 9 jobs (a fixed constant, not config
 2. For each order, place each job at the earliest time at or after its arrival where its resources are free for its whole duration (serial schedule generation).
 3. Keep the order with the lowest total wait; branch and bound prunes orders that already cost more than the best found.
 
-For measures like total wait, trying every order in this way is known to include an optimal schedule (Kolisch 1996, project scheduling; verify before citing). Worst case O(n! · n²), about 3 × 10⁷ steps at n = 9. The solver knows all future jobs, so its answer is a lower bound for every online scheduler.
+For measures like total wait, trying every order in this way is known to include an optimal schedule (Kolisch 1996, project scheduling; verify before citing). Worst case O(n! · n³) (corrected from n² in D71), about 3 × 10⁷ steps at n = 9 before pruning. The solver knows all future jobs, so its answer is a lower bound for every online scheduler.
 
 ### 3.8 Complexity summary
 
@@ -190,7 +190,7 @@ For measures like total wait, trying every order in this way is known to include
 | Greedy fill, full run | O(n² log n) worst, ≈ O(n log n) typical | O(n) |
 | Reservation, per trigger | O(r log r) | O(r) |
 | Knapsack batch, per window | O(n² / ε) | O(n² / ε) |
-| Exact solver | O(n! · n²) | O(n) |
+| Exact solver | O(n! · n³) | O(n) |
 
 ## 4. Phase plan
 

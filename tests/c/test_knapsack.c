@@ -544,10 +544,12 @@ static void addj(Sim *s, int32_t id, int64_t arr, int64_t dur, int64_t cpu, int6
     CHECK(sim_add_job(s, &j) == APRM_OK);
 }
 
+/* Steps to the end with a budget (a run has at most a few events per job plus
+ * one per power of two), so a scheduling bug fails a check instead of hanging. */
 static void run_all(Sim *s)
 {
-    int rc;
-    while ((rc = sim_step(s)) == 1) { }
+    int rc = 1, budget = 5000;
+    while (budget-- > 0 && (rc = sim_step(s)) == 1) { }
     CHECK(rc == 0);
 }
 
@@ -761,6 +763,35 @@ static void test_engine_random_feasible(void)
     CHECK(bad == 0);
 }
 
+/* Regression for the next-window search: every step must move the clock
+ * forward, including when `now` is itself a power of two (the next boundary is
+ * the next power STRICTLY above now; a search that stopped at w == now would
+ * return the current tick again and never finish). The loop has a step budget,
+ * so a bug shows up as a failed check, not a hang. Jobs arrive at 1, 2, 4, 8,
+ * 16 and last long enough that they are chosen at later windows. Windows plus
+ * arrivals plus finishes give at most about 4 events per job and 1 per
+ * power of two up to the last start (here < 2^12). */
+static void test_engine_windows_make_progress(void)
+{
+    Sim *s = mk(2, 100, 100);
+    int64_t prev = -1;
+    int steps = 0, rc = 1, advanced = 1;
+    int32_t id;
+    for (id = 0; id < 5; id++) addj(s, id, (int64_t)1 << id, 20 + id, 2, 10, 0);
+    addj(s, 9, 0, 3000, 2, 10, 9);   /* only eligible at window 4096 */
+    while (steps < 200 && (rc = sim_step(s)) == 1) {
+        if (s->now <= prev) advanced = 0;
+        prev = s->now;
+        steps++;
+    }
+    CHECK(rc == 0);            /* finished within the budget */
+    CHECK(advanced);           /* the clock moved at every step */
+    CHECK(steps < 40);
+    CHECK(start_of(s, 9) >= 4096 && s->fin_len == 6);
+    check_inv(s);
+    sim_destroy(s);
+}
+
 #ifdef APRM_DEBUG
 static void test_invariant_checker(void)
 {
@@ -807,6 +838,7 @@ int main(void)
     test_engine_chosen_waits_for_fit();
     test_engine_reset_and_determinism();
     test_engine_random_feasible();
+    test_engine_windows_make_progress();
 #ifdef APRM_DEBUG
     test_invariant_checker();
 #endif

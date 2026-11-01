@@ -741,7 +741,7 @@ The speaker keeps talking ("let me show you the recorded run") while the other s
 
 | Risk | Likelihood | Early warning | Fallback |
 | --- | --- | --- | --- |
-| Emscripten will not install on a laptop | Medium | `emcc` not found or fails in WSL | CI builds `aprm.js`; download it from the CI run; the laptop only needs GCC |
+| Emscripten will not install on a laptop | Medium | `emcc` not found or fails in WSL | the website needs `make wasm`; without emsdk everything else (console program, tests, figures) still works; the `demo-ready` build (tag) is the fallback |
 | Console and WebAssembly results differ | Medium | Conformance check fails | Usually uninitialised memory or float ties: run `make sanitize`, check tie-breaks; never ship until it passes |
 | Memory bug in C | Medium | Random crashes, odd results | `make sanitize` on every change; CI blocks the merge |
 | Python and C disagree on CSV format | Medium | Parse errors in experiment runs | §5 is the contract; golden CSVs are the shared reference; change §5 first |
@@ -750,7 +750,7 @@ The speaker keeps talking ("let me show you the recorded run") while the other s
 | Knapsack batch underperforms greedy | Medium | E1 shows it worse at light load | Report it honestly; Fan & Liang saw the same at light load (their Fig. 3) |
 | Exact solver too slow | Low | 9-job cases take over 2 seconds | Add pruning; lower the limit to 8 |
 | Ahaana blocked waiting for real summaries | Medium | No `results/summaries/` by Stage 3 | Build every figure on `data/sample_summaries/`, which use the §5 summary formats; switching to real data changes only the input folder |
-| Results differ between compilers through floating point | Low | Conformance fails on aging or knapsack cases | Scheduling decisions use integers only (`alpha_milli`); knapsack representation fixed in `DECISIONS.md` O-2 |
+| Results differ between compilers through floating point | Low | Conformance fails on aging or knapsack cases | Scheduling decisions use integers only (`alpha_milli`); knapsack representation fixed in `DECISIONS.md` D72 |
 | One member cannot explain the other's part | Medium | Stumbles in rehearsal | PR reviews, the questions table in §10A, and one solo rehearsal each |
 | Projector or laptop fails | Low | — | Second laptop on the same tag; backup video on USB and cloud |
 | Running out of time | Medium | Must-haves open near the end | Cut from the bottom of the Nice-to-have list; never cut M4 (reservation), M7 (website) or M13 (backup video) |
