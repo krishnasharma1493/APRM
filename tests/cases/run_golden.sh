@@ -13,8 +13,8 @@
 
 # Policies whose engine code does not exist yet. Their cases are SKIPPED, not
 # failed. Each issue removes its policy from this list when it lands:
-#   reserve: K-26   knapsack: K-34
-SKIP_POLICIES="reserve knapsack"
+#   knapsack: K-34   (reserve landed in K-26)
+SKIP_POLICIES="knapsack"
 
 BIN=${APRM_BIN:-build/aprm}
 DIR=tests/cases
