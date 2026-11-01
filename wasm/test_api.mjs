@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const M = await require(join(root, 'web', 'vendor', 'aprm.js'))();
 
 const FCFS = 0, PRIORITY = 1, SJF = 2, AGING = 3, AGING_RESERVE = 4, KNAPSACK = 5;
-const BUILT = ['fcfs', 'priority', 'sjf', 'aging', 'reserve'];   // knapsack (K-34) is not built yet
+const BUILT = ['fcfs', 'priority', 'sjf', 'aging', 'reserve', 'knapsack'];
 const MAXSAFE = 2 ** 53;
 let passed = 0;
 const tests = [];
@@ -24,7 +24,7 @@ const test = (name, fn) => tests.push([name, fn]);
 
 const str = (p) => M.UTF8ToString(p);
 const json = (p) => JSON.parse(str(p));           // strict: throws on invalid JSON
-const mk = (policy = FCFS, cpu = 16, mem = 32768) => M._aprm_create(cpu, mem, policy, 100, 50, 0.1);
+const mk = (policy = FCFS, cpu = 16, mem = 32768) => M._aprm_create(cpu, mem, policy, 100, 50, 100);
 const add = (h, id, arrival, duration, cpu, mem, pri) => M._aprm_add_job(h, id, arrival, duration, cpu, mem, pri);
 const lastErr = (h) => json(M._aprm_last_error(h));
 const expectErr = (h, code, field) => {
@@ -82,18 +82,21 @@ test('bad handle: every function reports INVALID_ARGUMENT', () => {
 
 test('aprm_create failures with no handle (O-10, D64): aprm_last_error(0)', () => {
   const cases = [
-    [[0, 32768, FCFS, 100, 50, 0.1], -2, 'cpu_cap'],
-    [[16, 0, FCFS, 100, 50, 0.1], -2, 'mem_cap'],
-    [[16, 32768, 9, 100, 50, 0.1], -1, 'policy'],
-    [[16, 32768, -1, 100, 50, 0.1], -1, 'policy'],
-    [[16, 32768, 1.5, 100, 50, 0.1], -2, 'policy'],
-    [[16, 32768, FCFS, 10001, 50, 0.1], -2, 'alpha_milli'],
-    [[16, 32768, FCFS, 100, -1, 0.1], -2, 'reserve_threshold'],
-    [[16, 32768, FCFS, 100, 50, 0], -2, 'knapsack_eps'],
-    [[16, 32768, FCFS, 100, 50, NaN], -2, 'knapsack_eps'],
-    [[2 ** 53 + 2, 32768, FCFS, 100, 50, 0.1], -2, 'cpu_cap'],
-    [[NaN, 32768, FCFS, 100, 50, 0.1], -2, 'cpu_cap'],
-    [[Infinity, 32768, FCFS, 100, 50, 0.1], -2, 'cpu_cap'],
+    [[0, 32768, FCFS, 100, 50, 100], -2, 'cpu_cap'],
+    [[16, 0, FCFS, 100, 50, 100], -2, 'mem_cap'],
+    [[16, 32768, 9, 100, 50, 100], -1, 'policy'],
+    [[16, 32768, -1, 100, 50, 100], -1, 'policy'],
+    [[16, 32768, 1.5, 100, 50, 100], -2, 'policy'],
+    [[16, 32768, FCFS, 10001, 50, 100], -2, 'alpha_milli'],
+    [[16, 32768, FCFS, 100, -1, 100], -2, 'reserve_threshold'],
+    [[16, 32768, FCFS, 100, 50, 0], -2, 'knapsack_eps_milli'],
+    [[16, 32768, FCFS, 100, 50, 9], -2, 'knapsack_eps_milli'],
+    [[16, 32768, FCFS, 100, 50, 1001], -2, 'knapsack_eps_milli'],
+    [[16, 32768, FCFS, 100, 50, 0.1], -2, 'knapsack_eps_milli'],   // a fraction is not thousandths
+    [[16, 32768, FCFS, 100, 50, NaN], -2, 'knapsack_eps_milli'],
+    [[2 ** 53 + 2, 32768, FCFS, 100, 50, 100], -2, 'cpu_cap'],
+    [[NaN, 32768, FCFS, 100, 50, 100], -2, 'cpu_cap'],
+    [[Infinity, 32768, FCFS, 100, 50, 100], -2, 'cpu_cap'],
   ];
   for (const [args, code, field] of cases) {
     assert.equal(M._aprm_create(...args), code, JSON.stringify(args));
@@ -105,7 +108,7 @@ test('aprm_create failures with no handle (O-10, D64): aprm_last_error(0)', () =
   assert.equal(M._aprm_destroy(h), 0);
   // A failure on a live handle does not touch the no-handle slot.
   const h2 = mk();
-  assert.equal(M._aprm_create(0, 1, 0, 0, 0, 0.5), -2);
+  assert.equal(M._aprm_create(0, 1, 0, 0, 0, 500), -2);
   assert.equal(add(h2, 1, 0, 1, 99, 1, 0), -3);
   expectErr(0, -2, 'cpu_cap');
   expectErr(h2, -3);
@@ -180,11 +183,14 @@ test('LIMIT_REACHED at 5000 jobs', () => {
   assert.equal(M._aprm_destroy(h), 0);
 });
 
-test('step and run_until: not-implemented policy, number check, D59 clock', () => {
+test('step and run_until: knapsack steps like the others, number check, D59 clock', () => {
   const h = mk(KNAPSACK);
-  assert.equal(M._aprm_step(h), -1);
-  expectErr(h, -1);
-  assert.match(lastErr(h).error.message, /not implemented/);
+  assert.equal(M._aprm_step(h), 0);   // nothing to do on an empty simulation
+  assert.equal(add(h, 1, 0, 1, 1, 1, 0), 0);
+  assert.equal(M._aprm_step(h), 1);   // arrival at 0
+  assert.equal(M._aprm_step(h), 1);   // window 1: the job is chosen and starts
+  assert.equal(M._aprm_step(h), 1);   // finish
+  assert.equal(M._aprm_step(h), 0);
   assert.equal(M._aprm_destroy(h), 0);
 
   const g = mk(FCFS);
@@ -203,7 +209,7 @@ test('step and run_until: not-implemented policy, number check, D59 clock', () =
 });
 
 test('reserve policy: state JSON carries the reservation, cleared at the shadow time (memory_hog)', () => {
-  const h = M._aprm_create(16, 32768, AGING_RESERVE, 100, 10, 0.1);
+  const h = M._aprm_create(16, 32768, AGING_RESERVE, 100, 10, 100);
   for (const [id, arr, dur, cpu, mem, pri] of [[1, 0, 10, 2, 8000, 1], [2, 1, 4, 4, 30000, 5], [3, 6, 10, 2, 8000, 1],
                                                [4, 11, 10, 2, 8000, 1], [5, 17, 10, 2, 8000, 1], [6, 22, 10, 2, 8000, 1]])
     assert.equal(add(h, id, arr, dur, cpu, mem, pri), 0);
@@ -401,7 +407,7 @@ test('aprm.js runs as a classic script in a browser-like context (no module, no 
   vm.runInContext(code + '\n;this.__factory = typeof createAprm === "function" ? createAprm : null;', sandbox);
   assert.equal(typeof sandbox.createAprm, 'function', 'a classic script defines the global factory');
   const B = await sandbox.__factory();
-  const h = B._aprm_create(16, 32768, 0, 100, 50, 0.1);
+  const h = B._aprm_create(16, 32768, 0, 100, 50, 100);
   assert.ok(h >= 1);
   assert.equal(B._aprm_add_job(h, 1, 0, 10, 16, 32768, 0), 0);
   while (B._aprm_step(h) > 0);
@@ -431,11 +437,9 @@ for (const [name, policy, g] of goldens) {
     }
   });
 }
-test('golden cases for policies not built yet (knapsack) are skipped', () => {
+test('every policy with golden files is built (nothing is skipped)', () => {
   const others = readdirSync(casesDir).filter((f) => /\.expected\.csv$/.test(f) && !BUILT.includes(f.split('.')[1]));
-  console.log(`  skipped ${others.length} golden files of policies not built yet`);
-  const run = spawnSync('node', [runner, '--policy', 'knapsack', '--in', join(casesDir, 'sjf_order.csv')]);
-  assert.equal(run.status, 4);
+  assert.deepEqual(others, []);
 });
 
 const H = 'id,arrival,duration,cpu,mem,priority';
@@ -499,9 +503,9 @@ test('number boundaries and exact messages (2^53, 32 bits)', () => {
   assert.equal(msg(), 'priority does not fit in 32 bits.');
   assert.equal(add(h, 3, 0, 1, 1, 1, 10), -2);
   assert.notEqual(msg(), 'priority does not fit in 32 bits.');
-  assert.equal(M._aprm_create(MAXSAFE, 1, 0, 0, 0, 0.1), -2);
+  assert.equal(M._aprm_create(MAXSAFE, 1, 0, 0, 0, 100), -2);
   assert.equal(lastErr(0).error.message, 'cpu_cap must be 1 to 1000000.');
-  assert.equal(M._aprm_create(MAXSAFE + 2, 1, 0, 0, 0, 0.1), -2);
+  assert.equal(M._aprm_create(MAXSAFE + 2, 1, 0, 0, 0, 100), -2);
   assert.equal(lastErr(0).error.message, 'cpu_cap must be a whole number within 2^53 either way.');
   assert.equal(M._aprm_destroy(h), 0);
 });
@@ -525,7 +529,9 @@ test('run_wasm.mjs exit codes', () => {
   assert.equal(r(['--in', join(casesDir, 'capacity_reject.csv')]), 3);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv'), '--cpu', '0']), 1);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv')]), 0);
-  assert.equal(r(['--policy', 'knapsack', '--in', join(casesDir, 'fcfs_basic.csv')]), 4);
+  assert.equal(r(['--policy', 'knapsack', '--in', join(casesDir, 'fcfs_basic.csv')]), 0);
+  assert.equal(r(['--policy', 'knapsack', '--eps', '0.0001', '--in', join(casesDir, 'fcfs_basic.csv')]), 1);
+  assert.equal(r(['--policy', 'knapsack', '--eps', '2', '--in', join(casesDir, 'fcfs_basic.csv')]), 1);
 });
 
 if (existsSync(cli)) console.log('build/aprm found: golden cases also compared with the console program');

@@ -90,7 +90,7 @@ static void run_case(const char *name)
     memset(&cfg, 0, sizeof cfg);
     cfg.cpu_cap = APRM_CPU_CAP_DEFAULT; cfg.mem_cap = APRM_MEM_CAP_DEFAULT;
     cfg.policy = POL_FCFS; cfg.alpha_milli = APRM_ALPHA_MILLI_DEFAULT;
-    cfg.reserve_threshold = APRM_RESERVE_T_DEFAULT; cfg.knapsack_eps = APRM_KNAPSACK_EPS_DEFAULT;
+    cfg.reserve_threshold = APRM_RESERVE_T_DEFAULT; cfg.knapsack_eps_milli = APRM_KNAPSACK_EPS_MILLI_DEFAULT;
     cfg.max_jobs = APRM_MAX_JOBS_CLI;
 
     CHECK(csv_read_jobs(in, in_len, cfg.max_jobs, &jobs, &n, &cerr) == APRM_OK);

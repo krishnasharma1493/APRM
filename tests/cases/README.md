@@ -358,6 +358,30 @@ Reserve (`.reserve.expected.csv`):
 
 Aging only (`.aging.expected.csv`), same input: t=2: job 3 (key 9000) is tried first, fits (35 <= 40) and starts 2 to 32 (wait 0). t=20: job 1 finishes; free memory is 100 - 35 = 65 < 70: job 2 waits. t=32: job 3 finishes; job 2 starts 32 to 37 (wait 31). The reservation turns a 31-tick wait into 19 and delays the high-priority job 3 from 2 to 25, which is the price of the guarantee.
 
+### knapsack_windows (shows: windows at 1, 2, 4, 8 from time 0; only jobs with duration <= window are eligible; WSJF order inside a batch)
+
+Same jobs as `sjf_order`, 16 cores, 32768 MB, default epsilon 0.1. Every job needs all 16 cores, so they run one at a time. Volume of a job is p x (1 + 1000/32768); capacity is 2 x window.
+
+Knapsack (`.knapsack.expected.csv`):
+- t=1: window 1 (job 2 has arrived). Only durations <= 1 are eligible: none. Nothing starts.
+- t=2: window 2 (capacity 4). Job 3 (duration 2, volume 2.06) is the only eligible job; it is chosen and starts 2 to 4.
+- t=3: jobs 4 and 5 arrive and wait (a window is not due).
+- t=4: job 3 finishes; window 4 (capacity 8). Eligible: job 4 (duration 4, volume 4.12) and job 5 (2, 2.06), total 6.18 <= 8: both chosen. WSJF: job 4 has 4/5 = 0.8, job 5 has 2/1 = 2, so job 4 first: 4 to 8.
+- t=8: job 4 finishes; window 8 (capacity 16). Jobs 1 (5, 5.15) and 2 (8, 8.25), total 13.4 <= 16: both chosen. Job 5 (earlier batch) starts first: 8 to 10. Batch order: job 2 (8/10 = 0.8) before job 1 (5/2 = 2.5): job 2 10 to 18, job 1 18 to 23.
+
+### knapsack_pool (shows: jobs not chosen do not start between windows, even when they would fit)
+
+4 cores, 1000 MB (`--cpu 4 --mem 1000`). Five jobs at t=0, duration 4, 2 cores, 1 MB, priority 0. Volume 4 x (2/4 + 1/1000) = 2.004, capacity at window 4 is 8. With n = 5 and epsilon 0.1 the scaled capacity is 50 and each scaled size floor(12.525) = 12, so four jobs fit (48) and five do not (60).
+- t=4: window 4. All values are equal, so the first four by id are chosen (ties prefer earlier). Jobs 1 and 2 start (the machine holds two): 4 to 8. Job 5 is left in the pool.
+- t=8: jobs 1 and 2 finish. Window 8 (capacity 16) chooses job 5. Jobs 3 and 4 (chosen earlier, so earlier in batch order) start first: 8 to 12; job 5 waits for room.
+- t=12: job 5 starts, 12 to 16.
+
+### knapsack_late (shows: waiting on purpose: a job arriving at t = 600 is not considered before the window at 1024)
+
+Default machine. Job 3 (duration 1) is chosen at window 1 and runs 1 to 2. Job 2 (duration 5) is not eligible until gamma >= 5, so it is chosen at window 8 and runs 8 to 13. Job 1 arrives at 600 and the next window is 1024: it runs 1024 to 1025 (wait 424) although the machine is idle for 1000 ticks.
+
+All three knapsack cases were worked on paper first (D72). Status of the paper check by Ahaana: **awaiting Ahaana's paper check**.
+
 ## Status of the paper check by Ahaana (every case)
 
 All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation without it). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
@@ -382,3 +406,6 @@ All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation
 | aging_overtake | aging, priority | awaiting Ahaana's paper check |
 | aging_alpha0 | aging, priority | awaiting Ahaana's paper check |
 | reserve_outrank | reserve, aging | awaiting Ahaana's paper check |
+| knapsack_windows | knapsack | awaiting Ahaana's paper check |
+| knapsack_pool | knapsack | awaiting Ahaana's paper check |
+| knapsack_late | knapsack | awaiting Ahaana's paper check |

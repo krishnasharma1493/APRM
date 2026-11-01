@@ -38,15 +38,15 @@
   var CHART_INTEGRITY = 'sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ';
   var CHART_TIMEOUT_MS = 10000;
 
-  /* name: what the engine is told; label: what the page shows. Knapsack is not
-   * built yet, so it is listed but cannot be ticked. */
+  /* name: what the engine is told; label: what the page shows. A policy with
+   * available false is listed but cannot be ticked (none at present). */
   var POLICIES = [
     { name: 'fcfs', label: 'fcfs', available: true },
     { name: 'priority', label: 'priority', available: true },
     { name: 'sjf', label: 'sjf', available: true },
     { name: 'aging', label: 'aging', available: true },
     { name: 'aging_reserve', label: 'reserve', available: true },
-    { name: 'knapsack', label: 'knapsack (not implemented yet)', available: false }
+    { name: 'knapsack', label: 'knapsack', available: true }
   ];
   var DEFAULT_SELECTED = ['fcfs', 'aging'];
 

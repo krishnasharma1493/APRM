@@ -13,7 +13,7 @@ static SimConfig cfg_default(void)
     SimConfig c;
     memset(&c, 0, sizeof c);
     c.cpu_cap = 16; c.mem_cap = 32768; c.policy = POL_FCFS;
-    c.alpha_milli = 100; c.reserve_threshold = 50; c.knapsack_eps = 0.1;
+    c.alpha_milli = 100; c.reserve_threshold = 50; c.knapsack_eps_milli = 100;
     c.max_jobs = 5000;
     return c;
 }
@@ -110,17 +110,17 @@ static void test_create_bad_field(void)
     c = cfg_default(); c.alpha_milli = -1;           create_bad(c, APRM_INVALID_FIELD, "alpha_milli");
     c = cfg_default(); c.reserve_threshold = -1;     create_bad(c, APRM_INVALID_FIELD, "reserve_threshold");
     c = cfg_default(); c.reserve_threshold = 1000001; create_bad(c, APRM_INVALID_FIELD, "reserve_threshold");
-    c = cfg_default(); c.knapsack_eps = 0.009;       create_bad(c, APRM_INVALID_FIELD, "knapsack_eps");
-    c = cfg_default(); c.knapsack_eps = 1.5;         create_bad(c, APRM_INVALID_FIELD, "knapsack_eps");
-    c = cfg_default(); c.knapsack_eps = strtod("nan", NULL);
-    create_bad(c, APRM_INVALID_FIELD, "knapsack_eps");  /* NaN */
+    c = cfg_default(); c.knapsack_eps_milli = 9;       create_bad(c, APRM_INVALID_FIELD, "knapsack_eps_milli");
+    c = cfg_default(); c.knapsack_eps_milli = 1001;    create_bad(c, APRM_INVALID_FIELD, "knapsack_eps_milli");
+    c = cfg_default(); c.knapsack_eps_milli = -1;
+    create_bad(c, APRM_INVALID_FIELD, "knapsack_eps_milli");
     c = cfg_default(); c.max_jobs = 0;               create_bad(c, APRM_INVALID_FIELD, "max_jobs");
     /* Boundaries are accepted. */
     c = cfg_default(); c.cpu_cap = 1; c.mem_cap = 1; c.alpha_milli = 0; c.reserve_threshold = 0;
-    c.knapsack_eps = 0.01; c.max_jobs = 1;
+    c.knapsack_eps_milli = 10; c.max_jobs = 1;
     CHECK(sim_validate_config(&c, NULL) == APRM_OK);
     c.cpu_cap = 1000000; c.mem_cap = 1000000000; c.alpha_milli = 10000;
-    c.reserve_threshold = 1000000; c.knapsack_eps = 1;
+    c.reserve_threshold = 1000000; c.knapsack_eps_milli = 1000;
     CHECK(sim_validate_config(&c, NULL) == APRM_OK);
 }
 
@@ -418,9 +418,9 @@ static void test_step_null_and_policy(void)
     Job j = job_ok(1);
     CHECK(sim_step(NULL) == APRM_INVALID_ARGUMENT);
     CHECK(sim_run_until(NULL, 5) == APRM_INVALID_ARGUMENT);
-    c.policy = POL_KNAPSACK;  /* not built yet (K-34): refused, Sim untouched */
     s = make(c);
     CHECK(sim_add_job(s, &j) == APRM_OK);
+    s->policy_cmp = NULL;  /* defensive path: a Sim without a policy compare is refused, untouched */
     CHECK(sim_step(s) == APRM_INVALID_ARGUMENT);
     CHECK(sim_last_error(s)->code == APRM_INVALID_ARGUMENT);
     CHECK(strcmp(sim_last_error(s)->field, "policy") == 0);

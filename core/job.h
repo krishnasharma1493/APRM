@@ -23,7 +23,7 @@ typedef struct {
     PolicyKind policy;
     int64_t alpha_milli;        /* aging rate alpha x 1000, 0..10000 */
     int64_t reserve_threshold;  /* T, ticks */
-    double  knapsack_eps;       /* representation open: DECISIONS O-2 */
+    int64_t knapsack_eps_milli; /* epsilon x 1000, 10..1000 (D72) */
     int64_t max_jobs;           /* CLI 1,000,000; website 5,000 */
 } SimConfig;
 

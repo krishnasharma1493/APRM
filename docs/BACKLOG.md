@@ -146,7 +146,7 @@ Heap tests pass, both laptops build, CI green.
 ### K-13 WebAssembly exports and build · GitHub #14 ([link](https://github.com/krishnasharma1493/APRM/issues/14))
 - **Refs:** PRD §5 (WebAssembly exports), §3 (Emscripten flags), §9 (build-wasm); DECISIONS D26, D27, O-10
 - **Files:** `wasm/api.c`, `wasm/build.sh`, `wasm/run_wasm.mjs`, `.github/workflows/ci.yml`
-- **Do:** Flat exports `aprm_create(cpu, mem, policy, alpha_milli, T, eps)` … `aprm_destroy`, a handle table in `api.c`, `max_jobs` = 5,000. Modular, single-file output, only the step API exported; check the flag spellings in the current Emscripten documentation. A headless Node runner for conformance. CI job build-wasm with the frozen emsdk. Decide O-10.
+- **Do:** Flat exports `aprm_create(cpu, mem, policy, alpha_milli, T, eps_milli)` … `aprm_destroy`, a handle table in `api.c`, `max_jobs` = 5,000. Modular, single-file output, only the step API exported; check the flag spellings in the current Emscripten documentation. A headless Node runner for conformance. CI job build-wasm with the frozen emsdk. Decide O-10.
 - **Done when:**
   - [ ] `make wasm` produces `web/vendor/aprm.js` (git-ignored)
   - [ ] `node wasm/run_wasm.mjs` on a golden case prints the same `results.csv` as the CLI

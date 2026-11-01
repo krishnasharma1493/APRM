@@ -21,7 +21,7 @@ static SimConfig cfg_with(int64_t cpu, int64_t mem)
     SimConfig c;
     memset(&c, 0, sizeof c);
     c.cpu_cap = cpu; c.mem_cap = mem; c.policy = POL_FCFS;
-    c.alpha_milli = 100; c.reserve_threshold = 50; c.knapsack_eps = 0.1;
+    c.alpha_milli = 100; c.reserve_threshold = 50; c.knapsack_eps_milli = 100;
     c.max_jobs = APRM_MAX_JOBS_CLI;
     return c;
 }

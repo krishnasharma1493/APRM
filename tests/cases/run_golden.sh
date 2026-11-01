@@ -13,8 +13,8 @@
 
 # Policies whose engine code does not exist yet. Their cases are SKIPPED, not
 # failed. Each issue removes its policy from this list when it lands:
-#   knapsack: K-34   (reserve landed in K-26)
-SKIP_POLICIES="knapsack"
+#   (none now: reserve landed in K-26, knapsack in K-34)
+SKIP_POLICIES=""
 
 BIN=${APRM_BIN:-build/aprm}
 DIR=tests/cases
@@ -41,7 +41,7 @@ for p in $SKIP_POLICIES; do
     fi
 done
 
-echo "golden: policies not implemented yet, their cases are skipped: $SKIP_POLICIES"
+[ -n "$SKIP_POLICIES" ] && echo "golden: policies not implemented yet, their cases are skipped: $SKIP_POLICIES"
 
 # --- schedule cases ---
 for exp in "$DIR"/*.expected.csv; do

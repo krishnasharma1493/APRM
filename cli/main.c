@@ -132,15 +132,17 @@ static int int_flag(const char *flag, const char *val, int64_t lo, int64_t hi, i
 }
 
 /* Reads --eps: plain decimal digits[.digits] (no sign, no exponent, at most
- * 12 characters), in [APRM_KNAPSACK_EPS_MIN, APRM_KNAPSACK_EPS_MAX]. The text
- * is validated by hand first, so strtod only ever sees a safe string.
- * Returns 0 or an exit code. O(len). */
-static int eps_flag(const char *val, double *dst)
+ * 12 characters, at most 3 digits after the point) and stores it as integer
+ * thousandths (0.1 -> 100) in [APRM_KNAPSACK_EPS_MILLI_MIN,
+ * APRM_KNAPSACK_EPS_MILLI_MAX]. Integer arithmetic only: no strtod, so the
+ * value is the same on every compiler (D72). Returns 0 or an exit code.
+ * O(len). */
+static int eps_flag(const char *val, int64_t *dst)
 {
     char msg[160];
-    size_t i = 0, len = strlen(val);
+    size_t i = 0, len = strlen(val), frac_digits = 0;
     int dots = 0, digits = 0;
-    double v;
+    int64_t whole = 0, frac = 0;
     for (; i < len; i++) {
         if (val[i] == '.') dots++;
         else if (val[i] >= '0' && val[i] <= '9') digits++;
@@ -150,13 +152,23 @@ static int eps_flag(const char *val, double *dst)
         snprintf(msg, sizeof msg, "--eps needs a decimal number like 0.1, got '%.40s'.", val);
         return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", msg, 0);
     }
-    v = strtod(val, NULL);
-    if (!(v >= APRM_KNAPSACK_EPS_MIN && v <= APRM_KNAPSACK_EPS_MAX)) {
-        snprintf(msg, sizeof msg, "--eps must be %g to %g.", (double)APRM_KNAPSACK_EPS_MIN,
-                 (double)APRM_KNAPSACK_EPS_MAX);
+    for (i = 0; i < len && val[i] != '.'; i++) whole = whole * 10 + (val[i] - '0');  /* < 10^12 */
+    if (i < len) {
+        for (i++; i < len; i++, frac_digits++) {
+            if (frac_digits == 3) {
+                snprintf(msg, sizeof msg, "--eps allows at most 3 decimals, got '%.40s'.", val);
+                return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", msg, 0);
+            }
+            frac = frac * 10 + (val[i] - '0');
+        }
+    }
+    for (; frac_digits < 3; frac_digits++) frac *= 10;
+    if (whole > 1 || whole * 1000 + frac < APRM_KNAPSACK_EPS_MILLI_MIN ||
+        whole * 1000 + frac > APRM_KNAPSACK_EPS_MILLI_MAX) {
+        snprintf(msg, sizeof msg, "--eps must be 0.01 to 1.");
         return fail_line(EXIT_BAD_ARGS, "INVALID_FIELD", msg, 0);
     }
-    *dst = v;
+    *dst = whole * 1000 + frac;
     return 0;
 }
 
@@ -196,7 +208,7 @@ static int parse_args(int argc, char **argv, Args *a)
     a->cfg.policy = POL_FCFS;
     a->cfg.alpha_milli = APRM_ALPHA_MILLI_DEFAULT;
     a->cfg.reserve_threshold = APRM_RESERVE_T_DEFAULT;
-    a->cfg.knapsack_eps = APRM_KNAPSACK_EPS_DEFAULT;
+    a->cfg.knapsack_eps_milli = APRM_KNAPSACK_EPS_MILLI_DEFAULT;
     a->cfg.max_jobs = APRM_MAX_JOBS_CLI;
 
     for (i = 1; i < argc; i++) {
@@ -236,7 +248,7 @@ static int parse_args(int argc, char **argv, Args *a)
             rc = int_flag(f, val, APRM_ALPHA_MILLI_MIN, APRM_ALPHA_MILLI_MAX, &a->cfg.alpha_milli);
         else if (strcmp(f, "--threshold") == 0)
             rc = int_flag(f, val, APRM_RESERVE_T_MIN, APRM_RESERVE_T_MAX, &a->cfg.reserve_threshold);
-        else rc = eps_flag(val, &a->cfg.knapsack_eps);   /* --eps */
+        else rc = eps_flag(val, &a->cfg.knapsack_eps_milli);   /* --eps */
         if (rc != 0) return rc;
     }
     if (a->help) return 0;

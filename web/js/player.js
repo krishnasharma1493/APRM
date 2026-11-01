@@ -657,16 +657,29 @@
     return s === '' ? NaN : Number(s);
   }
 
+  /* Epsilon text, with the same grammar as the console program's --eps (D72):
+   * digits, optionally a point and 1 to 3 digits; no sign, exponent, leading or
+   * trailing point; 0.01 to 1. Returns the number (0.1) or an error text. */
+  function epsFromText(text) {
+    var m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(text);
+    var milli;
+    if (!m) { return 'epsilon must be a decimal number like 0.1 with at most 3 decimals (no exponent, no sign).'; }
+    milli = Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
+    if (milli < 10 || milli > 1000) { return 'epsilon must be 0.01 to 1.'; }
+    return milli / 1000;
+  }
+
   /* Read the Run panel into the store; returns an error text or ''. */
   function readSettings() {
     var policyEl = byId('run-policy');
     var policy = policyEl && policyEl.value ? policyEl.value : 'fcfs';
     var alpha = numberOf('run-alpha');
     var thr = numberOf('run-threshold');
-    var eps = numberOf('run-eps');
+    var epsText = byId('run-eps') ? String(byId('run-eps').value).trim() : '';
+    var eps = epsFromText(epsText);
     if (!isFinite(alpha) || Math.floor(alpha) !== alpha) { return 'alpha_milli must be a whole number.'; }
     if (!isFinite(thr) || Math.floor(thr) !== thr) { return 'reservation threshold must be a whole number.'; }
-    if (!isFinite(eps)) { return 'epsilon must be a number.'; }
+    if (typeof eps === 'string') { return eps; }
     APRM.store.setPolicies([policy]);
     APRM.store.setSettings({ alphaMilli: alpha, threshold: thr, eps: eps, speed: speed });
     return '';

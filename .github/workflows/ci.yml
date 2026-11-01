@@ -134,15 +134,14 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           node --version
           node wasm/test_api.mjs
-      - name: Every golden case of the built policies through Node equals its expected file
+      - name: Every golden case through Node equals its expected file
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
-          # knapsack (K-34) is not built yet: its cases are not run.
           for exp in tests/cases/*.expected.csv; do
             base=$(basename "$exp" .expected.csv)
             name=${base%%.*}
             policy=${base#*.}
-            case "$policy" in fcfs|priority|sjf|aging|reserve) ;; *) continue ;; esac
+            case "$policy" in fcfs|priority|sjf|aging|reserve|knapsack) ;; *) continue ;; esac
             args=""
             if [ -f "tests/cases/$name.args" ]; then args=$(cat "tests/cases/$name.args"); fi
             # shellcheck disable=SC2086

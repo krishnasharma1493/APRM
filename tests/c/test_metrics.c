@@ -28,7 +28,7 @@ static SimConfig make_cfg(PolicyKind pol, int64_t cpu, int64_t mem)
     c.policy = pol;
     c.alpha_milli = APRM_ALPHA_MILLI_DEFAULT;
     c.reserve_threshold = APRM_RESERVE_T_DEFAULT;
-    c.knapsack_eps = APRM_KNAPSACK_EPS_DEFAULT;
+    c.knapsack_eps_milli = APRM_KNAPSACK_EPS_MILLI_DEFAULT;
     c.max_jobs = 1000;
     return c;
 }

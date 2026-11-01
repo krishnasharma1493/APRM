@@ -52,6 +52,7 @@ int policy_wait_key(PolicyKind kind, int64_t alpha_milli, const Job *j, int64_t 
     int64_t k;
     int rc;
     if (!j || !key) return APRM_INVALID_ARGUMENT;
+    if (kind == POL_KNAPSACK) { *key = POLICY_KEY_UNCHOSEN; return APRM_OK; }  /* not yet in a batch */
     if (kind != POL_AGING && kind != POL_AGING_RESERVE) { *key = 0; return APRM_OK; }
     rc = policy_aging_key(j, alpha_milli, &k);
     if (rc != APRM_OK) return rc;
@@ -63,11 +64,12 @@ int policy_wait_key(PolicyKind kind, int64_t alpha_milli, const Job *j, int64_t 
 PolicyCompare policy_compare_for(PolicyKind kind)
 {
     switch (kind) {
-    case POL_FCFS:     return policy_fcfs_compare;
+    case POL_FCFS:
+    case POL_KNAPSACK: return policy_fcfs_compare;  /* pool order; the batch order is the key (K-34) */
     case POL_PRIORITY: return policy_priority_compare;
     case POL_SJF:      return policy_sjf_compare;
     case POL_AGING:
     case POL_AGING_RESERVE: return policy_aging_compare;  /* reserve = aging order + reservation (K-26) */
-    default:           return NULL;  /* knapsack (K-34) */
+    default:           return NULL;  /* unknown kind */
     }
 }

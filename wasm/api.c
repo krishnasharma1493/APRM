@@ -237,12 +237,13 @@ static Slot *alloc_slot(int *code)
 }
 
 /* Create a simulation. policy is the PolicyKind number (0 fcfs, 1 priority,
- * 2 sjf, 3 aging, 4 reserve, 5 knapsack); T is the reservation threshold.
+ * 2 sjf, 3 aging, 4 reserve, 5 knapsack); T is the reservation threshold;
+ * eps_milli is the knapsack epsilon in thousandths (100 = 0.1; D72).
  * max_jobs is APRM_MAX_JOBS_WEB (D27). Returns a handle >= 1, or a negative
  * APRM_* code; on failure the reason is available from aprm_last_error(0)
  * (O-10, D64). Validation is complete before anything is allocated. */
 APRM_EXPORT int aprm_create(double cpu, double mem, double policy, double alpha_milli,
-                            double T, double eps)
+                            double T, double eps_milli)
 {
     SimConfig cfg;
     SimError e;
@@ -256,6 +257,7 @@ APRM_EXPORT int aprm_create(double cpu, double mem, double policy, double alpha_
         (rc = to_i64(mem, "mem_cap", &cfg.mem_cap, &e)) != APRM_OK ||
         (rc = to_i64(alpha_milli, "alpha_milli", &cfg.alpha_milli, &e)) != APRM_OK ||
         (rc = to_i64(T, "reserve_threshold", &cfg.reserve_threshold, &e)) != APRM_OK ||
+        (rc = to_i64(eps_milli, "knapsack_eps_milli", &cfg.knapsack_eps_milli, &e)) != APRM_OK ||
         (rc = to_i64(policy, "policy", &pol, &e)) != APRM_OK) {
         g_orphan_err = e;
         return rc;
@@ -265,7 +267,6 @@ APRM_EXPORT int aprm_create(double cpu, double mem, double policy, double alpha_
         return APRM_INVALID_ARGUMENT;
     }
     cfg.policy = (PolicyKind)pol;
-    cfg.knapsack_eps = eps;
     cfg.max_jobs = APRM_MAX_JOBS_WEB;
     rc = sim_validate_config(&cfg, &e);
     if (rc != APRM_OK) {

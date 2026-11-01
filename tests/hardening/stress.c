@@ -16,7 +16,7 @@ int eventlog_push_chk(EventLog *l, int64_t t, LogKind k, int32_t job, int64_t a0
 }
 static char *run(PolicyKind pol, int64_t alpha, int64_t T, int64_t cpu, int64_t mem, Job *jobs, int n, const int *order){
   SimConfig c; Sim *s; JsonBuf j; char *out; memset(&c,0,sizeof c);
-  c.cpu_cap=cpu; c.mem_cap=mem; c.policy=pol; c.alpha_milli=alpha; c.reserve_threshold=T; c.knapsack_eps=0.1; c.max_jobs=1000;
+  c.cpu_cap=cpu; c.mem_cap=mem; c.policy=pol; c.alpha_milli=alpha; c.reserve_threshold=T; c.knapsack_eps_milli=100; c.max_jobs=1000;
   if(sim_create(&c,&s)) abort();
   for(int i=0;i<n;i++) if(sim_add_job(s,&jobs[order[i]])) abort();
   while(sim_step(s)==1){}
@@ -34,7 +34,7 @@ int main(int argc,char**argv){
     for(int i=0;i<n;i++){ jobs[i].id=(int32_t)(rnd()%200)+1000*i; jobs[i].arrival=rnd()%(maxarr+1); jobs[i].duration=1+rnd()%6;
       jobs[i].cpu=1+rnd()%cpu; jobs[i].mem=1+rnd()%mem; jobs[i].priority=rnd()%10; order[i]=i; ord2[i]=i; }
     for(int i=n-1;i>0;i--){ int k=rnd()%(i+1); int t=ord2[i]; ord2[i]=ord2[k]; ord2[k]=t; }
-    for(int pol=0; pol<5; pol++){
+    for(int pol=0; pol<6; pol++){
       int64_t alpha=rnd()%3000, T=rnd()%10;
       char *a=run((PolicyKind)pol,alpha,T,cpu,mem,jobs,n,order), *b=run((PolicyKind)pol,alpha,T,cpu,mem,jobs,n,ord2), *c=run((PolicyKind)pol,alpha,T,cpu,mem,jobs,n,order);
       if(strcmp(a,c)){ fprintf(stderr,"NONDETERMINISTIC: same input, two runs differ (policy %d)\n",pol); return 1; }

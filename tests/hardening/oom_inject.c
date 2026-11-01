@@ -30,7 +30,7 @@ static int snap(Sim *s, char **out){
 static int run_once(PolicyKind pol, long fail_at, int *oom_seen){
   SimConfig c; Sim *s=NULL; Job *jobs=NULL; int64_t n=0; CsvError e; int rc; int64_t k; static char before[1<<20];
   long live0 = fi_live;
-  memset(&c,0,sizeof c); c.cpu_cap=16; c.mem_cap=32768; c.policy=pol; c.alpha_milli=100; c.reserve_threshold=0; c.knapsack_eps=0.1; c.max_jobs=1000;
+  memset(&c,0,sizeof c); c.cpu_cap=16; c.mem_cap=32768; c.policy=pol; c.alpha_milli=100; c.reserve_threshold=0; c.knapsack_eps_milli=100; c.max_jobs=1000;
   fi_countdown = fail_at;
   rc = csv_read_jobs(CSV, strlen(CSV), 1000, &jobs, &n, &e);
   if(rc!=APRM_OK){ CHECK(rc==APRM_OUT_OF_MEMORY && jobs==NULL && n==0, "csv rc %d", rc); (*oom_seen)++; goto out; }
@@ -73,7 +73,7 @@ out:
 }
 int main(void){
   long total_runs=0; int oom_seen=0; int pol;
-  for(pol=0; pol<5; pol++){
+  for(pol=0; pol<6; pol++){
     long calls; fi_calls=0; fi_countdown=-1; { int o=0; run_once((PolicyKind)pol,-1,&o);} calls=fi_calls;
     printf("policy %d: %ld allocation calls in a clean run\n",pol,calls);
     for(long f=1; f<=calls+2; f++){ run_once((PolicyKind)pol,f,&oom_seen); total_runs++; }

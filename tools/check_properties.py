@@ -58,6 +58,11 @@ INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
 # the reserved job), so it gets its own check, check_reserve_guarantee (K-26).
 GREEDY_FILL_POLICIES = ("fcfs", "priority", "sjf", "aging")
 RESERVE_POLICIES = ("reserve",)
+# knapsack is a batch policy (BLUEPRINT 3.6, K-34): it waits on purpose for the
+# next window 2^k, so it may leave a fitting job waiting.  The greedy-fill
+# post-condition does not apply; check_knapsack_windows replaces it.  Generic
+# checks (feasibility, no start before arrival, every job finishes) still apply.
+KNAPSACK_POLICIES = ("knapsack",)
 # Reservation thresholds T tried by the random runs (chosen by seed): 0 reserves
 # at once, 5 and 50 (the default) need the best job to have waited.
 RESERVE_THRESHOLDS = (0, 5, 50)
@@ -418,6 +423,36 @@ def _shadow_and_extra(run_finish: np.ndarray, run_cpu: np.ndarray, run_mem: np.n
     return None
 
 
+def check_knapsack_windows(jobs: pd.DataFrame, results: pd.DataFrame) -> list[str]:
+    """Knapsack window rule (BLUEPRINT 3.6; DECISIONS D21, D72).
+
+    A job can only be chosen at a window boundary 2^k (counted from time 0)
+    with 2^k >= arrival and 2^k >= duration, and it never starts before it is
+    chosen.  So start >= w(j), where w(j) is the smallest power of two that is
+    at least max(arrival, duration, 1).  Flags every job that starts earlier.
+    Resource feasibility, arrival order and completeness are checked by
+    check_results for every policy.  Also every start must be a window (a power
+    of two, or 0 is impossible) or the finish tick of some job: a chosen job that
+    does not fit starts only when room is freed.  Time O(n).
+    """
+    jn = _joined(jobs, results)
+    if jn is None or not len(jn):
+        return []
+    msgs: list[str] = []
+    finishes = set(int(x) for x in jn["finish"])
+    for row in jn.itertuples(index=False):
+        t = int(row.start)
+        if t & (t - 1) != 0 and t not in finishes:
+            msgs.append(f"job {int(row.id)} starts at {t}, which is neither a power of two (a window) "
+                        f"nor the finish time of any job (room freed for a chosen job)")
+        need = max(int(row.arrival_in), int(row.duration_in), 1)
+        window = 1 << (need - 1).bit_length()
+        if int(row.start) < window:
+            msgs.append(f"job {int(row.id)} starts at {int(row.start)}, before its first possible "
+                        f"window {window} (arrival {int(row.arrival_in)}, duration {int(row.duration_in)})")
+    return msgs
+
+
 def check_reserve_guarantee(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int,
                             mem_cap: int, threshold: int) -> list[str]:
     """Check the reserve policy's backfill guarantee from the outside (K-26).
@@ -602,6 +637,8 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
         if policy == "aging":
             msgs += check_aging_order(jobs, results, sc["cpu"], sc["mem"], alpha)
             msgs += check_starvation_bound(jobs, results, sc["cpu"], sc["mem"], alpha)
+        if policy in KNAPSACK_POLICIES:
+            msgs += check_knapsack_windows(jobs, results)
         if policy in RESERVE_POLICIES:
             msgs += check_reserve_guarantee(jobs, results, sc["cpu"], sc["mem"], threshold)
     except Exception as err:  # a checker crash must name its seed too

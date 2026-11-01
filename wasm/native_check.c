@@ -36,11 +36,11 @@ int main(void)
     char copy[4096];
 
     /* lifecycle and reuse */
-    a = aprm_create(16, 32768, 0, 100, 50, 0.1);
-    b = aprm_create(16, 32768, 0, 100, 50, 0.1);
+    a = aprm_create(16, 32768, 0, 100, 50, 100);
+    b = aprm_create(16, 32768, 0, 100, 50, 100);
     CHECK(a >= 1 && b == a + 1);
     CHECK(aprm_destroy(a) == 0);
-    CHECK(aprm_create(16, 32768, 0, 100, 50, 0.1) == a);
+    CHECK(aprm_create(16, 32768, 0, 100, 50, 100) == a);
     CHECK(aprm_destroy(a) == 0);
     CHECK(aprm_destroy(b) == 0);
     CHECK(aprm_destroy(a) == -1);                 /* double destroy */
@@ -59,21 +59,21 @@ int main(void)
     }
 
     /* create failures: no handle, error under handle 0 (D64) */
-    CHECK(aprm_create(NAN, 1, 0, 0, 0, 0.1) == -2);
+    CHECK(aprm_create(NAN, 1, 0, 0, 0, 100) == -2);
     CHECK(HAS(aprm_last_error(0), "cpu_cap must be a whole number within 2^53"));
-    CHECK(aprm_create(INFINITY, 1, 0, 0, 0, 0.1) == -2);
-    CHECK(aprm_create(P53 + 2, 1, 0, 0, 0, 0.1) == -2);
+    CHECK(aprm_create(INFINITY, 1, 0, 0, 0, 100) == -2);
+    CHECK(aprm_create(P53 + 2, 1, 0, 0, 0, 100) == -2);
     CHECK(HAS(aprm_last_error(0), "within 2^53"));
-    CHECK(aprm_create(P53, 1, 0, 0, 0, 0.1) == -2);   /* passes the number check, engine range says no */
+    CHECK(aprm_create(P53, 1, 0, 0, 0, 100) == -2);   /* passes the number check, engine range says no */
     CHECK(HAS(aprm_last_error(0), "cpu_cap must be 1 to 1000000."));
-    CHECK(aprm_create(1.5, 1, 0, 0, 0, 0.1) == -2);
+    CHECK(aprm_create(1.5, 1, 0, 0, 0, 100) == -2);
     CHECK(HAS(aprm_last_error(0), "cpu_cap must be a whole number."));
-    CHECK(aprm_create(1, 1, 6, 0, 0, 0.1) == -1);
+    CHECK(aprm_create(1, 1, 6, 0, 0, 100) == -1);
     CHECK(HAS(aprm_last_error(0), "Unknown policy 6."));
     CHECK(aprm_create(1, 1, 0, 0, 0, NAN) == -2);
 
     /* job number checks and their messages */
-    a = aprm_create(4, 100, 0, 100, 50, 0.1);
+    a = aprm_create(4, 100, 0, 100, 50, 100);
     CHECK(aprm_add_job(a, P53 + 2, 0, 1, 1, 1, 0) == -2);
     CHECK(HAS(aprm_last_error(a), "id must be a whole number within 2^53"));
     CHECK(aprm_add_job(a, 2147483648.0, 0, 1, 1, 1, 0) == -2);
@@ -87,7 +87,7 @@ int main(void)
     CHECK(aprm_add_job(a, 1, 0, 3, 1, 1, 0) == -5);
 
     /* pointer rules: separate buffers per handle; copy before the next call */
-    b = aprm_create(4, 100, 0, 100, 50, 0.1);
+    b = aprm_create(4, 100, 0, 100, 50, 100);
     CHECK(aprm_add_job(b, 7, 0, 2, 1, 1, 0) == 0);
     pa = aprm_state(a);
     snprintf(copy, sizeof copy, "%s", pa);
@@ -102,7 +102,7 @@ int main(void)
     CHECK(HAS(aprm_exact(a), "\"schedule\":[{"));
     CHECK(HAS(aprm_exact(a), "\"ok\":true"));
     {
-        int c = aprm_create(4, 100, 0, 100, 50, 0.1), k;
+        int c = aprm_create(4, 100, 0, 100, 50, 100), k;
         for (k = 0; k < 10; k++) CHECK(aprm_add_job(c, k, 0, 1, 1, 1, 0) == 0);
         CHECK(HAS(aprm_exact(c), "\"code\":-9"));
         CHECK(HAS(aprm_exact(c), "Exact solver supports up to 9 jobs."));
@@ -116,14 +116,14 @@ int main(void)
     /* handle table fills at 4096 and recovers */
     CHECK(aprm_destroy(a) == 0);
     CHECK(aprm_destroy(b) == 0);
-    for (i = 0; i < 64; i++) hs[i] = aprm_create(1, 1, 0, 0, 0, 0.1);
+    for (i = 0; i < 64; i++) hs[i] = aprm_create(1, 1, 0, 0, 0, 100);
     for (i = 0; i < 64; i++) CHECK(hs[i] >= 1);
     {
         int n = 64, h;
         int *all = malloc(4200 * sizeof *all);
         CHECK(all != NULL);
         memcpy(all, hs, sizeof hs);
-        while ((h = aprm_create(1, 1, 0, 0, 0, 0.1)) > 0) all[n++] = h;
+        while ((h = aprm_create(1, 1, 0, 0, 0, 100)) > 0) all[n++] = h;
         CHECK(n == 4096 && h == -6);
         CHECK(HAS(aprm_last_error(0), "At most 4096 simulations at once."));
         for (i = 0; i < n; i++) CHECK(aprm_destroy(all[i]) == 0);

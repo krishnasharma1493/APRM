@@ -223,6 +223,27 @@ test('engine error on create is shown next to the Run button, nothing leaks', ()
   assert.equal(p.fe.live.size, 0);
 });
 
+test('epsilon text uses the console grammar; bad text names epsilon, no engine call (D72)', () => {
+  const good = [['0.1', 0.1], ['1', 1], ['0.01', 0.01], ['0.125', 0.125], ['01.5', null], ['0.5', 0.5]];
+  for (const [text, want] of good) {
+    const p = ready();
+    p.doc.byId['run-eps'].value = text;
+    if (want === null) { p.doc.byId['run-start'].click(); assert.equal(p.fe.created, 0, text); continue; }
+    p.doc.byId['run-start'].click();
+    assert.equal(p.fe.created, 1, text);
+    assert.equal(p.fe.args[5], want, text);
+  }
+  for (const text of ['.5', '1e-1', '0.1234', '2', '0', '0.001', '-0.1', '', '0.', '1.0.0', 'abc', '0x1']) {
+    const p = ready();
+    p.doc.byId['run-eps'].value = text;
+    p.doc.byId['run-start'].click();
+    assert.equal(p.fe.created, 0, 'no engine call for "' + text + '"');
+    const msg = p.doc.byId['run-error'].textContent;
+    assert.match(msg, /epsilon/i, text);
+    assert.doesNotMatch(msg, /knapsack_eps_milli/, text);
+  }
+});
+
 test('step cap: a frame never runs more than MAX_STEPS_PER_FRAME steps', () => {
   const p = ready({ totalSteps: 100000 });
   const P = p.A.player;
@@ -494,12 +515,30 @@ test('a new job list or machine ends the old run, so Run never shows a stale boa
   assert.equal(p.fe.live.size, 0, 'no engine handle left behind');
 });
 
-test('run page: a scheduler the engine does not have yet cannot be chosen', () => {
+test('run page: every scheduler the engine has can be chosen', () => {
   const p = ready();
   const opts = p.doc.byId['run-policy'].children;
-  const off = opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'));
-  assert.deepEqual(plain(off), plain(p.A.compare.POLICIES.filter((x) => !x.available).map((x) => x.name)));
-  assert.ok(opts.find((o) => o.getAttribute('value') === 'knapsack').textContent.includes('not implemented yet'));
+  assert.equal(opts.length, 6);
+  assert.deepEqual(plain(opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'))), []);
+  assert.ok(p.A.compare.POLICIES.every((x) => x.available), 'the shipped list has no unavailable scheduler');
+});
+
+test('run page: a scheduler marked unavailable cannot be chosen', () => {
+  const p = page();
+  p.fe = fakeWasm();
+  p.A.wasm = p.fe;
+  const knap = p.A.compare.POLICIES.find((x) => x.name === 'knapsack');
+  knap.available = false;
+  try {
+    p.A.whylog.mount();
+    p.A.player.mount();
+    const opts = p.doc.byId['run-policy'].children;
+    const off = opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'));
+    assert.deepEqual(plain(off), ['knapsack']);
+    assert.ok(opts.find((o) => o.getAttribute('value') === 'knapsack').textContent.includes('not implemented yet'));
+  } finally {
+    knap.available = true;
+  }
 });
 
 test('run page: the policy list uses plain names with the technical term beside them', () => {

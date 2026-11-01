@@ -20,7 +20,7 @@ static SimConfig mkcfg(int64_t cpu, int64_t mem, PolicyKind p)
     SimConfig c;
     memset(&c, 0, sizeof c);
     c.cpu_cap = cpu; c.mem_cap = mem; c.policy = p;
-    c.alpha_milli = 100; c.reserve_threshold = 5; c.knapsack_eps = 0.1;
+    c.alpha_milli = 100; c.reserve_threshold = 5; c.knapsack_eps_milli = 100;
     c.max_jobs = 1000;
     return c;
 }
