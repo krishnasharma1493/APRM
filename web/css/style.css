@@ -155,3 +155,10 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* K-43 shell: top bar, steps, next buttons */
+.topbar { position: sticky; top: 0; z-index: 20; gap: var(--s-2) var(--s-6); padding: var(--s-3) var(--s-4); }
+.topbar h1 { margin-right: var(--s-2); }
+.topbar .hint { margin: 0; }
+.topbar .status { margin: 0 0 0 auto; }
+.next-row { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-4); margin: var(--s-6) 0 0; }

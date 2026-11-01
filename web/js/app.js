@@ -13,7 +13,7 @@
 
   var APRM = (window.APRM = window.APRM || {});
 
-  var TEXT_LOADING = 'Loading engine…';
+  var TEXT_LOADING = APRM.copy ? APRM.copy.get('engine.loading') : 'Starting the engine…';
   var TEXT_EMPTY = 'No jobs yet. Add one, load a preset, or generate a random set.';
 
   /* Where the backup demo video lives (M13). Not recorded yet, so empty: the
@@ -62,9 +62,9 @@
     if (st.engine.status === 'loading') {
       status.textContent = TEXT_LOADING;
     } else if (st.engine.status === 'ready') {
-      status.textContent = 'Engine ready';
+      status.textContent = APRM.copy.get('engine.ready');
     } else {
-      status.textContent = 'Engine not available';
+      status.textContent = APRM.copy.get('engine.error');
     }
 
     if (st.engine.status === 'error') {
@@ -72,6 +72,14 @@
     } else {
       clearError(errBox);
     }
+
+    /* One step at a time: the run dashboard (machine, timeline, why, metrics) belongs to the Run step. */
+    var dash = [main, byId('app-footer')];
+    for (var d = 0; d < dash.length; d++) { if (dash[d]) { dash[d].hidden = st.mode !== 'run'; } }
+    var sw = byId('details-switch');
+    if (sw && sw.checked !== st.details) { sw.checked = st.details; }
+    var root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function') { root.setAttribute('data-details', st.details ? 'on' : 'off'); }
 
     var modeButtons = document.querySelectorAll('[data-mode-button]');
     for (var i = 0; i < modeButtons.length; i++) {
@@ -136,6 +144,28 @@
     }
   }
 
+  /* Next and Back buttons move to another step. */
+  function wireNextButtons() {
+    var buttons = document.querySelectorAll('[data-next]');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener('click', function (ev) {
+        APRM.store.setMode(ev.currentTarget.getAttribute('data-next'));
+        if (typeof window.scrollTo === 'function') { window.scrollTo(0, 0); }
+      });
+    }
+  }
+
+  /* Show details switch. The choice is remembered when the browser allows it. */
+  function wireDetailsSwitch() {
+    var sw = byId('details-switch');
+    if (!sw) { return; }
+    try { if (window.localStorage && window.localStorage.getItem('aprm.details') === '1') { APRM.store.setDetails(true); } } catch (e) { /* storage blocked: fine */ }
+    sw.addEventListener('change', function () {
+      APRM.store.setDetails(sw.checked);
+      try { if (window.localStorage) { window.localStorage.setItem('aprm.details', sw.checked ? '1' : '0'); } } catch (e) { /* storage blocked: fine */ }
+    });
+  }
+
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
     ['presets', 'editor', 'generator', 'whylog', 'player', 'compare'].forEach(function (name) {
@@ -146,7 +176,11 @@
   /* Start: show loading, load the engine, then ready or error. Returns a
    * Promise that always resolves (an engine failure is a state, not a crash). */
   function start() {
+    APRM.copy.apply(document);
     wireModeButtons();
+    wireNextButtons();
+    wireDetailsSwitch();
+    if (APRM.keys && typeof APRM.keys.mount === 'function') { APRM.keys.mount(); }
     APRM.store.subscribe(render);
     mountBuildMode();
     APRM.store.setEngine('loading', '');

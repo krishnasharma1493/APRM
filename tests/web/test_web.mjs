@@ -21,9 +21,9 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 
 // ---------- static checks on the files ----------
 
-const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
+const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
   'js/editor.js', 'js/generator.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
-  'js/share.js', 'js/app.js'];
+  'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 test('index.html: script order follows PRD section 7, vendor first, app.js last', () => {
@@ -335,7 +335,7 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   let release;
   const gate = new Promise((r) => { release = r; });
   const { doc, APRM } = loadPage({ createAprm: () => gate.then(() => fakeModule()) });
-  assert.equal(doc.byId['engine-status'].textContent, 'Loading engine…');
+  assert.equal(doc.byId['engine-status'].textContent, 'Starting the engine…');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'loading');
   assert.equal(doc.byId['engine-error'].hidden, true);
   assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, load a preset, or generate a random set.');
@@ -367,7 +367,7 @@ test('app: wasm missing shows the error state with a message, not a blank page',
   assert.match(box.textContent, /did not load/);
   assert.match(box.textContent, /backup video/);
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'error');
-  assert.equal(doc.byId['engine-status'].textContent, 'Engine not available');
+  assert.equal(doc.byId['engine-status'].textContent, 'The engine could not start');
 });
 
 test('app: showError puts the engine message and field next to the caller\'s element', async () => {
