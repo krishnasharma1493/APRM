@@ -16,7 +16,7 @@ is a genuine error and raises RunError.  Statistics are not computed here (K-20)
 
 Usage:
     python tools/run_experiments.py --experiment E1 [--quick] [--binary build/aprm]
-        [--out results/raw] [--policies fcfs,sjf] [--settings heavy] [--jobs N] [--force]
+        [--out results/raw] [--policies fcfs,sjf] [--settings heavy] [--jobs N] [--force] [--keep-going]
 """
 
 from __future__ import annotations
@@ -218,21 +218,41 @@ def _read_json(path: Path) -> Any:
         return None
 
 
-def _is_done(folder: Path, fresh_jobs: Path, cmd_extra: list[str], policy: str) -> bool:
-    """True if folder holds a finished ok run for exactly this workload and parameters."""
+def _outputs_valid(folder: Path, n_jobs: int) -> bool:
+    """True if results.csv and metrics.json parse: PRD header, one row per job, strict JSON."""
+    try:
+        lines = (folder / "results.csv").read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].split(",") != RESULT_COLUMNS or len(lines) - 1 != n_jobs:
+            return False
+        env = _strict_loads((folder / "metrics.json").read_text(encoding="utf-8"))
+        return isinstance(env, dict) and env.get("ok") is True and isinstance(env.get("data"), dict)
+    except (OSError, ValueError):
+        return False
+
+
+def _is_done(folder: Path, fresh_jobs: Path, extra: list[str], binary_sha: str) -> bool:
+    """True if folder holds a finished ok run that is still valid.
+
+    All must hold: run.json says ok; its binary sha256 equals the current binary's
+    (a rebuilt engine redoes the run); its extra_args equal today's (config such as
+    E5_RESERVE_T may have changed); jobs.csv bytes equal the fresh workload; and
+    results.csv / metrics.json parse (_outputs_valid).  The policy is not checked:
+    it is part of the folder path, so it cannot differ.
+    """
     run = _read_json(folder / "run.json")
     if not isinstance(run, dict) or run.get("status") != STATUS_OK:
         return False
-    if run.get("policy") != policy or run.get("extra_args") != cmd_extra:
+    if run.get("binary_sha256") != binary_sha or run.get("extra_args") != extra:
         return False
-    needed = [folder / n for n in ("jobs.csv", "results.csv", "metrics.json")]
-    if not all(p.is_file() for p in needed):
+    jobs_file = folder / "jobs.csv"
+    if not jobs_file.is_file() or jobs_file.read_bytes() != fresh_jobs.read_bytes():
         return False
-    return needed[0].read_bytes() == fresh_jobs.read_bytes()
+    n_jobs = len(fresh_jobs.read_text(encoding="utf-8").splitlines()) - 1
+    return _outputs_valid(folder, n_jobs)
 
 
 def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
-              force: bool, log: bool) -> dict:
+              force: bool, log: bool, binary_sha: str) -> dict:
     """Run (or skip) one grid cell; return a record {folder, status, ...}."""
     exp, setting, policy, seed = cell
     ctx = {"experiment": exp, "setting": setting, "policy": policy, "seed": seed}
@@ -245,7 +265,7 @@ def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
     with tempfile.TemporaryDirectory(prefix="aprm_wl_") as tmp:
         fresh = Path(tmp) / "jobs.csv"
         gen_workload.write_jobs_csv(jobs, str(fresh), params)
-        if not force and _is_done(folder, fresh, extra, policy):
+        if not force and _is_done(folder, fresh, extra, binary_sha):
             return {"cell": cell, "folder": str(folder), "status": STATUS_SKIPPED}
         folder.mkdir(parents=True, exist_ok=True)
         for stale in ("results.csv", "metrics.json", "log.txt", "run.json"):
@@ -254,7 +274,8 @@ def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
         shutil.copyfile(str(fresh) + ".meta.json", folder / "jobs.csv.meta.json")
     record: dict[str, Any] = {
         "experiment": exp, "setting": setting, "policy": policy, "seed": seed,
-        "extra_args": extra, "binary": str(binary),
+        "extra_args": extra, "binary": str(binary), "binary_sha256": binary_sha,
+        "label": config.summary_label(exp, setting),
         "python": sys.version.split()[0], "numpy": np.__version__,
         "jobs_sha256": _sha256(folder / "jobs.csv")}
     try:
@@ -277,14 +298,27 @@ def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
     return {"cell": cell, "folder": str(folder), "status": record["status"]}
 
 
+def _safe_cell(cell, binary, out, force, log, binary_sha, keep_going) -> dict:
+    """_run_cell; with keep_going a genuine error becomes a record with status "error"."""
+    try:
+        return _run_cell(cell, binary, out, force, log, binary_sha)
+    except RunError as err:
+        if not keep_going:
+            raise
+        return {"cell": cell, "folder": str(run_dir(out, *cell)), "status": "error",
+                "error": str(err)}
+
+
 def execute_grid(experiment: str, quick: bool = False, *, binary: str | None = None,
                  out: str | None = None, policies: list[str] | None = None,
-                 settings: list[str] | None = None, jobs: int = 1, force: bool = False, log: bool = False) -> list[dict]:
+                 settings: list[str] | None = None, jobs: int = 1, force: bool = False, log: bool = False,
+                 keep_going: bool = False) -> list[dict]:
     """Run the whole grid; return one record per cell, in grid order.
 
     Record: {"cell", "folder", "status"} with status "ok", "skipped" (an ok run
-    already there) or "not_implemented".  The first genuine error raises
-    RunError (runs not yet started are cancelled).  The result files do not
+    already there), "not_implemented" or (keep_going only) "error".  Without
+    keep_going the first genuine error raises RunError (runs not yet started
+    are cancelled); with it every cell is tried and run.json keeps status "error".  The result files do not
     depend on `jobs`.
     """
     binary = binary or config.APRM_BINARY
@@ -295,11 +329,12 @@ def execute_grid(experiment: str, quick: bool = False, *, binary: str | None = N
                        f"(run `make` first)", None, "", {"experiment": experiment.upper()})
     if jobs < 1:
         raise ValueError("--jobs must be at least 1")
+    binary_sha = _sha256(Path(binary))
     if jobs == 1:
-        return [_run_cell(c, binary, out, force, log) for c in cells]
+        return [_safe_cell(c, binary, out, force, log, binary_sha, keep_going) for c in cells]
     records: list[dict] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        futures = [pool.submit(_run_cell, c, binary, out, force, log) for c in cells]
+        futures = [pool.submit(_safe_cell, c, binary, out, force, log, binary_sha, keep_going) for c in cells]
         try:
             for fut in futures:
                 records.append(fut.result())
@@ -352,23 +387,42 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--settings", help="comma-separated subset of the experiment's settings")
     ap.add_argument("--jobs", type=int, default=1, help="parallel runs (default 1)")
     ap.add_argument("--force", action="store_true", help="redo runs that already exist")
+    ap.add_argument("--keep-going", action="store_true",
+                    help="continue past genuine errors; exit 1 at the end with a summary")
     ap.add_argument("--log", action="store_true", help="also save log.txt per run")
     args = ap.parse_args(argv)
-    pols = [p.strip() for p in args.policies.split(",") if p.strip()] if args.policies else None
-    sets = [x.strip() for x in args.settings.split(",") if x.strip()] if args.settings else None
+    def split(name: str, text: str | None) -> list[str] | None:
+        if text is None:
+            return None
+        items = [x.strip() for x in text.split(",") if x.strip()]
+        if not items:
+            raise ValueError(f"--{name} is empty; leave it out to mean all")
+        return items
+
     try:
+        pols, sets = split("policies", args.policies), split("settings", args.settings)
         records = execute_grid(args.experiment, args.quick, binary=args.binary, out=args.out,
-                               policies=pols, settings=sets, jobs=args.jobs, force=args.force, log=args.log)
+                               policies=pols, settings=sets, jobs=args.jobs, force=args.force,
+                               log=args.log, keep_going=args.keep_going)
     except (RunError, ValueError) as err:
         print(f"run_experiments: {err}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        # run.json is written last, so an interrupted run has none and is redone next time.
+        print("run_experiments: interrupted; unfinished runs will be redone on the next call",
+              file=sys.stderr)
+        return 130
     counts: dict[str, int] = {}
     for r in records:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     print(f"{args.experiment.upper()}: {len(records)} runs: "
           f"{counts.get(STATUS_OK, 0)} ok, {counts.get(STATUS_SKIPPED, 0)} skipped (already done), "
-          f"{counts.get(STATUS_NOT_IMPLEMENTED, 0)} not_implemented")
-    return 0
+          f"{counts.get(STATUS_NOT_IMPLEMENTED, 0)} not_implemented, "
+          f"{counts.get('error', 0)} error")
+    errors = [r for r in records if r["status"] == "error"]
+    for r in errors:
+        print(f"run_experiments: {r['error']}", file=sys.stderr)
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

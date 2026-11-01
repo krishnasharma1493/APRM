@@ -246,6 +246,121 @@ def test_read_run_checks_columns(fake, tmp_path, monkeypatch):
         rx.read_run(folder)
 
 
+def _status_of(recs):
+    return [r["status"] for r in recs]
+
+
+def test_rebuilt_binary_redoes_only_ok_cells(fake, tmp_path):
+    out = tmp_path / "raw"
+    kw = dict(out=str(out), policies=["fcfs", "sjf"], settings=["light"])
+    rx.execute_grid("E1", True, binary=fake, **kw)
+    d = out / "E1" / "light" / "fcfs" / "1"
+    assert json.loads((d / "run.json").read_text())["binary_sha256"]
+    assert _status_of(rx.execute_grid("E1", True, binary=fake, **kw)) == \
+        ["skipped", "skipped", "not_implemented", "not_implemented"]
+    with open(fake, "a") as fh:
+        fh.write("# rebuilt\n")  # different bytes, same behaviour
+    assert _status_of(rx.execute_grid("E1", True, binary=fake, **kw)) == \
+        ["ok", "ok", "not_implemented", "not_implemented"]
+
+
+@pytest.mark.parametrize("victim,content", [
+    ("results.csv", "garbage"), ("results.csv", ""),
+    ("results.csv", "id,arrival,start,finish,wait,turnaround,priority,cpu,mem\n1,0,0,5,0,5,1,1,1\n"),
+    ("metrics.json", "{not json"), ("metrics.json", '{"ok":true,"data":{"x":NaN}}'),
+    ("metrics.json", ""),
+])
+def test_corrupt_outputs_are_not_done(fake, tmp_path, victim, content):
+    kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["fcfs"], settings=["light"])
+    rx.execute_grid("E1", True, **kw)
+    d = tmp_path / "raw/E1/light/fcfs/1"
+    (d / victim).write_text(content)
+    recs = rx.execute_grid("E1", True, **kw)
+    assert _status_of(recs) == ["ok", "skipped"]  # seed 1 redone, seed 2 intact
+    assert len(rx.read_run(str(d))["results"]) == config.JOBS_PER_WORKLOAD
+
+
+def test_changed_extra_args_redo(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_IMPL", "fcfs,reserve")
+    kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["reserve"], settings=["10"])
+    rx.execute_grid("E5", True, **kw)
+    assert set(_status_of(rx.execute_grid("E5", True, **kw))) == {"skipped"}
+    monkeypatch.setattr(config, "E5_RESERVE_T", 60)
+    assert set(_status_of(rx.execute_grid("E5", True, **kw))) == {"ok"}
+    run = json.loads((tmp_path / "raw/E5/10/reserve/1/run.json").read_text())
+    assert run["command"][-2:] == ["--threshold", "60"]
+
+
+def test_rerun_removes_stale_files_before_running(fake, tmp_path, monkeypatch):
+    kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["sjf"], settings=["light"])
+    d = tmp_path / "raw/E1/light/sjf/1"
+    d.mkdir(parents=True)
+    for n in ("log.txt", "results.csv", "metrics.json"):
+        (d / n).write_text("stale")
+    rx.execute_grid("E1", True, **kw)  # sjf is not implemented by the fake: writes nothing
+    assert sorted(p.name for p in d.iterdir()) == ["jobs.csv", "jobs.csv.meta.json", "run.json"]
+
+
+def test_empty_settings_or_policies_is_an_error(fake, tmp_path, capsys):
+    for flag in ("--settings", "--policies"):
+        assert rx.main(["--experiment", "E1", "--binary", fake, "--out", str(tmp_path / "r"),
+                        flag, ""]) == 1
+        assert "empty" in capsys.readouterr().err
+    assert not (tmp_path / "r").exists()
+
+
+def test_keyboard_interrupt_exits_130(fake, tmp_path, monkeypatch, capsys):
+    def boom(*a, **k):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(rx, "execute_grid", boom)
+    assert rx.main(["--experiment", "E1", "--binary", fake]) == 130
+    assert "interrupted" in capsys.readouterr().err
+
+
+def test_interrupted_run_is_redone(fake, tmp_path):
+    """A folder with jobs.csv but no run.json (killed mid-run) is never counted as done."""
+    kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["fcfs"], settings=["light"])
+    rx.execute_grid("E1", True, **kw)
+    (tmp_path / "raw/E1/light/fcfs/1/run.json").unlink()
+    assert _status_of(rx.execute_grid("E1", True, **kw)) == ["ok", "skipped"]
+
+
+def test_keep_going(fake, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("FAKE_MODE", "fail3")
+    kw = dict(binary=fake, out=str(tmp_path / "raw"), policies=["fcfs", "priority"],
+              settings=["light"])
+    for jobs in (1, 2):
+        recs = rx.execute_grid("E1", True, keep_going=True, jobs=jobs, force=True, **kw)
+        assert _status_of(recs) == ["error"] * 4 and "CAPACITY_EXCEEDED" in recs[0]["error"]
+    run = json.loads((tmp_path / "raw/E1/light/priority/2/run.json").read_text())
+    assert run["status"] == "error" and run["exit_code"] == 3
+    code = rx.main(["--experiment", "E1", "--quick", "--keep-going", "--binary", fake,
+                    "--out", str(tmp_path / "raw2"), "--policies", "fcfs", "--settings", "light"])
+    cap = capsys.readouterr()
+    assert code == 1 and "2 error" in cap.out and "CAPACITY_EXCEEDED" in cap.err
+    with pytest.raises(rx.RunError):  # without the flag the first error stops
+        rx.execute_grid("E1", True, **kw)
+
+
+def test_summary_label():
+    assert config.summary_label("E1", "heavy") == "heavy"
+    assert config.summary_label("E3", "low_heavy") == "low_heavy"
+    assert config.summary_label("E4", "alpha_200") == "alpha_milli=200"
+    assert config.summary_label("E5", "40") == "big_mem_pct=40"
+    assert config.summary_label("E6", "7") == "n_jobs=7"
+    for exp, sets in config.EXPERIMENT_SETTINGS.items():  # every folder name has a label
+        assert all(config.summary_label(exp, s) for s in sets)
+    for bad in (("E4", "heavy"), ("E9", "x"), ("E5", "55")):
+        with pytest.raises(ValueError):
+            config.summary_label(*bad)
+
+
+def test_run_json_records_label(fake, tmp_path, monkeypatch):
+    rx.run_grid("E6", True, binary=fake, out=str(tmp_path / "r"), policies=["fcfs"], settings=["8"])
+    run = json.loads((tmp_path / "r/E6/8/fcfs/8000/run.json").read_text())
+    assert (run["experiment"], run["setting"], run["label"]) == ("E6", "8", "n_jobs=8")
+
+
 # ---- layer 2: the real console program ---------------------------------------
 @needs_cli
 def test_run_small_grid(tmp_path):

@@ -141,3 +141,22 @@ EXPERIMENT_POLICIES = {
     "E5": E5_POLICIES,
     "E6": E6_POLICIES,
 }
+
+
+def summary_label(experiment: str, setting: str) -> str:
+    """Map a raw-folder setting name to the PRD section 5 summary `setting` label.
+
+    E1, E2, E3: the name itself (light, uniform, ...).  E4 `alpha_<n>` ->
+    `alpha_milli=<n>`; E5 `<n>` -> `big_mem_pct=<n>`; E6 `<n>` -> `n_jobs=<n>`.
+    Raises ValueError for an unknown experiment or setting.
+    """
+    exp = experiment.upper()
+    if exp not in EXPERIMENT_SETTINGS or setting not in EXPERIMENT_SETTINGS[exp]:
+        raise ValueError(f"unknown setting {setting!r} for {experiment!r}")
+    if exp == "E4":
+        return "alpha_milli=" + setting.split("_", 1)[1]
+    if exp == "E5":
+        return "big_mem_pct=" + setting
+    if exp == "E6":
+        return "n_jobs=" + setting
+    return setting
