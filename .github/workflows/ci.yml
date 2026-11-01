@@ -56,6 +56,8 @@ jobs:
           persist-credentials: false
       - name: Build and test under ASan + UBSan
         run: make sanitize
+      - name: Hardening checks (fuzz, allocation-failure injection, stress, grep-unsafe)
+        run: make hardening
 
   python:
     runs-on: ubuntu-24.04
