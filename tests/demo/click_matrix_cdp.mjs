@@ -123,7 +123,7 @@ async function main() {
   const header = 'id,arrival,duration,cpu,mem,priority\n';
   await row('Build', 'CSV import', 'good file', 'Jobs replaced', 'PRD 8', async () => { await upload('jobs.csv', header + '1,0,5,2,100,3\n2,1,5,2,100,4\n'); return waitFor(`APRM.store.get().jobs.length === 2`, 3000); });
   await row('Build', 'CSV import', 'bad rows', 'Bad rows listed, none silently dropped', 'PRD 8', async () => { await upload('jobs.csv', header + '1,0,5,2,100,3\n2,x,5,2,100,4\n3,0,5,2,100,99\n'); await waitFor(`!document.getElementById('csv-errors').hidden`, 3000); return [(await ev(`document.querySelectorAll('#csv-errors li').length`)) >= 2, await text('csv-errors')]; });
-  await row('Build', 'CSV import', 'over 1 MB', 'Refused with a message', 'PRD 8', async () => { await upload('big.csv', header + 'x'.repeat(1100000)); const ok = await waitFor(`/1 MB|too large|too big/i.test(document.getElementById('csv-status').textContent + document.getElementById('csv-errors').textContent)`, 3000); return [ok, await text('csv-status')]; });
+  await row('Build', 'CSV import', 'over 1 MB', 'Refused with a message', 'PRD 8', async () => { await load(); await preset('tiny_case'); await upload('big.csv', header + 'x'.repeat(1100000)); const ok = await waitFor(`/1 MB|too large|too big/i.test(document.getElementById('csv-status').textContent + document.getElementById('csv-errors').textContent)`, 3000); return [ok && (await ev(`APRM.store.get().jobs.length`)) === 8, await text('csv-status')]; });
   await row('Build', 'CSV import', 'empty file', 'Refused with a message', 'PRD 8', async () => { await upload('empty.csv', ''); await sleep(200); const s = (await text('csv-status')) + (await text('csv-errors')); return [/header|empty/i.test(s), s]; });
   await row('Build', 'CSV export', 'with jobs', 'Download starts, message shown', 'BLUEPRINT 5', async () => { await load(); await preset('tiny_case'); await click('csv-export'); return /Exported 8 jobs/.test(await text('csv-status')); });
   await row('Build', 'CSV export', 'no jobs', 'Plain message', 'PRD 7', async () => { await load(); await click('csv-export'); return [/empty/.test(await text('csv-status')), await text('csv-status')]; });
@@ -144,8 +144,8 @@ async function main() {
       });
     }
   }
-  await row('Run', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120', async () => { await load(); return ev(`document.querySelector('#run-policy option[value="knapsack"]').disabled`); });
-  await row('Compare', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120', async () => ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`));
+  await row('Run', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120, PR #95', async () => { await load(); return ev(`document.querySelector('#run-policy option[value="knapsack"]').disabled`); });
+  await row('Compare', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120, PR #95', async () => ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`));
 
   // --- Run controls in order
   await load(); await preset('heavy_load'); await step('run');
@@ -187,12 +187,12 @@ async function main() {
   await row('Compare', 'Stale note', 'jobs changed after comparing', 'Says press Compare again', 'K-27', async () => { await load(); await preset('tiny_case'); await step('compare'); await click('compare-start'); await waitFor(`APRM.compare.snapshot().status === 'done'`); await step('build'); await preset('memory_hog'); await step('compare'); return /press Compare again/.test(await text('compare-status')); });
 
   // --- Run controls out of order
-  await row('Run', 'Step', 'after the run finished', 'Ignored, no error', 'K-50', async () => { await click('run-start'); await click('run-jump'); await finished(); return ev(`document.getElementById('run-step').disabled === false ? (document.getElementById('run-step').click(), APRM.player.snapshot().status === 'finished') : true`); });
+  await row('Run', 'Step', 'after the run finished', 'Ignored, no error', 'K-50', async () => { await click('run-start'); await click('run-jump'); await finished(); const a = await snap('events'); await ev(`(function(){ const b = document.getElementById('run-step'); b.disabled = false; b.click(); })(); true`); return (await snap('status')) === 'finished' && (await snap('events')) === a; });
   await row('Run', 'Play', 'after the run finished', 'Stays finished', 'K-50', async () => { await click('run-play'); return (await snap('status')) === 'finished'; });
   await row('Run', 'Run', 'double click', 'One clean new run', 'K-50', async () => { await ev(`(function(){ const b = document.getElementById('run-start'); b.click(); b.click(); })(); true`); return (await snap('status')) === 'paused' && (await snap('events')) === 0; });
   await row('Run', 'Play', 'double click', 'Toggles twice, stays consistent', 'K-50', async () => { await ev(`(function(){ const b = document.getElementById('run-play'); b.click(); b.click(); })(); true`); return (await snap('status')) === 'paused'; });
   await row('Run', 'Reset', 'mid-run while playing', 'Stops at once, no error', 'K-50', async () => { await click('run-play'); await sleep(40); await click('run-reset'); return (await snap('status')) === 'idle'; });
-  await row('Run', 'Reset', 'twice', 'Second is disabled, no error', 'K-50', async () => ev(`document.getElementById('run-reset').disabled`));
+  await row('Run', 'Reset', 'twice', 'Second is disabled, no error', 'K-50', async () => { const off = await ev(`document.getElementById('run-reset').disabled`); await ev(`(function(){ const b = document.getElementById('run-reset'); b.disabled = false; b.click(); })(); true`); return off && (await snap('status')) === 'idle'; });
   await row('Run', 'Change scheduler', 'during a paused run', 'Current run unaffected; next Run uses the new one', 'K-50', async () => { await click('run-start'); await click('run-step'); await choose('sjf'); const ok = (await snap('status')) === 'paused'; await click('run-start'); return ok && (await ev(`APRM.player.snapshot().status`)) === 'paused'; });
   await row('Run', 'Leave the page', 'to Build during play', 'Pauses', 'K-25', async () => { await click('run-play'); await step('build'); const s = await snap('status'); await step('run'); return ['paused', 'finished'].includes(s); });
   await row('Run', 'Reload', 'mid-run', 'Page comes back clean', 'K-50', async () => { await send('Page.reload'); await sleep(200); await waitFor(`(document.getElementById('engine-status') || {}).textContent === 'Engine ready'`); return (await snap('status')) === 'idle'; });
@@ -203,7 +203,7 @@ async function main() {
   await row('Compare', 'Compare', 'no jobs', 'Plain message', 'PRD 7', async () => { await step('compare'); await click('compare-start'); return [!(await hidden('compare-error')), await text('compare-error')]; });
   await row('Compare', 'Compare', 'one scheduler ticked', 'Plain message', 'PRD 7', async () => { await load(); await preset('tiny_case'); await step('compare'); await ev(`document.querySelector('#compare-policies input[data-policy="aging"]').click(); true`); await click('compare-start'); return [!(await hidden('compare-error')), await text('compare-error')]; });
   await row('Run', 'Edge', 'one job', 'Runs to the end', 'K-50', async () => { await load(); await setJobs([J(1, 0, 3, 1, 10, 1)]); await step('run'); await click('run-start'); await click('run-jump'); return finished(); });
-  await row('Run', 'Edge', 'ties: same arrival and priority', 'Lower id first (hard rule 5)', 'CLAUDE.md rule 5', async () => { await load(); await ev(`APRM.store.setMachine(1, 100); true`); await setJobs([J(2, 0, 3, 1, 10, 1), J(1, 0, 3, 1, 10, 1)]); await step('run'); await click('run-start'); await click('run-jump'); await finished(); return ev(`APRM.player.snapshot().bars[1].start === 0 && APRM.player.snapshot().bars[2].start === 3`); });
+  await row('Run', 'Edge', 'ties: same arrival and priority', 'Lower id first (hard rule 5)', 'Hard rule 5', async () => { await load(); await ev(`APRM.store.setMachine(1, 100); true`); await setJobs([J(2, 0, 3, 1, 10, 1), J(1, 0, 3, 1, 10, 1)]); await step('run'); await click('run-start'); await click('run-jump'); await finished(); return ev(`APRM.player.snapshot().bars[1].start === 0 && APRM.player.snapshot().bars[2].start === 3`); });
   await row('Run', 'Edge', 'job larger than the machine', 'Plain refusal, page usable', 'PRD 7', async () => { await load(); await ev(`APRM.store.setMachine(2, 100); true`); await setJobs([J(1, 0, 3, 8, 10, 1)]); await step('run'); await click('run-start'); return [!(await hidden('run-error')), await text('run-error')]; });
   await row('Run', 'Edge', 'largest case: 5000 jobs', 'Finishes without freezing', 'PRD 3, 8', async () => { await load(); const jobs = Array.from({ length: 5000 }, (_, i) => J(i + 1, i % 200, 1 + i % 5, 1, 10, i % 10)); await setJobs(jobs); await step('run'); await click('run-start'); await click('run-jump'); return [await waitFor(`APRM.player.snapshot().status === 'finished'`, 60000), await text('run-clock')]; });
   await row('Compare', 'Edge', 'largest case: 5000 jobs', 'Finishes without freezing', 'PRD 3, 8', async () => { await step('compare'); await click('compare-start'); return waitFor(`APRM.compare.snapshot().status === 'done'`, 90000); });
@@ -252,10 +252,12 @@ async function main() {
         });
       }
     }
-  } else { console.log('note: build/aprm not found; console comparison skipped'); }
+  } else {
+    await row('Engine', 'Website = console program', 'all', 'build/aprm present', 'K-50 step 4', async () => [false, 'build/aprm not found: run make first']);
+  }
 
   // --- Keyboard
-  await row('Run', 'Keyboard', 'Space, Right arrow, Esc', 'Play or pause, step, clear', 'BLUEPRINT 5', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-start'); await ev(`document.activeElement.blur(); true`); await key('ArrowRight', 'ArrowRight', 39); const a = await snap('events'); await key(' ', 'Space', 32); const s = await snap('status'); await key(' ', 'Space', 32); await key('Escape', 'Escape', 27); return a === 1 && ['playing', 'finished'].includes(s); });
+  await row('Run', 'Keyboard', 'Space, Right arrow, Esc', 'Play or pause, step, clear', 'BLUEPRINT 5', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-start'); await ev(`document.activeElement.blur(); true`); await key('ArrowRight', 'ArrowRight', 39); const a = await snap('events'); await key(' ', 'Space', 32); const s = await snap('status'); await key(' ', 'Space', 32); const t = await snap('status'); await ev(`APRM.player.select(APRM.player.snapshot().jobs[0].id); document.activeElement.blur(); true`); const on = await snap('selected'); await key('Escape', 'Escape', 27); return a === 1 && s === 'playing' && t === 'paused' && on !== null && (await snap('selected')) === null; });
 }
 
 let code = 0;

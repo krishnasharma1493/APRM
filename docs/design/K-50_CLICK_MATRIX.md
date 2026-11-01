@@ -73,8 +73,8 @@ Deferrals:
 | Run | Scheduler x example | sjf on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
 | Run | Scheduler x example | aging on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
 | Run | Scheduler x example | aging_reserve on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
-| Run | Knapsack option | open the list | Greyed out until K-34 lands | PR #120 | as expected | PASS |
-| Compare | Knapsack option | open the list | Greyed out until K-34 lands | PR #120 | as expected | PASS |
+| Run | Knapsack option | open the list | Greyed out until K-34 lands | PR #120, PR #95 | as expected | PASS |
+| Compare | Knapsack option | open the list | Greyed out until K-34 lands | PR #120, PR #95 | as expected | PASS |
 | Run | Run | first press | Paused at the start; Play enabled | PRD 7 | as expected | PASS |
 | Run | Step | once | One event | PRD 7 | as expected | PASS |
 | Run | Play | click | Status playing, label Pause | PRD 7 | as expected | PASS |
@@ -112,7 +112,7 @@ Deferrals:
 | Compare | Compare | no jobs | Plain message | PRD 7 | There are no jobs. Add some in step 1 first. | PASS |
 | Compare | Compare | one scheduler ticked | Plain message | PRD 7 | Pick at least two schedulers to compare. | PASS |
 | Run | Edge | one job | Runs to the end | K-50 | as expected | PASS |
-| Run | Edge | ties: same arrival and priority | Lower id first (hard rule 5) | CLAUDE.md rule 5 | as expected | PASS |
+| Run | Edge | ties: same arrival and priority | Lower id first (hard rule 5) | Hard rule 5 | as expected | PASS |
 | Run | Edge | job larger than the machine | Plain refusal, page usable | PRD 7 | cpu: Job 1 needs 8 cores; machine has 2 cores. | PASS |
 | Run | Edge | largest case: 5000 jobs | Finishes without freezing | PRD 3, 8 | Time: tick 940. 5000 of 5000 jobs finished. | PASS |
 | Compare | Edge | largest case: 5000 jobs | Finishes without freezing | PRD 3, 8 | as expected | PASS |
