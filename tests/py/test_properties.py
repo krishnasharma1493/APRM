@@ -185,6 +185,69 @@ def test_greedy_fill_ignores_jobs_started_at_the_tick():
     assert cp.check_greedy_fill_postcondition(jobs, sched, 4, 100) == []
 
 
+# ---------------------------------------------------------------- reserve (K-26)
+# Machine 4 cpu / 100 MB.  Job 1 runs [0, 10) with 60 MB.  Job 2 (the big job, 70 MB) arrives at 1
+# and cannot fit; with T = 0 it is reserved at once: shadow time 10 (job 1 ends), extra room
+# 4 - 1 = 3 cores and 100 - 70 = 30 MB.
+RES_JOBS = mk_jobs([(1, 0, 10, 1, 60, 0), (2, 1, 5, 1, 70, 5), (3, 2, 20, 1, 40, 0)])
+
+
+def test_reserve_guarantee_accepts_a_correct_schedule():
+    # job 3 (40 MB, runs past 10) does not fit the 30 MB extra room: it waits until job 2 is done
+    ok = mk_results(RES_JOBS, {1: 0, 2: 10, 3: 15})
+    assert cp.check_results(RES_JOBS, ok, 4, 100) == []
+    assert cp.check_reserve_guarantee(RES_JOBS, ok, 4, 100, 0) == []
+    # the plain greedy-fill check would (rightly) not apply to reserve: it flags this schedule
+    assert has(cp.check_greedy_fill_postcondition(RES_JOBS, ok, 4, 100), "job 3")
+
+
+def test_reserve_guarantee_threshold_boundary():
+    ok = mk_results(RES_JOBS, {1: 0, 2: 10, 3: 15})
+    # at tick 2 job 2 has waited 2 - 1 = 1 tick: with T = 1 it may hold the reservation, with T = 2 not
+    assert cp.check_reserve_guarantee(RES_JOBS, ok, 4, 100, 1) == []
+    assert has(cp.check_reserve_guarantee(RES_JOBS, ok, 4, 100, 2), "job 3")
+
+
+def test_reserve_guarantee_catches_refused_short_job():
+    # job 4 (30 MB, 5 ticks) arrives at 3 and fits; it would end at 8 <= shadow 10: it MUST backfill
+    jobs = mk_jobs([(1, 0, 10, 1, 60, 0), (2, 1, 5, 1, 70, 5), (4, 3, 5, 1, 30, 0)])
+    good = mk_results(jobs, {1: 0, 2: 10, 4: 3})
+    assert cp.check_reserve_guarantee(jobs, good, 4, 100, 0) == []
+    lazy = mk_results(jobs, {1: 0, 2: 10, 4: 15})
+    assert cp.check_results(jobs, lazy, 4, 100) == []
+    assert has(cp.check_reserve_guarantee(jobs, lazy, 4, 100, 0), "job 4")
+
+
+def test_reserve_guarantee_catches_refused_extra_room_job():
+    # job 5 (25 MB, runs long) fits the 30 MB extra room: it must start at once
+    jobs = mk_jobs([(1, 0, 10, 1, 60, 0), (2, 1, 5, 1, 70, 5), (5, 2, 30, 1, 25, 0)])
+    assert cp.check_reserve_guarantee(jobs, mk_results(jobs, {1: 0, 2: 10, 5: 2}), 4, 100, 0) == []
+    assert has(cp.check_reserve_guarantee(jobs, mk_results(jobs, {1: 0, 2: 10, 5: 15}), 4, 100, 0), "job 5")
+
+
+def test_reserve_guarantee_catches_a_fitting_job_with_no_reservation():
+    # nothing is blocked: job 6 fits at tick 1 and yet starts at 5
+    jobs = mk_jobs([(1, 0, 10, 1, 60, 0), (6, 1, 3, 1, 10, 0)])
+    assert has(cp.check_reserve_guarantee(jobs, mk_results(jobs, {1: 0, 6: 5}), 4, 100, 0), "job 6")
+    assert cp.check_reserve_guarantee(jobs, mk_results(jobs, {1: 0, 6: 1}), 4, 100, 0) == []
+
+
+def test_reserve_guarantee_needs_the_reserved_job_to_start_on_time():
+    # job 2 starts at 12, after its shadow time 10, so it cannot explain why job 3 waits
+    late = mk_results(RES_JOBS, {1: 0, 2: 12, 3: 17})
+    assert has(cp.check_reserve_guarantee(RES_JOBS, late, 4, 100, 0), "job 3")
+
+
+def test_reserve_guarantee_empty_inputs():
+    empty_jobs = mk_jobs([])
+    assert cp.check_reserve_guarantee(empty_jobs, mk_results(empty_jobs, {}), 4, 100, 0) == []
+
+
+def test_reserve_policy_lists():
+    assert cp.RESERVE_POLICIES == ("reserve",)
+    assert "reserve" not in cp.GREEDY_FILL_POLICIES   # reserve intentionally may not fill greedily
+
+
 # ---------------------------------------------------------------- positive
 def test_hand_made_correct_schedules():
     assert check(GOOD) == []
@@ -258,6 +321,14 @@ def test_random_runs_new_policies(policy):
     out = cp.random_runs(200, 1, (policy,), str(REAL), jobs=4)
     assert out["violations"] == [], out["violations"][:3]
     assert out["not_implemented"] == [] and out["runs"] == 200 and out["ok"] == 200
+
+
+@needs_cli
+def test_random_runs_reserve():
+    """K-26: reserve passes the invariant checks and the backfill-guarantee check (T varies by seed)."""
+    out = cp.random_runs(300, 1, ("reserve",), str(REAL), jobs=4)
+    assert out["violations"] == [], out["violations"][:3]
+    assert out["not_implemented"] == [] and out["runs"] == 300 and out["ok"] == 300
 
 
 @needs_cli
