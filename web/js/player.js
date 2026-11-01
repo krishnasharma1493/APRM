@@ -587,7 +587,7 @@
       if (changed === 'mode' && s.mode !== 'run') { pause(); }
       if (changed === 'settings' || changed === 'policies' || changed === 'mode') { syncInputs(s); }
       if (changed === 'jobs' && run === null) { render(); }
-      if (changed === 'details' || changed === 'settings') { render(); }
+      if (changed === 'details' || changed === 'settings' || changed === 'theme') { render(); }
     });
     syncInputs(APRM.store.get());
     setSpeed(APRM.store.get().settings.speed || 1);

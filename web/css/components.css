@@ -156,3 +156,5 @@ input, select, textarea { max-width: 100%; }
 input[type="file"] { width: 100%; font: inherit; color: var(--text); }
 input[type="file"]::file-selector-button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-1); padding: var(--s-1) var(--s-3); margin-right: var(--s-2); cursor: pointer; }
 .build-box { min-width: 0; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

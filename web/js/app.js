@@ -181,6 +181,34 @@
     }
   }
 
+  /* Day and night button. The first look follows the system; a saved choice wins. The page theme is
+   * the data-theme attribute on the root element (tokens.css holds both colour sets). */
+  function applyTheme(theme) {
+    var root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function') { root.setAttribute('data-theme', theme); }
+    var btn = byId('theme-toggle');
+    if (btn) { btn.textContent = APRM.copy.get(theme === 'dark' ? 'theme.day' : 'theme.night'); }
+  }
+
+  function wireThemeButton() {
+    var btn = byId('theme-toggle');
+    var theme = 'light';
+    try {
+      var saved = window.localStorage ? window.localStorage.getItem('aprm.theme') : null;
+      if (saved === 'light' || saved === 'dark') { theme = saved; }
+      else if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) { theme = 'dark'; }
+    } catch (e) { /* storage or matchMedia blocked: stay light */ }
+    APRM.store.setTheme(theme);
+    applyTheme(theme);
+    if (!btn) { return; }
+    btn.addEventListener('click', function () {
+      var next = APRM.store.get().theme === 'dark' ? 'light' : 'dark';
+      APRM.store.setTheme(next);
+      applyTheme(next);
+      try { if (window.localStorage) { window.localStorage.setItem('aprm.theme', next); } } catch (e) { /* storage blocked: fine */ }
+    });
+  }
+
   /* Show details switch. The choice is remembered when the browser allows it. */
   function wireDetailsSwitch() {
     var sw = byId('details-switch');
@@ -206,6 +234,7 @@
     wireModeButtons();
     wireNextButtons();
     wireDetailsSwitch();
+    wireThemeButton();
     if (APRM.keys && typeof APRM.keys.mount === 'function') { APRM.keys.mount(); }
     APRM.store.subscribe(render);
     mountBuildMode();

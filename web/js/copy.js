@@ -27,6 +27,9 @@
     'next.build': 'Next: run your jobs',
     'next.run': 'Next: compare schedulers',
     'next.compare': 'Back to your jobs',
+    'theme.night': 'Night mode',
+    'theme.day': 'Day mode',
+    'theme.hint': 'Switch between a light and a dark page.',
     'keys.hint': 'Space plays or pauses. Right arrow steps.',
     'noscript': 'This page needs JavaScript. The recorded demo video is the fallback.',
 
