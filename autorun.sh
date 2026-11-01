@@ -6,7 +6,9 @@
 cd "$(dirname "$0")" || exit 1
 mkdir -p .autorun
 PROMPT='Continuous mode. Read docs/RUN_INSTRUCTIONS.md (section "Continuous mode") and docs/PROGRESS.md, finish any half-done work, then keep working through every open issue. Do not stop until a stop condition in that section is true.'
-while [ ! -e .autorun/DONE ] && [ ! -e .autorun/STOP ]; do
+runs=0
+while [ ! -e .autorun/DONE ] && [ ! -e .autorun/STOP ] && [ "$runs" -lt 200 ]; do   # 200 sessions at most, so a broken login cannot loop forever
+  runs=$((runs+1))
   echo "=== session start $(date) ===" >> .autorun/log.txt
   claude -p "$PROMPT" --permission-mode acceptEdits >> .autorun/log.txt 2>&1
   echo "=== session end $(date) ===" >> .autorun/log.txt
