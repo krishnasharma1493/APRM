@@ -22,6 +22,81 @@
 
   <noscript><p class="error-box">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
 
+  <section id="build-panel" class="panel build-panel" aria-label="Build">
+    <h2>Build</h2>
+    <div class="build-grid">
+      <fieldset class="build-box">
+        <legend>Machine</legend>
+        <label for="cpu-input">CPU cores</label>
+        <input id="cpu-input" type="text" inputmode="numeric" value="16">
+        <p id="cpu-error" class="field-error" role="alert" hidden></p>
+        <label for="mem-input">Memory (MB)</label>
+        <input id="mem-input" type="text" inputmode="numeric" value="32768">
+        <p id="mem-error" class="field-error" role="alert" hidden></p>
+      </fieldset>
+
+      <fieldset class="build-box">
+        <legend>Preset</legend>
+        <label for="preset-select">Choose a preset</label>
+        <select id="preset-select"></select>
+        <button type="button" id="preset-load">Load preset</button>
+        <p id="preset-desc" class="empty" hidden></p>
+      </fieldset>
+
+      <fieldset class="build-box">
+        <legend>Generate random jobs</legend>
+        <label for="gen-seed">Seed</label>
+        <input id="gen-seed" type="text" inputmode="numeric" value="42">
+        <button type="button" id="gen-newseed">New seed</button>
+        <label for="gen-count">Jobs: <output id="gen-count-out">12</output></label>
+        <input id="gen-count" type="range" min="1" max="200" value="12">
+        <label for="gen-arrival">Latest arrival (ticks): <output id="gen-arrival-out">30</output></label>
+        <input id="gen-arrival" type="range" min="0" max="200" value="30">
+        <label for="gen-duration">Longest duration (ticks): <output id="gen-duration-out">10</output></label>
+        <input id="gen-duration" type="range" min="1" max="100" value="10">
+        <label for="gen-cpu">Largest CPU (% of machine): <output id="gen-cpu-out">50</output></label>
+        <input id="gen-cpu" type="range" min="1" max="100" value="50">
+        <label for="gen-mem">Largest memory (% of machine): <output id="gen-mem-out">50</output></label>
+        <input id="gen-mem" type="range" min="1" max="100" value="50">
+        <button type="button" id="gen-run">Generate (replaces the table)</button>
+        <p id="gen-error" class="field-error" role="alert" hidden></p>
+      </fieldset>
+
+      <fieldset class="build-box">
+        <legend>CSV</legend>
+        <label for="csv-file">Import jobs.csv (up to 1 MB, 5000 jobs)</label>
+        <input id="csv-file" type="file" accept=".csv,text/csv">
+        <button type="button" id="csv-export">Export jobs.csv</button>
+        <p id="csv-status" role="status" hidden></p>
+        <ul id="csv-errors" class="error-list" hidden></ul>
+      </fieldset>
+    </div>
+
+    <h3>Job table</h3>
+    <p id="table-summary" class="empty"></p>
+    <p id="table-empty" class="empty">The table is empty. Add a job below, load a preset, generate a set or import a CSV.</p>
+    <div class="table-wrap">
+      <table class="job-table">
+        <thead>
+          <tr><th>id</th><th>arrival</th><th>duration</th><th>cpu</th><th>mem (MB)</th><th>priority</th><th>problem</th><th></th></tr>
+        </thead>
+        <tbody id="job-body"></tbody>
+        <tfoot>
+          <tr>
+            <td><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
+            <td><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
+            <td><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
+            <td><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
+            <td><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
+            <td><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
+            <td colspan="2"><button type="button" id="add-submit">Add job</button></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p id="add-error" class="field-error" role="alert" hidden></p>
+  </section>
+
   <main id="app-main" data-engine="loading" data-mode="build">
     <aside class="panel panel-left" aria-label="Machine and jobs">
       <h2>Machine</h2>
@@ -49,11 +124,14 @@
 
   <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules, no network calls.
        Still to be added by later issues, in this order, before app.js:
-       presets_data.js, presets.js, editor.js, generator.js, canvas.js, whylog.js,
-       player.js, compare.js, share.js -->
+       canvas.js, whylog.js, player.js, compare.js, share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/presets_data.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/generator.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

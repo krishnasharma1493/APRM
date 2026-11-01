@@ -139,11 +139,19 @@
     }
   }
 
+  /* Connect the Build mode scripts (K-24) that are present on the page. */
+  function mountBuildMode() {
+    ['presets', 'editor', 'generator'].forEach(function (name) {
+      if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
+    });
+  }
+
   /* Start: show loading, load the engine, then ready or error. Returns a
    * Promise that always resolves (an engine failure is a state, not a crash). */
   function start() {
     wireModeButtons();
     APRM.store.subscribe(render);
+    mountBuildMode();
     APRM.store.setEngine('loading', '');
     return APRM.wasm.init().then(function () {
       APRM.store.setEngine('ready', '');
