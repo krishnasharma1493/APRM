@@ -468,6 +468,17 @@ int sim_log_json(const Sim *s, int64_t since_seq, JsonBuf *out)
     return eventlog_json(&s->log, since_seq, out);
 }
 
+int64_t sim_log_count(const Sim *s)
+{
+    return s ? (int64_t)s->log.len : 0;
+}
+
+size_t sim_log_message(const Sim *s, int64_t index, char *buf, size_t n)
+{
+    if (!s || !buf || n == 0 || index < 0 || (uint64_t)index >= (uint64_t)s->log.len) return 0;
+    return eventlog_format(&s->log.e[index], buf, n);
+}
+
 int sim_run_until(Sim *s, int64_t t)
 {
     int64_t next;
