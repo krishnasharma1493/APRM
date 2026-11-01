@@ -171,7 +171,7 @@ One repository; `core/` is the only place scheduling logic exists. Owner initial
 
 ```
 aprm/
-├── CLAUDE.md                    Instructions for Claude Code
+├── CLAUDE.md                    Instructions for the AI assistant
 ├── core/                        K  C scheduler, single source of truth
 │   ├── config.h                 K  Defaults and limits (§3)
 │   ├── job.h                    K  Job struct, enums, error codes
@@ -625,7 +625,7 @@ The website has no accounts or stored data, so the risks are bad input from file
 
 ### Using AI assistants
 
-- Give the assistant this PRD and the blueprint as context, plus the one file being worked on. Claude Code reads `CLAUDE.md` automatically.
+- Give the assistant this PRD and the blueprint as context, plus the one file being worked on. The assistant reads `CLAUDE.md` automatically.
 - **Never merge code you cannot explain line by line.** This is a viva project: if the assistant writes it, the owner rewrites or annotates it until they can defend it.
 - Ask for complexity and invariants with every algorithm, not just code.
 - Keep `docs/AI_USE.md` (date, what was asked, what was kept) in case the course requires an AI-use acknowledgment.
@@ -757,7 +757,7 @@ The speaker keeps talking ("let me show you the recorded run") while the other s
 
 ## 11. Master prompts
 
-Claude Code reads `CLAUDE.md` automatically, so most sessions only need: "Work on issue K-07 from docs/BACKLOG.md." Use these prompts with other assistants, or to steer a session.
+The assistant reads `CLAUDE.md` automatically, so most sessions only need: "Work on issue K-07 from docs/BACKLOG.md." Use these prompts with other assistants, or to steer a session.
 
 ### 11.1 C core prompt (Krishna)
 

@@ -4,7 +4,7 @@ The master list of issues, in build order, grouped by the five gates in BLUEPRIN
 
 **Ids:** `K-xx` Krishna, `A-xx` Ahaana. **(plan first)**: write a plan (files, functions, data structures, tests, complexity) and get approval before coding. **GitHub #:** the issue number on github.com/krishnasharma1493/APRM. Each gate also has a tracker issue (#49–#53).
 
-Every issue's definition of done also includes the CLAUDE.md checklist: tests green, `make sanitize` for C, PR template filled in, `docs/AI_USE.md` updated, human review.
+Every issue's definition of done also includes the CLAUDE.md checklist: tests green, `make sanitize` for C, PR template filled in, `docs/AI_USE.md` updated.
 
 ---
 

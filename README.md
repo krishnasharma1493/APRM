@@ -93,4 +93,4 @@ python tools/plot_figures.py      # figures → docs/report/figures/ (reads summ
 
 ## Contributing
 
-Work one issue at a time on a branch `k/<id>-<topic>` or `a/<id>-<topic>`, open a pull request using the template, and wait for review. `main` must always build and pass its tests.
+Work one issue at a time on a branch `k/<id>-<topic>` or `a/<id>-<topic>`, open a pull request using the template, the reviewer subagent checks it, and it is squash-merged when CI is green. `main` must always build and pass its tests.

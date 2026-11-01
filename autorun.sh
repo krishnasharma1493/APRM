@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs Claude Code repeatedly until the backlog is done.
+# Runs the coding assistant repeatedly until the backlog is done.
 # Each session follows docs/RUN_INSTRUCTIONS.md ("Continuous mode").
 # Stops when .autorun/DONE or .autorun/STOP exists. Create .autorun/STOP to stop it by hand.
 # Flags used (-p, --permission-mode) were checked against `claude --help`.
