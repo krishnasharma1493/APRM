@@ -298,6 +298,43 @@ No output file and no expected CSV (D54, part 5). Files: `capacity_reject.csv`, 
 - **LOUD: `memory_hog.reserve` depends on the trigger being "at least T"** (now - arrival >= T). At t=11 the hog has waited exactly 10 = T. Under a strict "> T" the reservation would not exist at t=11, job 4 would start 11 to 21, and the hog would start at 21 or later, so other rows would differ too. The case deliberately catches an off-by-one in the trigger. `reserve_backfill.reserve` is robust to it: with "> T" the reservation is created one event later (t=12) and every row is the same.
 - **O-14 (open, assigned to K-26)** is whether a reservation is moved or cancelled when a newcomer outranks the reserved job. The cases `memory_hog` and `reserve_backfill` were designed so that this never happens (the reserved job always has the highest key); their expected files are the same whichever way O-14 is decided. This is the only dependence of K-17 on reservation semantics, and no case here settles O-14. They do assume the proposal's reading that the shadow time, once reached, starts the reserved job (nothing else about it changes).
 
+## Cases added in K-19 (hand-worked before the policy code)
+
+Both cases are serial (every job asks for 16 cores), so only the order matters. Derived on paper before the code was written (D44). Status of the paper check by Ahaana: **awaiting Ahaana's paper check**. Aging key = 1000 x priority - alpha_milli x arrival, larger first.
+
+### aging_overtake (shows: an older, lower-priority job overtakes a newer, higher-priority one under aging)
+
+Default alpha_milli 100 (one priority level is worth 10 ticks of arrival).
+
+| id | arrival | duration | cpu | mem | priority | aging key |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0 | 20 | 16 | 1000 | 9 | 9000 |
+| 2 | 1 | 3 | 16 | 1000 | 4 | 4000 - 100 = 3900 |
+| 3 | 12 | 3 | 16 | 1000 | 5 | 5000 - 1200 = 3800 |
+| 4 | 15 | 3 | 16 | 1000 | 5 | 5000 - 1500 = 3500 |
+
+- t=0: job 1 starts, runs to 20. Jobs 2 (t=1), 3 (t=12), 4 (t=15) arrive and wait.
+- t=20, aging (`.aging.expected.csv`): keys 3900, 3800, 3500, so order 2, 3, 4. Job 2 runs 20 to 23 (wait 19), job 3 runs 23 to 26, job 4 runs 26 to 29. Job 2 has the lower priority (4 against 5) but arrived 11 ticks earlier, worth 1100 > 1000, so it wins.
+- t=20, static priority (`.priority.expected.csv`): priorities 5, 5, 4. Jobs 3 and 4 tie on priority; job 3 arrived first. Order 3, 4, 2: job 3 runs 20 to 23, job 4 runs 23 to 26, job 2 runs 26 to 29 (wait 25).
+
+### aging_alpha0 (shows: alpha_milli 0 makes aging exactly static priority; ties by arrival then id)
+
+`--alpha-milli 0`. Every key is 1000 x priority, so aging and static priority must give the same rows (both expected files are identical). The file lists job 6 before job 4 on purpose.
+
+| id | arrival | duration | cpu | mem | priority | aging key (alpha 0) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0 | 30 | 16 | 1000 | 0 | 0 |
+| 2 | 1 | 2 | 16 | 1000 | 3 | 3000 |
+| 3 | 2 | 2 | 16 | 1000 | 8 | 8000 |
+| 4 | 3 | 2 | 16 | 1000 | 8 | 8000 |
+| 5 | 25 | 2 | 16 | 1000 | 4 | 4000 |
+| 6 | 3 | 2 | 16 | 1000 | 8 | 8000 |
+
+- t=0: job 1 starts, runs to 30. Jobs 2, 3, 4, 6, 5 arrive at 1, 2, 3, 3, 25 and wait.
+- t=30: keys 8000 (jobs 3, 4, 6), 4000 (job 5), 3000 (job 2). Among the 8000s: job 3 arrived at 2; jobs 4 and 6 both at 3, so lower id first: 3, 4, 6. Then 5, then 2.
+- Job 3 runs 30 to 32, job 4 32 to 34, job 6 34 to 36, job 5 36 to 38, job 2 38 to 40 (wait 37).
+- With the default alpha_milli 100 the keys would be 2900 (job 2) against 1500 (job 5), and job 2 would run before job 5. So the case fails if alpha is not honoured.
+
 ## Status of the paper check by Ahaana (every case)
 
 All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation without it). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
@@ -319,3 +356,5 @@ All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation
 | memory_hog | aging, reserve | awaiting Ahaana's paper check |
 | reserve_backfill | reserve, aging | awaiting Ahaana's paper check |
 | capacity_reject | console (exit 3, stderr) | awaiting Ahaana's paper check |
+| aging_overtake | aging, priority | awaiting Ahaana's paper check |
+| aging_alpha0 | aging, priority | awaiting Ahaana's paper check |
