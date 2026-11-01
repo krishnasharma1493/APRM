@@ -22,6 +22,7 @@
 
   var APRM = (window.APRM = window.APRM || {});
 
+  var START_TIMEOUT_MS = 30000; /* give up waiting for the engine after 30 s */
   var MAX_HANDLE = 4096; /* at most 4,096 simulations at once (D64) */
 
   /* Policy names to the numbers in PRD section 5 (PolicyKind order). */
@@ -122,11 +123,28 @@
     }
     var p;
     try { p = Promise.resolve(window.createAprm()); } catch (e) { p = Promise.reject(e); }
-    return p.then(function (mod) {
-      M = mod;
-      return APRM.wasm;
-    }, function (e) {
-      throw new EngineError(0, 'The engine failed to start: ' + (e && e.message ? e.message : String(e)), '');
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = null;
+      if (typeof window.setTimeout === 'function') {
+        timer = window.setTimeout(function () {
+          if (settled) { return; }
+          settled = true;
+          reject(new EngineError(0, 'The engine took too long to start. Reload the page or use the backup video.', ''));
+        }, START_TIMEOUT_MS);
+      }
+      p.then(function (mod) {
+        if (settled) { return; }  /* a late answer after the timeout is ignored */
+        settled = true;
+        if (timer !== null && typeof window.clearTimeout === 'function') { window.clearTimeout(timer); }
+        M = mod;
+        resolve(APRM.wasm);
+      }, function (e) {
+        if (settled) { return; }
+        settled = true;
+        if (timer !== null && typeof window.clearTimeout === 'function') { window.clearTimeout(timer); }
+        reject(new EngineError(0, 'The engine failed to start: ' + (e && e.message ? e.message : String(e)), ''));
+      });
     });
   }
 
