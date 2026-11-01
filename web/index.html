@@ -145,6 +145,32 @@
     </div>
   </section>
 
+  <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
+    <h2>Compare</h2>
+    <fieldset class="build-box">
+      <legend>Schedulers (tick two or more)</legend>
+      <div id="compare-policies" class="compare-policies"></div>
+      <p class="empty">All ticked schedulers run on the same jobs and machine. The aging rate and reservation threshold come from the Run panel settings.</p>
+      <button type="button" id="compare-start">Compare</button>
+      <p id="compare-status" class="status" role="status" aria-live="polite">Idle. Tick two or more schedulers and press Compare.</p>
+      <p id="compare-error" class="field-error" role="alert" hidden></p>
+    </fieldset>
+    <p id="compare-empty" class="empty">No comparison yet. Load jobs in Build mode, tick two or more schedulers and press Compare.</p>
+    <div id="compare-table-wrap" class="table-wrap" hidden>
+      <table class="job-table compare-table" aria-label="Metrics per scheduler">
+        <thead id="compare-head"></thead>
+        <tbody id="compare-body"></tbody>
+      </table>
+      <p class="empty">A dash means the value does not exist for that run (for example, no finished job).</p>
+    </div>
+    <p id="compare-exact" class="empty" hidden></p>
+    <h3>Timelines</h3>
+    <div id="compare-timelines" class="compare-timelines"></div>
+    <h3>Charts</h3>
+    <p id="compare-chart-note" class="empty" role="status" hidden></p>
+    <div id="compare-charts" class="compare-charts"></div>
+  </section>
+
   <main id="app-main" data-engine="loading" data-mode="build">
     <aside class="panel panel-left" aria-label="Machine and jobs">
       <h2>Machine</h2>
@@ -175,9 +201,10 @@
     <ul id="metrics-list" class="metrics-list"></ul>
   </footer>
 
-  <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules, no network calls.
-       Still to be added by later issues, in this order, before app.js:
-       compare.js, share.js -->
+  <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
+       The only network request is the Chart.js script below (Compare mode only; D33): exact
+       version, integrity hash, crossorigin. If it fails to load, Compare mode shows its table.
+       Still to be added by a later issue, before app.js: share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
   <script src="js/store.js"></script>
@@ -188,6 +215,8 @@
   <script src="js/canvas.js"></script>
   <script src="js/whylog.js"></script>
   <script src="js/player.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+  <script src="js/compare.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

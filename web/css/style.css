@@ -135,6 +135,23 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .why-list li.why-selected, .job-list li.sel { background: var(--border); font-weight: 600; }
 .why-list li.why-skip { color: var(--muted); }
 .metrics-list { margin: 0.25rem 0; padding-left: 1.2rem; }
+/* Compare mode (K-27) */
+.compare-panel { margin: 1rem 1rem 0; }
+.compare-panel[hidden] { display: none; }
+.compare-policies { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; }
+.compare-panel button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.75rem; cursor: pointer; margin-top: 0.5rem; }
+.compare-panel button:disabled { opacity: 0.5; cursor: not-allowed; }
+.compare-panel button:focus-visible, .compare-policies input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.compare-table th[scope], .compare-table tbody th { font-weight: 600; }
+.compare-table td.na { color: var(--muted); }
+.compare-table td { text-align: right; }
+.compare-timelines { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.compare-fig { margin: 0; }
+.compare-fig figcaption { color: var(--muted); font-size: 0.875rem; }
+.compare-fig canvas { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
+.compare-charts { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.compare-chart { position: relative; height: 240px; }
+.compare-chart canvas { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

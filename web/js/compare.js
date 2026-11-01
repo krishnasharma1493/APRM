@@ -1,0 +1,519 @@
+/* compare.js: Compare mode (PRD section 7, K-27).
+ *
+ * Idea: the same C engine runs once per ticked scheduler, on exactly the same
+ * jobs and machine. Differences between the columns come only from the policy.
+ * This file never decides which job runs: it calls only the APRM.wasm wrapper
+ * (create, addJob, step, results, metrics, destroy) and draws the answers.
+ *
+ * Steps of one comparison:
+ *   1. create one engine handle per ticked policy and add the same jobs to each;
+ *   2. run every handle to the end in slices (SLICE_STEPS engine steps per handle
+ *      per scheduled callback), so a 5,000-job case never freezes the tab;
+ *   3. read metrics and results from each handle, then destroy every handle
+ *      (also on error and on cancel), so the 4,096-handle limit never fills up;
+ *   4. show a metrics table (always), side-by-side timelines, and Chart.js bar
+ *      charts. Chart.js is loaded by a script tag in index.html (pinned, with an
+ *      integrity hash). If it is missing or blocked, window.Chart does not exist
+ *      and the table stays: nothing else depends on the network.
+ *
+ * Text from the engine is always put on the page with textContent.
+ * Classic script: attaches APRM.compare only. Nothing runs at load time.
+ */
+(function () {
+  'use strict';
+
+  var APRM = (window.APRM = window.APRM || {});
+
+  var SLICE_STEPS = 500;
+  var DASH = '—'; /* shown for a null metric (D62: no finished job, or makespan 0) */
+  var MIN_POLICIES = 2;
+
+  /* name: what the engine is told; label: what the page shows. Knapsack is not
+   * built yet, so it is listed but cannot be ticked. */
+  var POLICIES = [
+    { name: 'fcfs', label: 'fcfs', available: true },
+    { name: 'priority', label: 'priority', available: true },
+    { name: 'sjf', label: 'sjf', available: true },
+    { name: 'aging', label: 'aging', available: true },
+    { name: 'aging_reserve', label: 'reserve', available: true },
+    { name: 'knapsack', label: 'knapsack (not implemented yet)', available: false }
+  ];
+  var DEFAULT_SELECTED = ['fcfs', 'aging'];
+
+  /* Metrics shown in the table: key in the metrics JSON, heading. */
+  var METRIC_COLUMNS = [
+    ['avg_wait', 'Avg wait'], ['max_wait', 'Max wait'], ['avg_turnaround', 'Avg turnaround'],
+    ['weighted_completion', 'Weighted completion'], ['makespan', 'Makespan'],
+    ['util_cpu', 'CPU utilisation'], ['util_mem', 'Memory utilisation']
+  ];
+  /* Metrics drawn as bar charts (one chart each). */
+  var CHART_METRICS = ['avg_wait', 'max_wait', 'avg_turnaround', 'makespan'];
+
+  var selected = DEFAULT_SELECTED.slice();
+  var status = 'idle';       /* idle | running | done | error */
+  var errorText = '';
+  var runs = [];             /* live: [{policy, handle, finished, events}] */
+  var model = null;          /* after a run: {jobs, tmax, columns:[{policy, metrics, rows}]} */
+  var charts = [];           /* live Chart.js objects, destroyed before every redraw */
+  var laterId = null;
+  var token = 0;             /* bumps on every start/cancel, so old slices stop */
+  var stale = false;
+  var mounted = false;
+
+  /* Replaceable so tests can run the slices by hand. */
+  var scheduler = {
+    later: function (fn) { return setTimeout(fn, 0); },
+    cancelLater: function (id) { clearTimeout(id); }
+  };
+  function setScheduler(s) {
+    scheduler = { later: s.later || scheduler.later, cancelLater: s.cancelLater || scheduler.cancelLater };
+  }
+
+  function byId(id) { return document.getElementById(id); }
+  function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
+  function text(id, value) { var el = byId(id); if (el) { el.textContent = value; } }
+
+  function showMessage(id, message) {
+    var el = byId(id);
+    if (!el) { return; }
+    el.textContent = message || '';
+    el.hidden = !message;
+  }
+
+  function errorMessage(err) {
+    var m = err && err.message ? err.message : String(err);
+    return err && err.field ? err.field + ': ' + m : m;
+  }
+
+  function labelOf(name) {
+    for (var i = 0; i < POLICIES.length; i++) { if (POLICIES[i].name === name) { return POLICIES[i].label; } }
+    return name;
+  }
+
+  /* ---------- handles ---------- */
+
+  /* Destroy every live handle. Never throws. O(handles). */
+  function destroyAll() {
+    var list = runs;
+    runs = [];
+    for (var i = 0; i < list.length; i++) {
+      try { APRM.wasm.destroy(list[i].handle); } catch (e) { /* already gone */ }
+    }
+  }
+
+  function cancelTimer() {
+    if (laterId !== null) { scheduler.cancelLater(laterId); laterId = null; }
+  }
+
+  function destroyCharts() {
+    var list = charts;
+    charts = [];
+    for (var i = 0; i < list.length; i++) {
+      try { list[i].destroy(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  /* Stop a running comparison and free its handles. Safe to call at any time. */
+  function cancel() {
+    token++;
+    cancelTimer();
+    destroyAll();
+    if (status === 'running') { status = 'idle'; render(); }
+  }
+
+  /* ---------- selection ---------- */
+
+  /* Set the ticked policies (names). Unknown or unavailable names are ignored.
+   * Returns the list kept, in the fixed policy order. */
+  function setSelected(names) {
+    var keep = [];
+    for (var i = 0; i < POLICIES.length; i++) {
+      if (POLICIES[i].available && names.indexOf(POLICIES[i].name) >= 0) { keep.push(POLICIES[i].name); }
+    }
+    selected = keep;
+    var boxes = byId('compare-policies');
+    if (boxes && boxes.children) {
+      for (var k = 0; k < boxes.children.length; k++) {
+        var input = boxes.children[k].firstChild;
+        if (input && input.getAttribute && input.getAttribute('data-policy')) {
+          input.checked = keep.indexOf(input.getAttribute('data-policy')) >= 0;
+        }
+      }
+    }
+    return keep.slice();
+  }
+
+  /* ---------- running ---------- */
+
+  function fail(err) {
+    token++;
+    cancelTimer();
+    destroyAll();
+    status = 'error';
+    errorText = errorMessage(err);
+    model = null;
+    render();
+    return false;
+  }
+
+  /* Start a comparison from the store. Returns true when it began. O(policies * jobs). */
+  function start() {
+    token++;
+    cancelTimer();
+    destroyAll();
+    errorText = '';
+    stale = false;
+    model = null;
+    var st = APRM.store.get();
+    if (st.jobs.length === 0) {
+      status = 'idle';
+      errorText = 'There are no jobs. Add some in Build mode first.';
+      render();
+      return false;
+    }
+    if (selected.length < MIN_POLICIES) {
+      status = 'idle';
+      errorText = 'Tick at least two schedulers to compare.';
+      render();
+      return false;
+    }
+    try {
+      for (var p = 0; p < selected.length; p++) {
+        var h = APRM.wasm.create(st.machine.cpu, st.machine.mem, selected[p], st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
+        runs.push({ policy: selected[p], handle: h, finished: false, events: 0 });
+        for (var i = 0; i < st.jobs.length; i++) {
+          var j = st.jobs[i];
+          try {
+            APRM.wasm.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
+          } catch (e) {
+            if (e && !e.field) { e.message = 'Job ' + j.id + ': ' + e.message; }
+            throw e;
+          }
+        }
+      }
+    } catch (err) {
+      return fail(err);
+    }
+    model = { jobs: st.jobs.map(copyJob), tmax: 0, columns: [] };
+    status = 'running';
+    render();
+    scheduleSlice(token);
+    return true;
+  }
+
+  function copyJob(j) {
+    return { id: j.id, arrival: j.arrival, duration: j.duration, cpu: j.cpu, mem: j.mem, priority: j.priority };
+  }
+
+  function scheduleSlice(t) {
+    laterId = scheduler.later(function () {
+      laterId = null;
+      if (t === token) { slice(t); }
+    });
+  }
+
+  /* One slice: up to SLICE_STEPS engine steps on every unfinished handle. */
+  function slice(t) {
+    var allDone = true;
+    try {
+      for (var r = 0; r < runs.length; r++) {
+        var run = runs[r];
+        for (var n = 0; n < SLICE_STEPS && !run.finished; n++) {
+          if (APRM.wasm.step(run.handle) === 0) { run.finished = true; } else { run.events++; }
+        }
+        if (!run.finished) { allDone = false; }
+      }
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    if (t !== token) { return; }
+    if (allDone) { finish(); } else { renderStatus(); scheduleSlice(t); }
+  }
+
+  /* Read every answer, then destroy every handle (always). */
+  function finish() {
+    var columns = [];
+    var tmax = 0;
+    try {
+      for (var r = 0; r < runs.length; r++) {
+        var metrics = APRM.wasm.metrics(runs[r].handle);
+        var rows = APRM.wasm.results(runs[r].handle);
+        columns.push({ policy: runs[r].policy, metrics: metrics, rows: rows, events: runs[r].events });
+        for (var k = 0; k < rows.length; k++) { if (rows[k].finish > tmax) { tmax = rows[k].finish; } }
+      }
+    } catch (err) {
+      fail(err);
+      return;
+    }
+    destroyAll();
+    model.columns = columns;
+    model.tmax = tmax;
+    status = 'done';
+    render();
+  }
+
+  /* ---------- drawing ---------- */
+
+  function metricText(v) {
+    if (v === null || v === undefined) { return DASH; }
+    return (typeof v === 'number' && Math.floor(v) !== v) ? v.toFixed(3) : String(v);
+  }
+
+  function cell(tag, value, cls) {
+    var c = document.createElement(tag);
+    c.textContent = value;
+    if (cls) { c.setAttribute('class', cls); }
+    return c;
+  }
+
+  /* The metrics table: one row per policy. Always drawn when a run is done. */
+  function drawTable() {
+    var body = byId('compare-body');
+    var head = byId('compare-head');
+    var wrap = byId('compare-table-wrap');
+    if (!body || !head) { return; }
+    clear(head); clear(body);
+    var show = status === 'done' && model !== null;
+    if (wrap) { wrap.hidden = !show; }
+    if (!show) { return; }
+    var hr = document.createElement('tr');
+    hr.appendChild(cell('th', 'Scheduler'));
+    for (var m = 0; m < METRIC_COLUMNS.length; m++) { hr.appendChild(cell('th', METRIC_COLUMNS[m][1])); }
+    head.appendChild(hr);
+    for (var c = 0; c < model.columns.length; c++) {
+      var col = model.columns[c];
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-policy', col.policy);
+      tr.appendChild(cell('th', labelOf(col.policy)));
+      for (var k = 0; k < METRIC_COLUMNS.length; k++) {
+        var v = col.metrics[METRIC_COLUMNS[k][0]];
+        tr.appendChild(cell('td', metricText(v), (v === null || v === undefined) ? 'na' : ''));
+      }
+      body.appendChild(tr);
+    }
+  }
+
+  /* Colours from the CSS variables, with fixed fallbacks. */
+  function themeColours() {
+    var out = { text: '#1c2330', muted: '#5b6577', border: '#d5dae3', jobs: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6', '#ec4899', '#84cc16'] };
+    if (typeof getComputedStyle !== 'function' || !document.documentElement) { return out; }
+    try {
+      var cs = getComputedStyle(document.documentElement);
+      var pick = function (n, fb) { var v = String(cs.getPropertyValue(n) || '').trim(); return v || fb; };
+      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border);
+      for (var i = 0; i < 8; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
+    } catch (e) { /* keep the fallbacks */ }
+    return out;
+  }
+
+  /* One Gantt picture: a row per job (arrival, then id), a thin line from
+   * arrival to start (waiting), a bar from start to finish. All columns share
+   * tmax so the pictures can be compared by eye. O(jobs). */
+  function drawTimeline(canvas, jobs, rows, tmax) {
+    if (typeof canvas.getContext !== 'function') { return false; }
+    var ctx = canvas.getContext('2d');
+    if (!ctx) { return false; }
+    var col = themeColours();
+    var W = canvas.width, H = canvas.height;
+    var padL = 6, padR = 6, padT = 6, padB = 16;
+    var order = jobs.slice().sort(function (a, b) { return a.arrival - b.arrival || a.id - b.id; });
+    var byIdMap = {};
+    for (var i = 0; i < rows.length; i++) { byIdMap[rows[i].id] = rows[i]; }
+    var span = Math.max(1, tmax);
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var rowH = plotH / Math.max(1, order.length);
+    var sx = function (t) { return padL + (t / span) * plotW; };
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = col.border; ctx.lineWidth = 1;
+    ctx.strokeRect(padL, padT, plotW, plotH);
+    for (var k = 0; k < order.length; k++) {
+      var job = order[k], res = byIdMap[job.id];
+      if (!res) { continue; }
+      var y = padT + k * rowH;
+      var bh = Math.max(1, Math.min(10, rowH - 1));
+      ctx.fillStyle = col.muted;
+      ctx.fillRect(sx(job.arrival), y + bh / 2, Math.max(0, sx(res.start) - sx(job.arrival)), 1);
+      ctx.fillStyle = col.jobs[APRM.canvas ? APRM.canvas.paletteIndex(job.id) : job.id % 8];
+      ctx.fillRect(sx(res.start), y, Math.max(1, sx(res.finish) - sx(res.start)), bh);
+    }
+    ctx.fillStyle = col.muted; ctx.font = '11px sans-serif';
+    ctx.fillText('0', padL, H - 3);
+    ctx.fillText(String(tmax), Math.max(padL, W - padR - 30), H - 3);
+    return true;
+  }
+
+  function drawTimelines() {
+    var box = byId('compare-timelines');
+    if (!box) { return; }
+    clear(box);
+    if (status !== 'done' || model === null) { return; }
+    for (var c = 0; c < model.columns.length; c++) {
+      var col = model.columns[c];
+      var fig = document.createElement('figure');
+      fig.setAttribute('class', 'compare-fig');
+      var cap = document.createElement('figcaption');
+      cap.textContent = labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')';
+      var cv = document.createElement('canvas');
+      cv.setAttribute('width', '420');
+      cv.width = 420;
+      cv.height = 240;
+      cv.setAttribute('height', '240');
+      cv.setAttribute('role', 'img');
+      cv.setAttribute('aria-label', 'Timeline of every job under ' + labelOf(col.policy));
+      fig.appendChild(cap);
+      fig.appendChild(cv);
+      box.appendChild(fig);
+      drawTimeline(cv, model.jobs, col.rows, model.tmax);
+    }
+  }
+
+  /* Bar charts, only if Chart.js loaded. Any failure falls back to the table. */
+  function drawCharts() {
+    var box = byId('compare-charts');
+    var note = byId('compare-chart-note');
+    destroyCharts();
+    if (box) { clear(box); }
+    if (!box || !note) { return; }
+    if (status !== 'done' || model === null) { note.hidden = true; return; }
+    if (typeof window.Chart !== 'function') {
+      note.textContent = 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.';
+      note.hidden = false;
+      return;
+    }
+    var col = themeColours();
+    try {
+      var labels = model.columns.map(function (c) { return labelOf(c.policy); });
+      for (var m = 0; m < CHART_METRICS.length; m++) {
+        var key = CHART_METRICS[m];
+        var title = '';
+        for (var t = 0; t < METRIC_COLUMNS.length; t++) { if (METRIC_COLUMNS[t][0] === key) { title = METRIC_COLUMNS[t][1]; } }
+        var holder = document.createElement('div');
+        holder.setAttribute('class', 'compare-chart');
+        var cv = document.createElement('canvas');
+        cv.setAttribute('role', 'img');
+        cv.setAttribute('aria-label', 'Bar chart of ' + title + ' per scheduler');
+        holder.appendChild(cv);
+        box.appendChild(holder);
+        var data = model.columns.map(function (c) { var v = c.metrics[key]; return (typeof v === 'number') ? v : null; });
+        charts.push(new window.Chart(cv, {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.jobs.slice(0, labels.length) }] },
+          options: {
+            animation: false, responsive: true, maintainAspectRatio: false, color: col.text,
+            plugins: { legend: { display: false }, title: { display: true, text: title + ' (ticks)', color: col.text } },
+            scales: {
+              x: { ticks: { color: col.muted }, grid: { color: col.border } },
+              y: { beginAtZero: true, ticks: { color: col.muted }, grid: { color: col.border } }
+            }
+          }
+        }));
+      }
+      note.hidden = true;
+    } catch (e) {
+      destroyCharts();
+      clear(box);
+      note.textContent = 'Charts could not be drawn (' + (e && e.message ? e.message : 'unknown problem') + '). The table above has the same numbers.';
+      note.hidden = false;
+    }
+  }
+
+  function renderStatus() {
+    var line = 'Idle. Tick two or more schedulers and press Compare.';
+    if (status === 'running') {
+      var events = 0;
+      for (var i = 0; i < runs.length; i++) { events += runs[i].events; }
+      line = 'Running ' + runs.length + ' schedulers on the same jobs: ' + events + ' events so far.';
+    } else if (status === 'done') {
+      line = 'Done: ' + model.columns.length + ' schedulers on ' + model.jobs.length + ' jobs.' + (stale ? ' The jobs or settings changed since; press Compare again.' : '');
+    } else if (status === 'error') {
+      line = 'The comparison stopped.';
+    }
+    text('compare-status', line);
+  }
+
+  function updateButtons() {
+    var go = byId('compare-start');
+    if (go) { go.disabled = status === 'running'; }
+  }
+
+  /* Redraw everything from the remembered answers. */
+  function render() {
+    renderStatus();
+    showMessage('compare-error', errorText);
+    var empty = byId('compare-empty');
+    if (empty) { empty.hidden = status === 'done'; }
+    drawTable();
+    drawTimelines();
+    drawCharts();
+    var exact = byId('compare-exact');
+    if (exact) {
+      exact.hidden = status !== 'done';
+      exact.textContent = 'Exact optimum (9 jobs or fewer): not available yet. This row is added by a later issue (K-33); no value is shown rather than a made-up one.';
+    }
+    updateButtons();
+  }
+
+  /* ---------- page wiring ---------- */
+
+  function mount() {
+    if (mounted) { return; }
+    mounted = true;
+    var box = byId('compare-policies');
+    if (box) {
+      POLICIES.forEach(function (p) {
+        var label = document.createElement('label');
+        var input = document.createElement('input');
+        input.setAttribute('type', 'checkbox');
+        input.setAttribute('data-policy', p.name);
+        input.checked = p.available && selected.indexOf(p.name) >= 0;
+        input.disabled = !p.available;
+        if (p.available) {
+          input.addEventListener('change', function () {
+            var now = [];
+            var boxes = box.children;
+            for (var i = 0; i < boxes.length; i++) {
+              var inp = boxes[i].firstChild;
+              if (inp && inp.checked) { now.push(inp.getAttribute('data-policy')); }
+            }
+            selected = now;
+          });
+        }
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(' ' + p.label));
+        box.appendChild(label);
+      });
+    }
+    var go = byId('compare-start');
+    if (go) { go.addEventListener('click', start); }
+    APRM.store.subscribe(function (s, changed) {
+      var panel = byId('compare-panel');
+      if (panel) { panel.hidden = s.mode !== 'compare'; }
+      if (changed === 'mode' && s.mode !== 'compare' && status === 'running') { cancel(); }
+      if ((changed === 'jobs' || changed === 'machine' || changed === 'settings') && status === 'done' && !stale) {
+        stale = true;
+        renderStatus();
+      }
+    });
+    render();
+  }
+
+  APRM.compare = {
+    SLICE_STEPS: SLICE_STEPS,
+    POLICIES: POLICIES,
+    METRIC_COLUMNS: METRIC_COLUMNS,
+    mount: mount,
+    start: start,
+    cancel: cancel,
+    setSelected: setSelected,
+    setScheduler: setScheduler,
+    liveHandles: function () { return runs.map(function (r) { return r.handle; }); },
+    snapshot: function () {
+      return {
+        status: status, error: errorText, selected: selected.slice(), stale: stale,
+        columns: model ? model.columns : [], jobs: model ? model.jobs : [], tmax: model ? model.tmax : 0,
+        charts: charts.length
+      };
+    }
+  };
+})();
