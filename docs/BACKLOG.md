@@ -424,6 +424,15 @@ All policy cases pass, website runs every preset.
   - [ ] Both figures follow the shared style; PNG and PDF saved
   - [ ] The E6 caption notes we divide by the exact optimum, not a lower bound as in Beaumont
 
+### K-49 Website redesign led by Impeccable (Nice-to-have) · GitHub #112 ([link](https://github.com/krishnasharma1493/APRM/issues/112))
+- **Refs:** PRD §1, §2, §7, §8, §9; BLUEPRINT §5; DECISIONS D76; `PRODUCT.md`, `DESIGN.md`
+- **Files:** `web/`, `Makefile`, `.github/workflows/ci.yml`, `tests/web/`, `tests/demo/`, docs
+- **Done when:**
+  - [ ] Rule change in CLAUDE.md, PRD and BLUEPRINT (D76); Impeccable is the design authority
+  - [ ] `make web` builds a site that works offline from `file://`; CI builds it
+  - [ ] Build, Run and Compare redesigned; every accepted finding fixed or deferred with a reason
+  - [ ] Contrast, layout and offline rehearsal checks, `make test`, `make sanitize`, `pytest tests/py` green; before and after screenshots committed
+
 ### Gate 4 check · tracker #52 ([link](https://github.com/krishnasharma1493/APRM/issues/52))
 C and WebAssembly outputs match, exact solver never beaten.
 

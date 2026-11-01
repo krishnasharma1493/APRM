@@ -1,6 +1,6 @@
 # Design system
 
-Recorded from the shipped site (K-47). The design authority is `docs/design/APPLE_DESIGN.md`; the rules from the brief override it where they differ (no gradients are shipped, no glows, no monospace, no web fonts, classic scripts only).
+Recorded from the shipped site (K-47, K-48). The design authority is Impeccable: `PRODUCT.md` and this file (D76). `docs/design/APPLE_DESIGN.md` is an optional motion reference only. Fixed constraints: the built site works offline from `file://`, no raw HTML injection, colour never the only signal.
 
 ## Principles
 - Calm and plain: short sentences, sentence case, plain words first with the technical term beside them ("Shortest job first (SJF)").
