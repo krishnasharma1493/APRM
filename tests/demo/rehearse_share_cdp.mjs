@@ -65,7 +65,7 @@ async function waitFor(expr, ms = 15000) {
 
 // Share links in a real browser (K-36): opens file:// pages with a hash and reads what the page shows.
 const text = (id) => ev(`(function(){ const e = document.getElementById('${id}'); return e ? e.textContent : null; })()`);
-const nav = async (u) => { await send('Page.navigate', { url: u }); await sleep(600); await waitFor(`document.readyState === 'complete' && !!window.APRM && !!APRM.share`); };
+const nav = async (u) => { await send('Page.navigate', { url: u }); await sleep(600); if (u !== 'about:blank') await waitFor(`document.readyState === 'complete' && !!window.APRM && !!APRM.share`); };
 try {
   const url = await connect();
   ws = new WebSocket(url);

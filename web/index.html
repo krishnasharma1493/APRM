@@ -213,7 +213,7 @@
   <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
        No external script here: compare.js injects the pinned, integrity-checked Chart.js the first
        time Compare mode opens (D33), so Build and Run mode make no network request.
-       Still to be added by a later issue, before app.js: share.js -->
+       share.js (K-36) comes after compare.js and before app.js. -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
   <script src="js/store.js"></script>

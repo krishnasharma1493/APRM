@@ -319,6 +319,56 @@ test('startup with a bad hash: page still mounts, store usable, error shown', ()
   assert.ok(q.A.store.get().jobs.length > 0);
 });
 
+// ---------- the safety nets themselves (each fails if the guarded code is removed) ----------
+test('decode catches an unexpected throw from the reader and returns a clean error', () => {
+  const { A } = page();
+  const h = encodeText(A, HEAD + '\n1,0,5,2,100,1\n');
+  assert.ok(A.share.decode(h).ok);
+  const real = A.editor.parseCsv;
+  A.editor.parseCsv = () => { throw new Error('boom'); };
+  let d;
+  assert.doesNotThrow(() => { d = A.share.decode(h); });
+  assert.equal(d.ok, false);
+  assert.match(d.message, /could not be read/);
+  A.editor.parseCsv = real;
+});
+
+test('a valid link whose loading throws shows an error and does not escape', () => {
+  const q = page();
+  const h = encodeText(q.A, HEAD + '\n1,0,5,2,100,1\n');
+  const real = q.A.store.setJobs;
+  q.A.store.setJobs = () => { throw new Error('boom'); };
+  let d;
+  assert.doesNotThrow(() => { d = q.A.share.loadFromHash(h); });
+  assert.equal(d.ok, false);
+  assert.equal(q.el('share-error').hidden, false);
+  assert.match(q.el('share-error').textContent, /could not be loaded/);
+  q.A.store.setJobs = real;
+});
+
+test('settings line is strict: spaces, signs, long numbers, upper case, trailing text', () => {
+  const { A } = page();
+  const t = (head) => A.share.decode(encodeText(A, head + '\n1,0,5,1,100,1\n'));
+  for (const head of [' 1,16,32768,100,50,100,fcfs', '1,16,32768,100,50,100,fcfs ', '1,16,32768,100,50,100,FCFS',
+    '1,16,32768,100,50,100,fcfs,x', '1,16,32768,00000000100,50,100,fcfs', '1,16,32768,100,50,100,fc fs', '1,+16,32768,100,50,100,fcfs']) {
+    const d = t(head);
+    assert.equal(d.ok, false, head);
+    assert.match(d.message, /settings line/, head);
+  }
+  assert.equal(t('1,16,32768,100,50,100,fcfs').ok, true);
+});
+
+test('prefix and alphabet checks run before any decoding', () => {
+  const { A } = page();
+  const body = Buffer.from(HEAD + '\n1,0,5,2,100,1\n', 'latin1').toString('base64url');
+  assert.equal(A.share.decode('#aprm1=' + body).ok, true);
+  assert.match(A.share.decode('#aprm0=' + body).message, /not a shared-case link/);
+  assert.match(A.share.decode('aprm1=' + body).message, /not a shared-case link/);
+  assert.match(A.share.decode('#aprm1=' + body + '+').message, /damaged/);
+  assert.match(A.share.decode('#aprm1=' + body.slice(0, 4) + '.' + body.slice(5)).message, /damaged/);
+  assert.match(A.share.decode('#aprm1=' + body + '=').message, /damaged/);
+});
+
 // ---------- fuzz ----------
 test('fuzz: random strings and mutations of valid hashes never throw; result is a valid case or a clean error', () => {
   const { A } = page();
