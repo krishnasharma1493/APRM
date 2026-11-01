@@ -135,7 +135,7 @@
     'policy.priority': 'Highest priority first (priority)',
     'policy.sjf': 'Shortest job first (SJF)',
     'policy.aging': 'Waiting jobs gain priority over time (aging)',
-    'policy.aging_reserve': 'Saves a spot for a long-waiting job (EASY reservation)',
+    'policy.aging_reserve': 'Saves a spot for a long wait (EASY reservation)',
     'policy.knapsack': 'Best mix of waiting jobs (knapsack)',
     'metric.avg_wait': 'Average wait',
     'metric.max_wait': 'Longest wait',

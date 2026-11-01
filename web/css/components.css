@@ -171,6 +171,7 @@ html[data-details="off"] .detail-only { display: none; }
 #run-add { margin-top: var(--s-4); }
 @media (max-width: 45rem) {
   .control-rail .status { margin-left: 0; }
+  .run-choice select { font-size: var(--fs-caption); padding-left: var(--s-1); padding-right: 0; }
 }
 
 /* Compare page */

@@ -62,6 +62,7 @@
     }
     if (!list || sig === lastSig) { return shown.length; }
     lastSig = sig;
+    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
     clear(list);
     for (var i = 0; i < shown.length; i++) {
       var li = document.createElement('li');
@@ -80,6 +81,7 @@
       li.setAttribute('tabindex', i === shown.length - 1 ? '0' : '-1');
       list.appendChild(li);
     }
+    if (APRM.keys) { APRM.keys.refocus(list, keep); }
     if (selected === null || selected === undefined) { list.scrollTop = list.scrollHeight || 0; }   /* newest line in view */
     return shown.length;
   }

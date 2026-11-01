@@ -26,10 +26,11 @@
   /* The action for a key event: 'toggle', 'step' or null. O(1). */
   function actionFor(ev) {
     if (!ev || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) { return null; }
+    var isRow = !!(ev.target && typeof ev.target.getAttribute === 'function' && ev.target.getAttribute('role') === 'button');
+    if (ev.key === 'Escape' && (isRow || !inControl(ev.target))) { return 'clear'; }
     if (inControl(ev.target)) { return null; }
     if (ev.key === ' ' || ev.code === 'Space') { return 'toggle'; }
     if (ev.key === 'ArrowRight') { return 'step'; }
-    if (ev.key === 'Escape') { return 'clear'; }
     return null;
   }
 
@@ -81,5 +82,23 @@
     });
   }
 
-  APRM.keys = { actionFor: actionFor, inControl: inControl, perform: perform, mount: mount, rovingList: rovingList };
+  /* The job number of the row of `list` that has focus, or null. */
+  function focusedJob(list) {
+    var a = typeof document !== 'undefined' ? document.activeElement : null;
+    return a && a.parentNode === list && typeof a.getAttribute === 'function' ? a.getAttribute('data-job') : null;
+  }
+
+  /* After a list was rebuilt: give focus back to the row of that job, so the keyboard user stays put. */
+  function refocus(list, job) {
+    if (job === null) { return; }
+    var kids = list.children || [], hit = null;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].getAttribute('data-job') === job) { hit = kids[i]; }
+      kids[i].setAttribute('tabindex', '-1');
+    }
+    hit = hit || kids[0];
+    if (hit) { hit.setAttribute('tabindex', '0'); if (typeof hit.focus === 'function') { hit.focus(); } }
+  }
+
+  APRM.keys = { focusedJob: focusedJob, refocus: refocus, actionFor: actionFor, inControl: inControl, perform: perform, mount: mount, rovingList: rovingList };
 })();

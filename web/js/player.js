@@ -221,6 +221,7 @@
     for (var s = 0; s < w.length && s < TRAY_ROWS; s++) { sig += ',' + w[s].id + ':' + w[s].score; }
     if (sig === lastTraySig) { return; }
     lastTraySig = sig;
+    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
     clear(list);
     text('tray-count', '(' + w.length + ')');
     var empty = byId('tray-empty');
@@ -256,6 +257,7 @@
       li.appendChild(body);
       list.appendChild(li);
     }
+    if (APRM.keys) { APRM.keys.refocus(list, keep); }
     var more = byId('tray-more');
     if (more) {
       more.hidden = w.length <= shown;

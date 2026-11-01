@@ -54,6 +54,8 @@ test('job rows (role=button) keep their own keys; Esc clears the selection on th
   const row = { tagName: 'LI', getAttribute: (k) => (k === 'role' ? 'button' : null) };
   assert.equal(keys.actionFor(ev({ key: ' ', target: row })), null);
   assert.equal(keys.actionFor(ev({ key: 'Escape' })), 'clear');
+  assert.equal(keys.actionFor(ev({ key: 'Escape', target: row })), 'clear', 'Esc works from a job row');
+  assert.equal(keys.actionFor(ev({ key: 'Escape', target: { tagName: 'INPUT' } })), null, 'not while typing');
 });
 
 test('rovingList: arrows move the one Tab stop, Enter and Space pick the job', () => {
