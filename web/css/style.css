@@ -63,15 +63,21 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .job-table tfoot { position: sticky; bottom: 0; background: var(--surface); }
 @media (max-width: 45rem) {
   .job-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .job-table tbody tr, .job-table tfoot tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--border); }
+  .job-table tbody tr, .job-table tfoot tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-2); padding: var(--s-2) var(--s-3); align-items: end; border-bottom: 1px solid var(--border); }
   .job-table tfoot tr { border-bottom: 0; }
   .job-table tfoot { position: static; }
   .job-table .new-head td { grid-column: 1 / -1; }
   .job-table td { display: block; padding: 0; border: 0; }
-  .job-table .id-cell .magnet { right: 5px; top: auto; bottom: 5px; transform: none; }
   .job-table td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: var(--fs-caption); margin-bottom: 2px; }
   .job-table td.row-msg:empty { display: none; }
-  .job-table td.row-msg, .job-table td.row-actions { grid-column: 1 / -1; }
+  .job-table td.row-msg { grid-column: 1 / -1; grid-row: 3; }
+  .job-table .id-cell { display: grid; grid-column: span 2; }
+  .job-table .id-cell::before { grid-row: 1; }
+  .job-table .id-cell input, .job-table .id-cell .magnet { grid-row: 2; grid-column: 1; }
+  .job-table .id-cell .magnet { position: static; justify-self: end; align-self: center; margin-right: 5px; transform: none; }
+  .job-table input { min-width: 0; }
+  .job-table td.row-actions .btn { width: 100%; padding-left: 0; padding-right: 0; }
+  .table-wrap { max-height: 28rem; }
 }
 
 /* Run */
@@ -101,4 +107,5 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .next-row { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-4); margin: var(--s-6) 0 0; }
 
 /* Build keeps its one primary action in reach however long the job list is. */
-.build-panel .next-row { position: sticky; bottom: 0; z-index: 5; padding: var(--s-2) 0; background: var(--canvas); }
+.build-panel .next-row { position: sticky; bottom: var(--s-2); z-index: 5; pointer-events: none; }
+.build-panel .next-row .btn { pointer-events: auto; box-shadow: var(--shadow); }

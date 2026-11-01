@@ -268,7 +268,7 @@
   /* One editable cell. */
   function makeCell(index, field, value, problem) {
     var td = document.createElement('td');
-    if (APRM.copy) { td.setAttribute('data-label', APRM.copy.get('col.' + field)); }
+    if (APRM.copy) { td.setAttribute('data-label', APRM.copy.get('short.col.' + field)); }
     var key = index + ':' + field;
     var input = document.createElement('input');
     input.setAttribute('type', 'text');

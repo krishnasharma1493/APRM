@@ -56,6 +56,17 @@ try {
     check(`${width}px Compare: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
   }
 
+  // 1b. on a phone the new-job row and Add job can be reached, and the top bar stays inside the screen
+  await load(375);
+  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.getElementById('add-submit').scrollIntoView({ block: 'center' }); true`);
+  await sleep(300);
+  check('375px: Add job is the top element at its own position', await ev(`(function(){ const b = document.getElementById('add-submit'); const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; })()`));
+  for (const w of [1366, 375]) {
+    await load(w);
+    const gap = await ev(`document.documentElement.clientWidth - document.getElementById('theme-toggle').getBoundingClientRect().right`);
+    check(`${w}px: the theme button keeps a right margin`, gap >= 8, gap);
+  }
+
   // 2. keyboard: every control reached by Tab, on each step, shows a visible focus ring
   async function tabWalk(label, minStops) {
     await ev(`document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0); true`);
