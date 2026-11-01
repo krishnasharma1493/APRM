@@ -444,6 +444,14 @@ test('run page: the resource strip and the settings line show the engine numbers
   assert.equal(p.doc.byId['run-settings-summary'].textContent, 'Settings: \u03b1 = ' + s.alphaMilli + ', T = ' + s.threshold + ', \u03b5 = ' + s.eps);
 });
 
+test('run page: a scheduler the engine does not have yet cannot be chosen', () => {
+  const p = ready();
+  const opts = p.doc.byId['run-policy'].children;
+  const off = opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'));
+  assert.deepEqual(plain(off), plain(p.A.compare.POLICIES.filter((x) => !x.available).map((x) => x.name)));
+  assert.ok(opts.find((o) => o.getAttribute('value') === 'knapsack').textContent.includes('not implemented yet'));
+});
+
 test('run page: the policy list uses plain names with the technical term beside them', () => {
   const p = ready();
   const names = p.doc.byId['run-policy'].children.map((o) => o.textContent);

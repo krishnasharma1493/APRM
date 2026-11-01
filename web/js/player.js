@@ -193,6 +193,13 @@
     line('res-mem-text', 'mem', 'run.res.mem.text');
   }
 
+  /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
+  function policyAvailable(name) {
+    var list = APRM.compare && APRM.compare.POLICIES ? APRM.compare.POLICIES : [];
+    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i].available; } }
+    return true;
+  }
+
   var lastTraySig = '';
   var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
 
@@ -695,6 +702,12 @@
         var opt = document.createElement('option');
         opt.setAttribute('value', POLICY_NAMES[i]);
         opt.textContent = copyText('policy.' + POLICY_NAMES[i], POLICY_NAMES[i]);
+        /* One list of what the engine can run: the same flag that greys a scheduler out in Compare. */
+        if (!policyAvailable(POLICY_NAMES[i])) {
+          opt.disabled = true;
+          opt.setAttribute('disabled', 'disabled');
+          opt.textContent += copyText('policy.knapsack.soon', '');
+        }
         sel.appendChild(opt);
       }
     }
