@@ -137,7 +137,7 @@
       <button type="button" class="btn btn-primary" id="run-start" data-copy="run.start">Run</button>
     </div>
 
-    <div id="resource-strip" class="card resource-strip" aria-label="Machine resources">
+    <div id="resource-strip" class="card resource-strip" role="group" aria-label="Machine resources">
       <div class="res-row"><span class="res-name" data-copy="run.res.cpu">CPU</span><div class="meter" aria-hidden="true"><span id="res-cpu-fill"></span></div><span id="res-cpu-text" class="num"></span></div>
       <div class="res-row"><span class="res-name" data-copy="run.res.mem">Memory</span><div class="meter" aria-hidden="true"><span id="res-mem-fill"></span></div><span id="res-mem-text" class="num"></span></div>
     </div>
@@ -197,7 +197,7 @@
       <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span>: <output id="run-speed-out">1</output></label>
       <input id="run-speed" type="range" min="1" max="200" value="1">
       <p id="run-status" class="status" role="status">idle</p>
-      <p id="run-clock" class="hint" role="status" data-copy="run.clock.none">No run yet. Press Run.</p>
+      <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
       <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
       <p id="run-error" class="field-error" role="alert" hidden></p>
     </div>

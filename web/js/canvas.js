@@ -32,6 +32,26 @@
   /* Palette index of a job: only a colour choice, never a decision. */
   function paletteIndex(id) { return ((id % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE; }
 
+  /* Relative luminance of a #RRGGBB colour, or -1 when the text is not that form. */
+  function luminance(hex) {
+    var m = /^#([0-9a-fA-F]{6})$/.exec(String(hex).trim());
+    if (!m) { return -1; }
+    var c = [0, 2, 4].map(function (i) {
+      var v = parseInt(m[1].substr(i, 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  /* Whichever of two inks reads better on a background colour (higher contrast). Falls back to `a`. */
+  function betterInk(bg, a, b) {
+    var lb = luminance(bg), la = luminance(a), lc = luminance(b);
+    if (lb < 0 || la < 0 || lc < 0) { return a; }
+    var ca = (Math.max(lb, la) + 0.05) / (Math.min(lb, la) + 0.05);
+    var cb = (Math.max(lb, lc) + 0.05) / (Math.min(lb, lc) + 0.05);
+    return ca >= cb ? a : b;
+  }
+
   /* Hatch pattern for job `id`: 0 none, 1 slanted lines, 2 vertical lines. Skipped when the
    * 2D context cannot clip (tests). O(width / 4). */
   function drawHatch(ctx, id, x, y, w, h, ink) {
@@ -191,7 +211,7 @@
       ctx.fillStyle = jobCol(id);
       ctx.fillRect(x, y, w, h);
       drawHatch(ctx, id, x, y, w, h, col.panel);
-      if (w >= 18 && h >= 12) { text(String(id), x + 3, y + h - 4, w - 4, col.panel); }
+      if (w >= 18 && h >= 12) { text(String(id), x + 3, y + h - 4, w - 4, betterInk(jobCol(id), col.panel, col.text)); }
     };
 
     text('Time ' + st.now + '   events ' + view.events + '   done ' + st.done + ' of ' + st.total, MARGIN, lay.clockY, lay.w - 2 * MARGIN);
