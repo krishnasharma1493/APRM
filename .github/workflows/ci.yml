@@ -72,13 +72,55 @@ jobs:
           if [ "$code" -eq 5 ]; then echo "no tests collected (exit 5): treated as pass"; exit 0; fi
           exit "$code"
 
-  # build-wasm: added in K-13 (install the frozen emsdk, `make wasm`).
-  # build-wasm:
-  #   runs-on: ubuntu-24.04
-  #   steps:
-  #     - uses: actions/checkout@v7
+  build-wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install the emsdk version recorded in docs/TOOLCHAIN.md
+        run: |
+          # The version is read from the Emscripten row of docs/TOOLCHAIN.md. The regex takes the FIRST
+          # version number in the row, which is the Krishna's-laptop column; K-18 must move it to the
+          # CI column when that column is filled in.
+          ver=$(grep '^| Emscripten' docs/TOOLCHAIN.md | sed -E 's/^\|[^|]*\| *([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          echo "emsdk version: $ver"
+          test -n "$ver"
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          cd "$HOME/emsdk"
+          ./emsdk install "$ver"
+          ./emsdk activate "$ver"
+      - name: Build web/vendor/aprm.js
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          emcc --version | head -1
+          make wasm
+      - name: API tests and golden cases through Node
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node --version
+          node wasm/test_api.mjs
+      - name: Every FCFS golden case through Node equals its expected file
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          for exp in tests/cases/*.fcfs.expected.csv; do
+            name=$(basename "$exp" .fcfs.expected.csv)
+            args=""
+            if [ -f "tests/cases/$name.args" ]; then args=$(cat "tests/cases/$name.args"); fi
+            # shellcheck disable=SC2086
+            node wasm/run_wasm.mjs --policy fcfs --in "tests/cases/$name.csv" $args > "$RUNNER_TEMP/w.csv"
+            diff "$RUNNER_TEMP/w.csv" "$exp"
+            echo "ok $name"
+          done
+      - name: api.c natively under ASan and UBSan (no Node)
+        run: |
+          mkdir -p build
+          cc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Icore \
+            core/*.c wasm/api.c wasm/native_check.c -o build/native_check -lm
+          ASAN_OPTIONS=detect_leaks=1 build/native_check
 
   # deploy: added in K-37 (main only, publish web/ to GitHub Pages).
   # deploy:
   #   if: github.ref == 'refs/heads/main'
-  #   needs: [build-c, test-c, sanitize, python]
+  #   needs: [build-c, test-c, sanitize, python, build-wasm]

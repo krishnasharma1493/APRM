@@ -6,8 +6,7 @@
 #   make sanitize   debug + AddressSanitizer + UBSan; also runs the C tests and the CLI tests
 #   make test       builds and runs every tests/c/test_*.c (stops at the first failure), then
 #                   the console program tests: golden cases and exit codes (K-12)
-#   make wasm       runs wasm/build.sh if it exists; until K-13 it prints a
-#                   message and exits NON-ZERO (clearer than silently doing nothing)
+#   make wasm       runs wasm/build.sh: web/vendor/aprm.js (needs emcc, see docs/TOOLCHAIN.md)
 #   make clean      removes build/ and nothing else
 #
 # Generic by design: later issues only add files.
@@ -68,8 +67,7 @@ test:
 	@$(MAKE) --no-print-directory MODE=debug cli-test
 
 wasm:
-	@if [ -f wasm/build.sh ]; then sh wasm/build.sh; \
-	else echo "make wasm: wasm/build.sh does not exist yet (added in K-13); nothing built." >&2; exit 1; fi
+	@sh wasm/build.sh
 
 clean:
 	rm -rf build
