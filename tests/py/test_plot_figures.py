@@ -711,7 +711,7 @@ def test_cli_output_and_out_both_work(tmp_path: Path) -> None:
 def test_cli_unknown_option_is_an_error(tmp_path: Path) -> None:
     """An option the script does not know stops it with a non-zero status."""
     proc = _run_script(["--bogus", "1"], tmp_path)
-    assert proc.returncode != 0
+    assert proc.returncode == 2
     assert "unrecognized" in proc.stderr
     assert list(tmp_path.iterdir()) == []
 
@@ -719,7 +719,7 @@ def test_cli_unknown_option_is_an_error(tmp_path: Path) -> None:
 def test_cli_missing_input_folder_is_an_error(tmp_path: Path) -> None:
     """A missing input folder gives a message and a non-zero status, no files."""
     proc = _run_script(["--input", str(tmp_path / "nope"), "--output", str(tmp_path / "o")], tmp_path)
-    assert proc.returncode != 0
+    assert proc.returncode == 2
     assert "nope" in proc.stderr
     assert not (tmp_path / "o").exists()
 
@@ -733,7 +733,7 @@ def test_cli_exit_status_only_fails_when_nothing_drawn(tmp_path: Path) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
     bad = _run_script(["--input", str(empty), "--output", str(tmp_path / "b")], tmp_path)
-    assert bad.returncode != 0
+    assert bad.returncode == 1
 
 
 def test_cli_writes_only_inside_output_folder(tmp_path: Path) -> None:
@@ -743,3 +743,17 @@ def test_cli_writes_only_inside_output_folder(tmp_path: Path) -> None:
     proc = _run_script(["--input", SAMPLE_DIR, "--output", "figs"], work)
     assert proc.returncode == 0, proc.stderr
     assert [p.name for p in work.iterdir()] == ["figs"]
+
+
+def test_cli_abbreviation_is_not_accepted(tmp_path: Path) -> None:
+    """--ou is not silently taken as --out/--output: only the full names work."""
+    proc = _run_script(["--input", SAMPLE_DIR, "--ou", str(tmp_path / "x")], tmp_path)
+    assert proc.returncode == 2
+    assert not (tmp_path / "x").exists()
+
+
+def test_read_options_defaults() -> None:
+    """With no options the input is the sample folder and the output the report folder."""
+    args = pf.read_options([])
+    assert Path(args.input) == ROOT / "data" / "sample_summaries"
+    assert Path(args.output) == ROOT / "docs" / "report" / "figures"

@@ -392,7 +392,8 @@ def read_options(argv: list = None):
 
     # Two settings: where to read summaries, where to write figures.
     # Real data is one change: --input results/summaries
-    parser = argparse.ArgumentParser(description="Draw the report figures.")
+    parser = argparse.ArgumentParser(description="Draw the report figures.",
+                                     allow_abbrev=False)
     parser.add_argument("--input", default=os.path.join(root, "data", "sample_summaries"),
                         help="folder with the summary CSV files")
     parser.add_argument("--output", "--out", dest="output",
