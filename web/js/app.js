@@ -147,6 +147,17 @@
     }
   }
 
+  var toastTimer = null;
+
+  /* A short message at the bottom of the page (aria-live). Hides itself after a few seconds. */
+  function toast(text) {
+    var el = byId('toast');
+    if (!el) { return; }
+    el.textContent = text;
+    if (toastTimer !== null && typeof clearTimeout === 'function') { clearTimeout(toastTimer); }
+    if (typeof setTimeout === 'function') { toastTimer = setTimeout(function () { el.textContent = ''; toastTimer = null; }, 4000); }
+  }
+
   /* After a step change, move focus to that step's heading so Space and the arrow keys
    * work at once (they are ignored while a button has focus). Skipped when focus() is missing. */
   function focusStep(mode) {
@@ -210,6 +221,7 @@
     TEXT_LOADING: TEXT_LOADING,
     TEXT_EMPTY: TEXT_EMPTY,
     showError: showError,
+    toast: toast,
     clearError: clearError,
     start: start
   };

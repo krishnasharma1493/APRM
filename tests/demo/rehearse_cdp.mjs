@@ -69,7 +69,7 @@ window.__h = {
   click(id) { document.getElementById(id).click(); },
   mode(m) { document.querySelector('[data-mode-button="' + m + '"]').click(); },
   text(id) { const e = document.getElementById(id); return e ? e.textContent : null; },
-  loadPreset(name) { this.mode('build'); this.set('preset-select', name); this.click('preset-load'); },
+  loadPreset(name) { this.mode('build'); document.querySelector('#preset-tiles [data-preset="' + name + '"]').click(); },
   tick(policy, on) { const c = document.querySelector('#compare-policies input[data-policy="' + policy + '"]'); c.checked = on; c.dispatchEvent(new Event('change', {bubbles:true})); },
   whyLines() { return Array.from(document.querySelectorAll('#whylog-list li')).map((l) => l.textContent); }
 };`;
