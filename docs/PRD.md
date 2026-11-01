@@ -39,7 +39,7 @@ Never copy version numbers from this document or from memory into `requirements.
 | GCC or Clang | Distribution package manager (WSL Ubuntu, Linux) or Xcode command line tools (Mac) |
 | GNU Make | Same as above |
 | Emscripten (emsdk) | emscripten.org and `emsdk list`; both laptops and CI use the same version |
-| Node.js (only to run WebAssembly tests in CI) | Current Active LTS from nodejs.org |
+| Node.js (only to run WebAssembly tests in CI) | Current Active LTS from nodejs.org. Exception: the emsdk-bundled Node is kept for laptop/CI parity (DECISIONS D65) |
 | Python | python.org, a release still in bugfix or security support |
 | `numpy`, `pandas`, `matplotlib`, `pytest` | PyPI latest stable + advisories |
 | Chart.js (website CDN) | npm or jsDelivr page; exact pinned version + SRI hash |
@@ -342,6 +342,8 @@ This list is the reference for every invariant check in the project (C debug che
 - At most one reservation exists, and the reserved job is in the waiting heap.
 
 ## 5. Engine API contract
+
+**Frozen at Gate 2 (2026-11-01).** The step API, the CSV formats and the summary CSV formats in this section no longer move. To change anything here: ask first, update this section first, then the code, then tell Ahaana (§13). **One exception, open on purpose:** the representation of `knapsack_eps` (DECISIONS O-2) is the only open item; K-34 may change it through the same process (PRD first, code, tell Ahaana). DECISIONS O-15 (E4 groups: high = priority 7 to 9, low = 0 to 2, D57) and O-16 (E6: 50 instances per job count, D58) are confirmation-only items: their values are already fixed in the text of this section. The freeze was done on Krishna's authorisation. **Not met at the freeze:** Ahaana's approval of the CSV and summary formats and her paper check of the golden cases are awaited, and the issue's "identical versions" criterion is UNMET (Python patch 3.13.7 on the laptop vs 3.13.17 in CI, GNU Make 3.81 vs 4.3, pip 25.2 vs 26.2.2, and Ahaana's laptop versions are not recorded yet; see docs/TOOLCHAIN.md).
 
 This section is the contract between the C core, the website and Python. Agree on it before Gate 2, change it here first, then in code, then tell the other member.
 
