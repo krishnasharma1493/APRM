@@ -621,7 +621,7 @@ The website has no accounts or stored data, so the risks are bad input from file
 
 - [x] All text from users, files, URLs or the engine is shown as text, never as raw HTML (`textContent`; no `innerHTML`, `dangerouslySetInnerHTML` or `v-html`).
 - [x] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
-- [ ] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
+- [x] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
 - [x] No runtime network request from the built page: the chart library is bundled into `web/dist/index.html` (K-49, D78). The unbuilt `web/index.html` still loads it lazily from the CDN, pinned with an integrity hash, with a table fallback.
 - [x] No `eval`, no `new Function`, no inline event-handler attributes.
 - [x] `web/index.html` works from `file://` today: no `fetch`, nothing loaded from a server.
