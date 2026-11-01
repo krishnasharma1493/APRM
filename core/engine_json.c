@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 #include "csv.h"
+#include "exact.h"
 #include "heap.h"
 #include "json.h"
 #include "metrics.h"
@@ -211,4 +212,22 @@ int sim_state_json(const Sim *s, JsonBuf *out)
     rc = json_status(out);
     if (rc != APRM_OK) json_reset(out);
     return rc;
+}
+
+int sim_exact_json(const Sim *s, JsonBuf *out)
+{
+    Job all[APRM_EXACT_MAX_JOBS];
+    size_t n = 0, i;
+    if (!s || !out) return APRM_INVALID_ARGUMENT;
+    json_reset(out);
+    if (s->n_total > APRM_EXACT_MAX_JOBS) return APRM_TOO_LARGE;
+    for (i = 0; i < s->pending.len; i++)
+        all[n++] = ((const Job *)s->pending.data)[i];
+    for (i = 0; i < s->waiting.len; i++)
+        all[n++] = ((const WaitEntry *)s->waiting.data)[i].job;
+    for (i = 0; i < s->running.len; i++)
+        all[n++] = ((const RunEntry *)s->running.data)[i].job;
+    for (i = 0; i < s->fin_len; i++)
+        all[n++] = s->fin[i].job;
+    return exact_solve(&s->cfg, all, (int)n, out);
 }

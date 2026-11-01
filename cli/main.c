@@ -35,6 +35,7 @@
 #include "csv.h"
 #include "engine.h"
 #include "eventlog.h"
+#include "exact.h"
 #include "job.h"
 #include "json.h"
 
@@ -239,7 +240,8 @@ static int parse_args(int argc, char **argv, Args *a)
         if (rc != 0) return rc;
     }
     if (a->help) return 0;
-    if (a->exact) return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "exact solver not built yet", 0);
+    if (a->exact && (a->log != NULL || a->metrics != NULL))
+        return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "--exact cannot be combined with --log or --metrics.", 0);
     if (a->in == NULL) return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "missing --in (the jobs.csv file).", 0);
     if (a->out == NULL) return fail_line(EXIT_BAD_ARGS, "INVALID_ARGUMENT", "missing --out (the results.csv file).", 0);
     if (a->in[0] == '\0' || a->out[0] == '\0' || (a->log && a->log[0] == '\0') || (a->metrics && a->metrics[0] == '\0'))
@@ -379,6 +381,7 @@ static int add_exit_code(int rc)
     case APRM_ARRIVAL_IN_PAST:
     case APRM_DUPLICATE_ID:
     case APRM_LIMIT_REACHED:
+    case APRM_TOO_LARGE:
         return EXIT_INVALID_JOB;
     default:
         return EXIT_INTERNAL;
@@ -398,6 +401,13 @@ static int build_log_text(const Sim *s, CsvText *out)
             return fail_line(EXIT_INTERNAL, "OUT_OF_MEMORY", "Out of memory.", 0);
     }
     return 0;
+}
+
+/* qsort compare for ResultRow by id (ids are unique). O(1). */
+static int cmp_row_id(const void *x, const void *y)
+{
+    const ResultRow *p = x, *q = y;
+    return (p->id > q->id) - (p->id < q->id);
 }
 
 /* Runs the whole job. Returns the exit code. All resources are released
@@ -434,6 +444,12 @@ static int run(const Args *a)
         goto done;
     }
 
+    if (a->exact && n_jobs > APRM_EXACT_MAX_JOBS) {
+        exit_code = fail_line(add_exit_code(APRM_TOO_LARGE), code_name(APRM_TOO_LARGE),
+                              "Exact solver supports up to 9 jobs.", 0);
+        goto done;
+    }
+
     rc = sim_create(&a->cfg, &sim);
     if (rc != APRM_OK) {
         exit_code = fail_line(EXIT_INTERNAL, code_name(rc), "cannot create the simulation.", 0);
@@ -457,7 +473,36 @@ static int run(const Args *a)
         }
     }
 
-    while ((rc = sim_step(sim)) == 1) { }
+    if (a->exact) {
+        /* Exact mode: no simulation; the optimal schedule is written as results.csv. */
+        ExactResult er;
+        rc = exact_schedule(&a->cfg, jobs, (int)n_jobs, &er);
+        if (rc != APRM_OK) {
+            exit_code = fail_line(add_exit_code(rc), code_name(rc), "the exact solver failed.", 0);
+            goto done;
+        }
+        rows = malloc((n_jobs > 0 ? (size_t)n_jobs : 1) * sizeof *rows);
+        if (rows == NULL) {
+            exit_code = fail_line(EXIT_INTERNAL, "OUT_OF_MEMORY", "Out of memory.", 0);
+            goto done;
+        }
+        for (i = 0; i < n_jobs; i++) {
+            rows[i].id = jobs[i].id;
+            rows[i].arrival = jobs[i].arrival;
+            rows[i].start = er.start[i];
+            rows[i].finish = er.start[i] + jobs[i].duration;   /* checked inside the solver */
+            rows[i].wait = er.start[i] - jobs[i].arrival;
+            rows[i].turnaround = rows[i].finish - jobs[i].arrival;
+            rows[i].priority = jobs[i].priority;
+            rows[i].cpu = jobs[i].cpu;
+            rows[i].mem = jobs[i].mem;
+        }
+        qsort(rows, (size_t)n_jobs, sizeof *rows, cmp_row_id);
+        n_rows = n_jobs;
+        rc = 1;
+    } else {
+        while ((rc = sim_step(sim)) == 1) { }
+    }
     if (rc < 0) {
         const SimError *e = sim_last_error(sim);
         if (rc == APRM_INVALID_ARGUMENT && e != NULL && strcmp(e->field, "policy") == 0) {
@@ -475,7 +520,8 @@ static int run(const Args *a)
     if (a->metrics != NULL && (exit_code = check_output_path(a->metrics)) != 0) goto done;
 
     /* Build every output in memory first. */
-    rc = sim_results_rows(sim, &rows, &n_rows);
+    rc = APRM_OK;
+    if (!a->exact) rc = sim_results_rows(sim, &rows, &n_rows);
     if (rc == APRM_OK) rc = csv_write_results(&results, rows, n_rows);
     if (rc == APRM_OK && a->metrics != NULL) rc = sim_metrics_json(sim, &metrics);
     if (rc != APRM_OK) {

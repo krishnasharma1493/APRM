@@ -62,7 +62,7 @@ expect "exit-1 eps 0.001"           1 "INVALID_FIELD"       -- --in $GOOD --out 
 expect "exit-1 eps 1e-1"            1 "decimal number"      -- --in $GOOD --out $OUT --eps 1e-1
 expect "exit-1 eps .5"              1 "decimal number"      -- --in $GOOD --out $OUT --eps .5
 expect "exit-1 eps empty"           1 "decimal number"      -- --in $GOOD --out $OUT --eps ""
-expect "exit-1 --exact"             1 "exact solver not built yet" -- --in $GOOD --out $OUT --exact
+expect "exit-1 --exact with --log" 1 "cannot be combined" -- --in $GOOD --out $OUT --exact --log $T/l.txt
 expect "exit-1 same in/out"         1 "different files"     -- --in $GOOD --out $GOOD
 expect "exit-1 same out/log"        1 "different files"     -- --in $GOOD --out $OUT --log $OUT
 
@@ -188,6 +188,28 @@ if [ $rc = 0 ] && [ ! -s "$T/stderr" ] && grep -q "^usage: aprm --in" "$T/stdout
 echo precious > "$T/precious.txt"; rm -f "$T/sl.csv" "$T/sl.csv.tmp"; ln -s "$T/precious.txt" "$T/sl.csv.tmp"
 "$BIN" --in $GOOD --out "$T/sl.csv" 2>/dev/null
 if [ $? = 0 ] && [ "$(cat "$T/precious.txt")" = "precious" ] && [ -f "$T/sl.csv" ] && [ ! -e "$T/sl.csv.tmp" ] && head -1 "$T/sl.csv" | grep -q '^id,arrival'; then echo "ok    stale <out>.tmp symlink is not written through"; ok; else bad "wrote through a <out>.tmp symlink"; fi
+
+# ---- --exact (K-33): the optimal schedule is written as results.csv ----
+# big_job_trap (machine 6 cores, 6000 MB): online FCFS waits 95; the optimum is 3 (hand-worked in test_exact.c).
+cat >"$T/want_exact.csv" <<'EXEOF'
+id,arrival,start,finish,wait,turnaround,priority,cpu,mem
+1,0,3,23,3,23,0,6,6000
+2,1,1,3,0,2,9,1,1000
+3,1,1,3,0,2,9,1,1000
+4,1,1,3,0,2,9,1,1000
+5,1,1,3,0,2,9,1,1000
+6,1,1,3,0,2,9,1,1000
+EXEOF
+rm -f "$OUT"
+"$BIN" --exact --cpu 6 --mem 6000 --in $CASES/big_job_trap.csv --out "$OUT" >"$T/stdout" 2>"$T/stderr"
+rc=$?
+if [ $rc = 0 ] && [ ! -s "$T/stderr" ] && [ ! -s "$T/stdout" ] && cmp -s "$OUT" "$T/want_exact.csv"; then echo "ok    --exact writes the optimal schedule"; ok; else bad "--exact big_job_trap (rc $rc)"; fi
+printf 'id,arrival,duration,cpu,mem,priority\n' >"$T/ten.csv"
+for i in 1 2 3 4 5 6 7 8 9 10; do echo "$i,0,1,1,1,0" >>"$T/ten.csv"; done
+expect "exit-3 --exact with 10 jobs" 3 "TOO_LARGE: Exact solver supports up to 9 jobs." -- --exact --in "$T/ten.csv" --out $OUT
+expect "exit-3 --exact capacity"     3 "CAPACITY_EXCEEDED: Job 3 needs 40960 MB; machine has 32768 MB. (line 4)" -- --exact --in $CASES/capacity_reject.csv --out $OUT
+"$BIN" --exact --in "$T/none.csv" --out "$T/none.out" 2>/dev/null
+if [ $? = 0 ] && [ "$(cat "$T/none.out")" = "id,arrival,start,finish,wait,turnaround,priority,cpu,mem" ]; then echo "ok    --exact with no jobs"; ok; else bad "--exact with no jobs"; fi
 
 echo "cli: $pass passed, $fail failed"
 [ $fail -eq 0 ]

@@ -180,7 +180,7 @@ This finds the true best schedule for up to 9 jobs (a fixed constant, not config
 2. For each order, place each job at the earliest time at or after its arrival where its resources are free for its whole duration (serial schedule generation).
 3. Keep the order with the lowest total wait; branch and bound prunes orders that already cost more than the best found.
 
-For measures like total wait, trying every order in this way is known to include an optimal schedule (Kolisch 1996, project scheduling; verify before citing). Worst case O(n! · n²), about 3 × 10⁷ steps at n = 9. The solver knows all future jobs, so its answer is a lower bound for every online scheduler.
+For measures like total wait, trying every order in this way is known to include an optimal schedule (Kolisch 1996, project scheduling; verify before citing). Worst case O(n! · n³) (corrected from n² in D71), about 3 × 10⁷ steps at n = 9 before pruning. The solver knows all future jobs, so its answer is a lower bound for every online scheduler.
 
 ### 3.8 Complexity summary
 
@@ -190,7 +190,7 @@ For measures like total wait, trying every order in this way is known to include
 | Greedy fill, full run | O(n² log n) worst, ≈ O(n log n) typical | O(n) |
 | Reservation, per trigger | O(r log r) | O(r) |
 | Knapsack batch, per window | O(n² / ε) | O(n² / ε) |
-| Exact solver | O(n! · n²) | O(n) |
+| Exact solver | O(n! · n³) | O(n) |
 
 ## 4. Phase plan
 
