@@ -16,7 +16,13 @@ static int bad = 0, n_add_oom = 0, n_step_oom = 0;
 /* canonical snapshot of a Sim (state + results + log) with injection off */
 static int snap(Sim *s, char **out){
   JsonBuf j; long save=fi_countdown; fi_countdown=-1; json_init(&j);
-  if(sim_state_json(s,&j)) return -1; size_t a=json_len(&j);
+  size_t a;
+  if(sim_state_json(s,&j)) {
+    json_free(&j);
+    fi_countdown=save;
+    return -1;
+  }
+  a=json_len(&j);
   static char buf[1<<20]; size_t pos=0; memcpy(buf,json_cstr(&j),a); pos=a;
   json_reset(&j); sim_log_json(s,0,&j); memcpy(buf+pos,json_cstr(&j),json_len(&j)); pos+=json_len(&j); buf[pos]=0;
   json_free(&j); fi_countdown=save; *out=buf; return 0;
