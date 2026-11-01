@@ -99,7 +99,7 @@ Deferrals:
 | Run | Show details | during a finished run | Exact engine numbers, raw kinds shown | K-49 | 8.083333333 | PASS |
 | Compare | Stale note | jobs changed after comparing | Says press Compare again | K-27 | as expected | PASS |
 | Run | Step | after the run finished | Ignored, no error | K-50 | as expected | PASS |
-| Run | Play | after the run finished | Stays finished | K-50 | as expected | PASS |
+| Run | Play | after the run finished | Disabled, like Step and Jump; stays finished | K-50 | as expected | PASS |
 | Run | Run | double click | One clean new run | K-50 | as expected | PASS |
 | Run | Play | double click | Toggles twice, stays consistent | K-50 | as expected | PASS |
 | Run | Reset | mid-run while playing | Stops at once, no error | K-50 | as expected | PASS |
