@@ -12,6 +12,7 @@
 
   var APRM = (window.APRM = window.APRM || {});
 
+  var HATCH_MAX = 300;           /* above this, cards are slivers: hatching costs a clip per card per frame */
   var HEIGHT = 360;              /* css pixels */
   var MARGIN = 8;
   var LABEL_W = 56;              /* width of the "CPU" / "Memory" labels */
@@ -97,9 +98,8 @@
   }
 
   /* One lane's cards as rectangles. key is 'cpu' or 'mem'. Time runs left to right on the shared axis. */
-  function laneCards(view, key, cap, lane, sx, now) {
-    var byId = {}, list = [], i;
-    for (i = 0; i < view.jobs.length; i++) { byId[view.jobs[i].id] = view.jobs[i]; }
+  function laneCards(view, byId, key, cap, lane, sx, now) {
+    var list = [], i;
     var ids = Object.keys(view.bars);
     for (i = 0; i < ids.length; i++) {
       var b = view.bars[ids[i]], job = byId[ids[i]];
@@ -138,8 +138,10 @@
     var sx = function (t) { return x + (t / tmax) * gw; };
     var cpu = { key: 'cpu', cap: st.cap.cpu, x: x, y: TOP, w: gw, h: laneH };
     var mem = { key: 'mem', cap: st.cap.mem, x: x, y: TOP + laneH + GAP, w: gw, h: laneH };
-    cpu.cards = laneCards(view, 'cpu', st.cap.cpu, cpu, sx, st.now);
-    mem.cards = laneCards(view, 'mem', st.cap.mem, mem, sx, st.now);
+    var byId = {};
+    for (k = 0; k < view.jobs.length; k++) { byId[view.jobs[k].id] = view.jobs[k]; }
+    cpu.cards = laneCards(view, byId, 'cpu', Math.max(1, st.cap.cpu), cpu, sx, st.now);
+    mem.cards = laneCards(view, byId, 'mem', Math.max(1, st.cap.mem), mem, sx, st.now);
     out.lanes = [cpu, mem];
     out.tmax = tmax;
     out.nowX = sx(st.now);
@@ -188,6 +190,9 @@
       ctx.strokeStyle = col.border; ctx.lineWidth = 1;
       ctx.beginPath();
       for (var t = lay.step; t < lay.tmax; t += lay.step) { ctx.moveTo(lay.sx(t) + 0.5, lane.y); ctx.lineTo(lay.sx(t) + 0.5, lane.y + lane.h); }
+      /* the printed slots: one row per core on a small machine, quarters otherwise */
+      var rows = lane.cap <= 32 ? lane.cap : 4;
+      for (var r = 1; r < rows; r++) { var ry = Math.round(lane.y + (r / rows) * lane.h) + 0.5; ctx.moveTo(lane.x, ry); ctx.lineTo(lane.x + lane.w, ry); }
       ctx.stroke();
       ctx.strokeRect(lane.x + 0.5, lane.y + 0.5, lane.w - 1, lane.h - 1);
       text(lane.key === 'cpu' ? 'CPU' : 'Memory', 0, lane.y + 12, LABEL_W - 4, col.text);
@@ -195,9 +200,11 @@
       text('0', 0, lane.y + lane.h, LABEL_W - 4, col.muted);
       for (var c = 0; c < lane.cards.length; c++) {
         var card = lane.cards[c];
+        regions.push({ x: card.x, y: card.y, w: card.w, h: card.h, id: card.id, lane: lane.key });
+        if (view.hold && view.hold[card.id]) { continue; }     /* its magnet is still on the way here */
         ctx.fillStyle = col.jobs[paletteIndex(card.id)];
         ctx.fillRect(card.x, card.y, card.w, card.h);
-        drawHatch(ctx, card.id, card.x, card.y, card.w, card.h, col.panel);
+        if (lane.cards.length <= HATCH_MAX) { drawHatch(ctx, card.id, card.x, card.y, card.w, card.h, col.panel); }
         ctx.strokeStyle = col.panel; ctx.lineWidth = 1;
         ctx.strokeRect(card.x + 0.5, card.y + 0.5, Math.max(0, card.w - 1), Math.max(0, card.h - 1));
         if (card.w >= 22 && card.h >= 16) {
@@ -208,7 +215,6 @@
           text(label, card.x + 6, card.y + 14, card.w - 10, col.text);
         }
         if (sel === card.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 2; ctx.strokeRect(card.x, card.y, card.w, card.h); }
-        regions.push({ x: card.x, y: card.y, w: card.w, h: card.h, id: card.id });
       }
     }
 

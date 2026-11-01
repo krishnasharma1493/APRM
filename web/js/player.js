@@ -90,6 +90,7 @@
 
   /* Destroy the live simulation if there is one. Never throws. O(1). */
   function destroyRun() {
+    stopFlights();
     if (run !== null) {
       var h = run.handle;
       run = null;
@@ -140,7 +141,7 @@
 
   function view() {
     return { state: run ? run.state : null, jobs: run ? run.jobs : [], bars: run ? run.bars : {},
-      selected: selected, events: run ? run.events : 0 };
+      selected: selected, events: run ? run.events : 0, hold: held };
   }
 
   var METRIC_KEYS = ['avg_wait', 'max_wait', 'avg_turnaround', 'weighted_completion', 'makespan', 'util_cpu', 'util_mem'];
@@ -192,6 +193,7 @@
     line('res-mem-text', 'mem', 'run.res.mem.text');
   }
 
+  var lastTraySig = '';
   var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
 
   /* A job's magnet: colour, hatch and stamped number. Bigger for a higher priority (a fixed ramp). */
@@ -212,9 +214,14 @@
   function drawTray() {
     var list = byId('tray-list');
     if (!list) { return; }
-    clear(list);
     var w = run && run.state ? run.state.waiting : [];
     var saved = run && run.state && run.state.reservation ? run.state.reservation.id : null;
+    /* Rebuild only when something shown changed, so a click or keyboard focus survives a playing run. */
+    var sig = selected + '|' + saved + '|' + w.length;
+    for (var s = 0; s < w.length && s < TRAY_ROWS; s++) { sig += ',' + w[s].id + ':' + w[s].score; }
+    if (sig === lastTraySig) { return; }
+    lastTraySig = sig;
+    clear(list);
     text('tray-count', '(' + w.length + ')');
     var empty = byId('tray-empty');
     if (empty) { empty.hidden = w.length > 0; }
@@ -224,6 +231,9 @@
       var li = document.createElement('li');
       li.setAttribute('data-job', String(j.id));
       li.setAttribute('class', 'tray-card' + (selected === j.id ? ' selected' : ''));
+      li.setAttribute('tabindex', i === 0 ? '0' : '-1');
+      li.setAttribute('role', 'button');
+      li.setAttribute('aria-pressed', selected === j.id ? 'true' : 'false');
       li.appendChild(magnet(j.id, j.priority));
       var body = document.createElement('span');
       body.setAttribute('class', 'tray-body');
@@ -254,16 +264,23 @@
   }
 
   var flights = 0;
+  var flightStops = [];
+  var held = {};           /* job id -> true while its magnet is in the air; the board leaves its card out */
 
-  /* The signature moment: when the engine starts a job, its magnet travels from the tray to its card
-   * on the board. Purely visual, skipped under reduced motion, at high speed and when the jump runs. */
+  /* True when a started card may travel: motion allowed, speed low, room for another flight. */
+  function canFly() {
+    return !!(APRM.motion && !APRM.motion.reduced() && speed <= 3 && status !== 'jumping' && flights < 3);
+  }
+
+  /* The signature moment: when the engine starts a job, its card is held off the board while its
+   * magnet travels from the tray to the memory lane, then the card lands. Purely visual. */
   function flyCard(id, from) {
     var canvasEl = byId('run-canvas');
-    if (!from || !canvasEl || flights >= 3 || !APRM.motion || APRM.motion.reduced() || speed > 3 || status === 'jumping') { return; }
-    var regs = canvasEl.__regions || [];
+    var regs = canvasEl && canvasEl.__regions ? canvasEl.__regions : [];
     var reg = null;
-    for (var i = 0; i < regs.length && !reg; i++) { if (regs[i].id === id) { reg = regs[i]; } }
-    if (!reg || typeof canvasEl.getBoundingClientRect !== 'function' || !document.body) { return; }
+    for (var i = 0; i < regs.length; i++) { if (regs[i].id === id && (regs[i].lane === 'mem' || !reg)) { reg = regs[i]; } }
+    var land = function () { delete held[id]; if (run) { APRM.canvas.draw(canvasEl, view()); } };
+    if (!reg || typeof canvasEl.getBoundingClientRect !== 'function' || !document.body) { land(); return; }
     var box = canvasEl.getBoundingClientRect();
     var job = null;
     for (var k = 0; k < run.jobs.length; k++) { if (run.jobs[k].id === id) { job = run.jobs[k]; } }
@@ -273,10 +290,27 @@
     el.style.top = from.top + 'px';
     document.body.appendChild(el);
     flights++;
-    var dx = box.left + reg.x - from.left, dy = box.top + reg.y - from.top;
-    APRM.motion.animateValue(0, 1, { response: 0.28 }, function (t) {
+    var dx = box.left + reg.x + reg.w / 2 - from.left - from.width / 2;
+    var dy = box.top + reg.y + reg.h / 2 - from.top - from.height / 2;
+    var finish = function () {
+      flights--;
+      if (el.parentNode) { el.parentNode.removeChild(el); }
+      var at = flightStops.indexOf(stop);
+      if (at >= 0) { flightStops.splice(at, 1); }
+      land();
+    };
+    var cancel = APRM.motion.animateValue(0, 1, { response: 0.28 }, function (t) {
       el.style.transform = 'translate(' + (dx * t) + 'px,' + (dy * t) + 'px)';
-    }, function () { flights--; if (el.parentNode) { el.parentNode.removeChild(el); } });
+    }, finish);
+    function stop() { cancel(); finish(); }
+    flightStops.push(stop);
+  }
+
+  /* Remove any magnet still in the air (a reset or a new run mid-flight). */
+  function stopFlights() {
+    var all = flightStops.slice();
+    flightStops.length = 0;
+    for (var i = 0; i < all.length; i++) { all[i](); }
   }
 
   /* Tray positions before a redraw, so a started card can fly from where it was. O(cards shown). */
@@ -325,7 +359,14 @@
 
   /* Redraw every view from the remembered engine answers. O(shown rows + jobs). */
   function render() {
-    var from = run && run.justStarted.length > 0 ? trayRects() : null;
+    var from = run && run.justStarted.length > 0 && canFly() ? trayRects() : null;
+    var flying = [];
+    if (from) {
+      for (var g = 0; g < run.justStarted.length; g++) {
+        var startedId = run.justStarted[g];
+        if (from[startedId] && flying.length + flights < 3) { held[startedId] = true; flying.push(startedId); }
+      }
+    }
     drawTray();
     text('run-clock', clockText());
     text('run-status', copyText('status.' + status, status));
@@ -345,10 +386,8 @@
     drawReservation();
     drawSettingsLine();
     highlightJobList();
-    if (run && from) {
-      for (var f = 0; f < run.justStarted.length; f++) { flyCard(run.justStarted[f], from[run.justStarted[f]]); }
-      run.justStarted = [];
-    } else if (run) { run.justStarted = []; }
+    if (run) { run.justStarted = []; }
+    for (var f = 0; f < flying.length; f++) { flyCard(flying[f], from[flying[f]]); }
     updateButtons();
     if (status !== 'playing') { refreshAddForm(); }
   }
@@ -685,6 +724,7 @@
         var id = t && t !== tray && t.getAttribute ? t.getAttribute('data-job') : null;
         if (id !== null && id !== undefined) { select(Number(id) === selected ? null : Number(id)); }
       });
+      if (APRM.keys) { APRM.keys.rovingList(tray, function (id) { select(id === selected ? null : id); }); }
     }
     var jl = byId('job-list');
     if (jl) {

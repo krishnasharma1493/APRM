@@ -19,6 +19,7 @@
     if (!target || !target.tagName) { return false; }
     var tag = String(target.tagName).toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'summary' || tag === 'a') { return true; }
+    if (typeof target.getAttribute === 'function' && target.getAttribute('role') === 'button') { return true; }
     return !!target.isContentEditable;
   }
 
@@ -28,6 +29,7 @@
     if (inControl(ev.target)) { return null; }
     if (ev.key === ' ' || ev.code === 'Space') { return 'toggle'; }
     if (ev.key === 'ArrowRight') { return 'step'; }
+    if (ev.key === 'Escape') { return 'clear'; }
     return null;
   }
 
@@ -41,6 +43,7 @@
       return true;
     }
     if (action === 'step') { return APRM.player.stepOnce(); }
+    if (action === 'clear') { APRM.player.select(null); return true; }
     return false;
   }
 
@@ -57,5 +60,26 @@
     document.addEventListener('keydown', onKeyDown);
   }
 
-  APRM.keys = { actionFor: actionFor, inControl: inControl, perform: perform, mount: mount };
+  /* Keyboard for a list of job rows: one Tab stop for the whole list (the row with tabindex 0), up and
+   * down arrows move between rows, Enter or Space picks. onPick gets the row's job number. O(1) per key. */
+  function rovingList(list, onPick) {
+    list.addEventListener('keydown', function (ev) {
+      var row = ev.target;
+      if (!row || typeof row.getAttribute !== 'function' || row.getAttribute('data-job') === null) { return; }
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        onPick(Number(row.getAttribute('data-job')));
+        if (typeof ev.preventDefault === 'function') { ev.preventDefault(); }
+      } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        var next = ev.key === 'ArrowDown' ? row.nextElementSibling : row.previousElementSibling;
+        if (next && typeof next.focus === 'function') {
+          row.setAttribute('tabindex', '-1');
+          next.setAttribute('tabindex', '0');
+          next.focus();
+        }
+        if (typeof ev.preventDefault === 'function') { ev.preventDefault(); }
+      }
+    });
+  }
+
+  APRM.keys = { actionFor: actionFor, inControl: inControl, perform: perform, mount: mount, rovingList: rovingList };
 })();

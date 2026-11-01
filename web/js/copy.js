@@ -30,7 +30,7 @@
     'theme.night': 'Night mode',
     'theme.day': 'Day mode',
     'theme.hint': 'Switch between a light and a dark page.',
-    'keys.hint': 'Space plays or pauses. Right arrow steps.',
+    'keys.hint': 'Space plays or pauses. Right arrow steps. Enter on a job shows only its decisions; Esc shows all.',
     'noscript': 'This page needs JavaScript. The recorded demo video is the fallback.',
 
     'build.heading': 'Let’s schedule some jobs',
@@ -135,7 +135,7 @@
     'policy.priority': 'Highest priority first (priority)',
     'policy.sjf': 'Shortest job first (SJF)',
     'policy.aging': 'Waiting jobs gain priority over time (aging)',
-    'policy.aging_reserve': 'Saves a spot for a job that has waited too long (aging with EASY reservation)',
+    'policy.aging_reserve': 'Saves a spot for a long-waiting job (EASY reservation)',
     'policy.knapsack': 'Best mix of waiting jobs (knapsack)',
     'metric.avg_wait': 'Average wait',
     'metric.max_wait': 'Longest wait',

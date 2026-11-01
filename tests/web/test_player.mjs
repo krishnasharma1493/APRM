@@ -512,6 +512,19 @@ test('board draw: cards, stamped number, now rail, hit testing; no markup', () =
   assert.equal(p.A.canvas.hit(p.canvas, 0, 0), null);
 });
 
+test('board draw: a held card is left out until its magnet lands, but stays clickable', () => {
+  const p = page();
+  const ctx = p.canvas.ctx;
+  const card = () => p.canvas.__layout.lanes[0].cards[0];
+  p.A.canvas.draw(p.canvas, VIEW);
+  const w = card().w;
+  const painted = () => ctx.calls.filter((c) => c.op === 'fillRect' && Math.abs(c.a[2] - w) < 1e-9).length;
+  ctx.calls.length = 0; p.A.canvas.draw(p.canvas, VIEW); const all = painted();
+  ctx.calls.length = 0; p.A.canvas.draw(p.canvas, { ...VIEW, hold: { [card().id]: true } });
+  assert.equal(painted(), all - 2, 'gone from both lanes');
+  assert.ok(p.canvas.__regions.some((r) => r.id === card().id));
+});
+
 test('board: no 2D context returns false; 5000 cards lay out inside the board', () => {
   const p = page();
   p.canvas.getContext = () => null;
@@ -537,10 +550,41 @@ test('tray: waiting jobs in engine order with score, next and saved stamps, clic
   assert.ok(texts.includes('Job ' + w0.id));
   assert.ok(texts.some((t) => t === 'Next' || t === 'Spot saved'));
   if (typeof w0.score === 'number') assert.ok(texts.some((t) => t.includes('score ' + w0.score.toFixed(3))));
+  assert.equal(first.getAttribute('tabindex'), '0', 'one Tab stop for the list');
   list.fire('click', { target: first });
   assert.equal(p.A.player.snapshot().selected, w0.id);
   list.fire('click', { target: first });
   assert.equal(p.A.player.snapshot().selected, null);
+});
+
+function trayWith(waiting, reservation) {
+  const p = ready({ totalSteps: 10 });
+  p.A.player.start();
+  const s = p.A.player.snapshot().state;
+  s.waiting = waiting; s.reservation = reservation;
+  p.A.player.select(null); p.A.player.select(waiting.length ? waiting[0].id : null);
+  return p;
+}
+const W = (id, score) => ({ id, score, priority: 3, arrival: 0, duration: 5, cpu: 1, mem: 10 });
+
+test('tray: a null score shows no score; the first job is Next, the reserved job is Spot saved', () => {
+  const p = trayWith([W(4, null), W(7, 2.5)], { id: 7, shadow_time: 40 });
+  const [a, b] = p.doc.byId['tray-list'].children;
+  const texts = (li) => li.children[1].children.map((c) => c.textContent);
+  assert.ok(!texts(a).join(' ').includes('score'), 'null score');
+  assert.ok(texts(a).includes('Next'));
+  assert.ok(texts(b).includes('Spot saved') && texts(b).join(' ').includes('score 2.500'));
+  assert.equal(b.children[1].children[1].getAttribute('class'), 'stamp stamp-saved');
+  assert.match(a.getAttribute('class'), /selected/);
+  assert.equal(a.getAttribute('aria-pressed'), 'true');
+});
+
+test('tray: only 40 cards on the page, but the count and "more" line stay true', () => {
+  const p = trayWith(Array.from({ length: 95 }, (_, i) => W(i + 1, 1)), null);
+  assert.equal(p.doc.byId['tray-list'].children.length, 40);
+  assert.equal(p.doc.byId['tray-count'].textContent, '(95)');
+  assert.equal(p.doc.byId['tray-more'].hidden, false);
+  assert.equal(p.doc.byId['tray-more'].textContent, 'and 55 more');
 });
 
 test('board click selects the card under the cursor and a second click clears it', () => {

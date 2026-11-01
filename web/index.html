@@ -154,7 +154,6 @@
       </details>
     </div>
     <p id="run-error" class="field-error" role="alert" hidden></p>
-    <div id="reserve-card" class="reserve-card" role="status" hidden></div>
 
     <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
       <section class="module tray" aria-labelledby="tray-title">
@@ -175,6 +174,7 @@
         <div class="board-lines" role="group" aria-label="Machine resources">
           <p><span class="res-name" data-copy="run.res.cpu">CPU</span> <span id="res-cpu-text" class="num"></span></p>
           <p><span class="res-name" data-copy="run.res.mem">Memory</span> <span id="res-mem-text" class="num"></span></p>
+          <p id="reserve-card" class="reserve-line" role="status" hidden></p>
         </div>
         <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
         <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
