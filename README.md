@@ -34,7 +34,7 @@ Versions are written in one place only: `docs/TOOLCHAIN.md`. Do not copy version
 | Git | `git --version` | cloning |
 | Python 3 with `venv` | `python3 --version` and `python3 -m venv --help` | tools, `pytest`, figures |
 | A web browser (Chrome, Edge, Firefox) | open it | the website |
-| Emscripten (emsdk), optional | `emcc --version` | `make wasm` only (the website's engine file) |
+| Emscripten (emsdk), optional | `emcc --version`; "command not found" is fine if `~/emsdk` exists, because `make wasm` sources it itself | `make wasm` only (the website's engine file) |
 | Node.js, optional | `node --version` | some WebAssembly tests; emsdk bundles one |
 
 If a command prints "command not found", install that tool using the system section below, then run the check again. Everything except the website's engine file builds without Emscripten.
@@ -83,7 +83,7 @@ Run these in order, from the repository folder, with the virtual environment act
 | --- | --- | --- |
 | 1. Build | `make` | Last line links `build/aprm`, no errors |
 | 2. C tests | `make test` | Ends with "passed" lines, exit code 0 |
-| 3. Python tests | `pytest tests/py -q` | `... passed, ... skipped`, no failures (about a minute) |
+| 3. Python tests | `pytest tests/py -q` | `passed`, no failures (about a minute) |
 | 4. Engine for the website | `make wasm` | `built web/vendor/aprm.js (... bytes)` |
 | 5. Website | double-click `web/index.html` | The page says "Engine ready" |
 | 6. Figures | `python tools/plot_figures.py` | Prints the paths of `.png` and `.pdf` files in `docs/report/figures/` |

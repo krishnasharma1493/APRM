@@ -741,7 +741,7 @@ The speaker keeps talking ("let me show you the recorded run") while the other s
 
 | Risk | Likelihood | Early warning | Fallback |
 | --- | --- | --- | --- |
-| Emscripten will not install on a laptop | Medium | `emcc` not found or fails in WSL | CI builds `aprm.js`; download it from the CI run; the laptop only needs GCC |
+| Emscripten will not install on a laptop | Medium | `emcc` not found or fails in WSL | the website needs `make wasm`; without emsdk everything else (console program, tests, figures) still works; the `demo-ready` build (tag) is the fallback |
 | Console and WebAssembly results differ | Medium | Conformance check fails | Usually uninitialised memory or float ties: run `make sanitize`, check tie-breaks; never ship until it passes |
 | Memory bug in C | Medium | Random crashes, odd results | `make sanitize` on every change; CI blocks the merge |
 | Python and C disagree on CSV format | Medium | Parse errors in experiment runs | §5 is the contract; golden CSVs are the shared reference; change §5 first |
