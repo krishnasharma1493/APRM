@@ -114,7 +114,8 @@ html[data-details="off"] .detail-only { display: none; }
 
 /* Example tiles */
 .tiles { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
-.tile { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); text-align: left; padding: var(--s-3) var(--s-4); height: 100%; }
+.tile { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1); text-align: left; padding: var(--s-3) var(--s-4); height: 100%; }
+.tile:hover { border-color: var(--muted); }
 .tile-title { font-weight: 600; }
 .tile-hint { color: var(--muted); font-size: var(--fs-caption); line-height: var(--lh-caption); }
 .tile-detail { color: var(--muted); font-size: var(--fs-caption); border-top: 1px solid var(--border); padding-top: var(--s-1); margin-top: var(--s-1); }
@@ -148,8 +149,6 @@ td.best::after { content: " " attr(data-best); font-size: var(--fs-caption); fon
 .compare-table td { text-align: right; }
 .compare-fig figcaption { color: var(--muted); font-size: var(--fs-caption); margin-bottom: var(--s-1); }
 
-/* The page rules in style.css style every button inside a panel; the primary button must still win. */
-.panel .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 
 /* Form controls never push the page wider than the screen. */
 input, select, textarea { max-width: 100%; }
@@ -158,3 +157,17 @@ input[type="file"]::file-selector-button { font: inherit; color: var(--text); ba
 .build-box { min-width: 0; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* A tile's rack: the example's real jobs as small magnets, width from duration, height from CPU share. */
+.tile-rack { order: -1; display: flex; align-items: flex-end; gap: 2px; height: 2rem; margin-bottom: var(--s-1); overflow: hidden; }
+.tile-rack span { flex: 0 0 auto; min-width: 3px; border-radius: 1px; }
+
+/* Browser surfaces */
+::selection { background: var(--accent); color: var(--on-accent); }
+html { scrollbar-color: var(--chart-gray) transparent; caret-color: var(--accent); }
+
+@media (max-width: 45rem) {
+  .res-row { grid-template-columns: 5rem minmax(0, 1fr); }
+  .res-row > .num { grid-column: 1 / -1; }
+  .dock input[type="range"] { width: 100%; }
+}

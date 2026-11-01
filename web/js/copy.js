@@ -220,6 +220,8 @@
     var scope = root || document;
     var els = scope.querySelectorAll('[data-copy]');
     for (var i = 0; i < els.length; i++) { els[i].textContent = get(els[i].getAttribute('data-copy')); }
+    var cells = scope.querySelectorAll('[data-copy-attr]');
+    for (var c = 0; c < cells.length; c++) { cells[c].setAttribute('data-label', get(cells[c].getAttribute('data-copy-attr'))); }
     var labelled = scope.querySelectorAll('[data-copy-label]');
     for (var j = 0; j < labelled.length; j++) { labelled[j].setAttribute('aria-label', get(labelled[j].getAttribute('data-copy-label'))); }
   }

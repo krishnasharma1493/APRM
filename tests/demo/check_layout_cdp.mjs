@@ -42,7 +42,7 @@ try {
   await send('Page.enable'); await send('Runtime.enable');
 
   // 1. no sideways scroll on each step, at laptop widths and at 200% zoom (640 css px)
-  for (const width of [1440, 1280, 1024, 640]) {
+  for (const width of [1440, 1280, 1024, 640, 375]) {
     await load(width);
     await ev(`document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); true`);
     check(`${width}px Build: no sideways scroll`, (await hscroll()) <= 0, await hscroll());

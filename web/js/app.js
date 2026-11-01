@@ -57,6 +57,7 @@
     var main = byId('app-main');
 
     main.setAttribute('data-engine', st.engine.status);
+    status.setAttribute('data-state', st.engine.status);
     main.setAttribute('data-mode', st.mode);
 
     if (st.engine.status === 'loading') {

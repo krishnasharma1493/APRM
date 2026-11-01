@@ -51,6 +51,29 @@
     return { title: title, hint: hint };
   }
 
+  /* The example's real jobs as a row of small magnets: width from duration, height from CPU share,
+   * colour from the same job palette as the Run page. Decorative for screen readers. O(jobs shown). */
+  function rackOf(p) {
+    var rack = document.createElement('span');
+    rack.setAttribute('class', 'tile-rack');
+    rack.setAttribute('aria-hidden', 'true');
+    var shown = p.jobs.slice(0, 14);
+    var maxD = 1;
+    for (var i = 0; i < shown.length; i++) { maxD = Math.max(maxD, shown[i].duration); }
+    for (var k = 0; k < shown.length; k++) {
+      var m = document.createElement('span');
+      var w = Math.round(3 + 21 * shown[k].duration / maxD);
+      var h = Math.max(18, Math.round(100 * shown[k].cpu / p.cpu_cap));
+      if (m.style) {
+        m.style.width = w + 'px';
+        m.style.height = h + '%';
+        m.style.background = 'var(--job-' + (shown[k].id % 10) + ')';
+      }
+      rack.appendChild(m);
+    }
+    return rack;
+  }
+
   /* Mark the tile of the loaded preset (aria-pressed) and show the toast. */
   function markLoaded(tiles, name, title) {
     var buttons = tiles.children;
@@ -84,7 +107,7 @@
       var name = document.createElement('span'); name.setAttribute('class', 'tile-title'); name.textContent = t.title;
       var hint = document.createElement('span'); hint.setAttribute('class', 'tile-hint'); hint.textContent = t.hint || p.description;
       var more = document.createElement('span'); more.setAttribute('class', 'tile-detail detail-only'); more.textContent = p.description;
-      b.appendChild(name); b.appendChild(hint); b.appendChild(more);
+      b.appendChild(name); b.appendChild(hint); b.appendChild(more); b.appendChild(rackOf(p));
       b.addEventListener('click', function () {
         if (load(p.name) !== null) { markLoaded(tiles, p.name, t.title); }
       });

@@ -268,6 +268,7 @@
   /* One editable cell. */
   function makeCell(index, field, value, problem) {
     var td = document.createElement('td');
+    if (APRM.copy) { td.setAttribute('data-label', APRM.copy.get('col.' + field)); }
     var key = index + ':' + field;
     var input = document.createElement('input');
     input.setAttribute('type', 'text');
@@ -330,8 +331,10 @@
       msgCell.textContent = texts.join(' ');
       tr.appendChild(msgCell);
       var delCell = document.createElement('td');
+      delCell.setAttribute('class', 'row-actions');
       var del = document.createElement('button');
       del.setAttribute('type', 'button');
+      del.setAttribute('class', 'btn btn-quiet');
       del.textContent = 'Delete';
       del.setAttribute('aria-label', 'Delete row ' + (i + 1));
       del.addEventListener('click', makeDeleter(i));
@@ -345,6 +348,7 @@
     if (summary) {
       summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + ' (limit ' + MAX_JOBS_WEB + ')' +
         (problems.length > 0 ? '; ' + problems.length + ' problem' + (problems.length === 1 ? '' : 's') + ' marked in red' : '');
+      summary.hidden = st.jobs.length === 0;
     }
   }
 

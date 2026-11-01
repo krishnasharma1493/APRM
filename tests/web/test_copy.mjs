@@ -35,7 +35,7 @@ test('every data-copy key and APRM.copy.get key in the page exists', () => {
   for (const f of readdirSync(join(web, 'js'))) if (f.endsWith('.js') && f !== 'copy.js') sources.push(readFileSync(join(web, 'js', f), 'utf8'));
   const used = new Set();
   for (const src of sources) {
-    for (const m of src.matchAll(/data-copy(?:-label)?="([^"]+)"/g)) used.add(m[1]);
+    for (const m of src.matchAll(/data-copy(?:-label|-attr)?="([^"]+)"/g)) used.add(m[1]);
     for (const m of src.matchAll(/copy\.get\('([^']+)'\)/g)) used.add(m[1]);
   }
   for (const k of used) assert.ok(keys.includes(k), 'missing copy key: ' + k);
