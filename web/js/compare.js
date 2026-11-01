@@ -12,9 +12,12 @@
  *   3. read metrics and results from each handle, then destroy every handle
  *      (also on error and on cancel), so the 4,096-handle limit never fills up;
  *   4. show a metrics table (always), side-by-side timelines, and Chart.js bar
- *      charts. Chart.js is loaded by a script tag in index.html (pinned, with an
- *      integrity hash). If it is missing or blocked, window.Chart does not exist
- *      and the table stays: nothing else depends on the network.
+ *      charts. Chart.js is loaded lazily, the first time Compare mode opens: a
+ *      classic script element is injected with the pinned URL, an integrity hash
+ *      and crossorigin (D33). Build and Run mode make no network request. If the
+ *      load fails, is blocked by the hash, or times out, window.Chart does not
+ *      exist and the table stays: nothing else depends on the network. A failed
+ *      load is never retried.
  *
  * Text from the engine is always put on the page with textContent.
  * Classic script: attaches APRM.compare only. Nothing runs at load time.
@@ -27,6 +30,12 @@
   var SLICE_STEPS = 500;
   var DASH = '—'; /* shown for a null metric (D62: no finished job, or makespan 0) */
   var MIN_POLICIES = 2;
+
+  /* The ONE place the pinned Chart.js file is named (version, URL, SRI hash).
+   * Verified for K-27 and recorded in docs/TOOLCHAIN.md. */
+  var CHART_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';
+  var CHART_INTEGRITY = 'sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ';
+  var CHART_TIMEOUT_MS = 10000;
 
   /* name: what the engine is told; label: what the page shows. Knapsack is not
    * built yet, so it is listed but cannot be ticked. */
@@ -59,14 +68,52 @@
   var token = 0;             /* bumps on every start/cancel, so old slices stop */
   var stale = false;
   var mounted = false;
+  var chartLoad = 'none';    /* none | loading | loaded | failed (failed is final: no retry) */
+  var chartTimer = null;
 
   /* Replaceable so tests can run the slices by hand. */
   var scheduler = {
     later: function (fn) { return setTimeout(fn, 0); },
-    cancelLater: function (id) { clearTimeout(id); }
+    cancelLater: function (id) { clearTimeout(id); },
+    timeout: function (fn, ms) { return setTimeout(fn, ms); },
+    cancelTimeout: function (id) { clearTimeout(id); }
   };
   function setScheduler(s) {
-    scheduler = { later: s.later || scheduler.later, cancelLater: s.cancelLater || scheduler.cancelLater };
+    scheduler = {
+      later: s.later || scheduler.later, cancelLater: s.cancelLater || scheduler.cancelLater,
+      timeout: s.timeout || scheduler.timeout, cancelTimeout: s.cancelTimeout || scheduler.cancelTimeout
+    };
+  }
+
+  /* ---------- Chart.js, loaded once, lazily ---------- */
+
+  function chartSettled(state) {
+    if (chartLoad === 'loaded' || chartLoad === 'failed') { return; }
+    chartLoad = state;
+    if (chartTimer !== null) { scheduler.cancelTimeout(chartTimer); chartTimer = null; }
+    if (status === 'done') { drawCharts(); }
+  }
+
+  /* Start loading Chart.js if that has not been tried yet. Never fetch, never
+   * retry: one script element, ever. O(1). */
+  function ensureChart() {
+    if (chartLoad !== 'none') { return; }
+    if (typeof window.Chart === 'function') { chartLoad = 'loaded'; return; }
+    var host = document.head || document.documentElement || document.body;
+    if (!host || typeof document.createElement !== 'function') { chartLoad = 'failed'; return; }
+    chartLoad = 'loading';
+    try {
+      var el = document.createElement('script');
+      el.setAttribute('src', CHART_URL);
+      el.setAttribute('integrity', CHART_INTEGRITY);
+      el.setAttribute('crossorigin', 'anonymous');
+      el.onload = function () { chartSettled(typeof window.Chart === 'function' ? 'loaded' : 'failed'); };
+      el.onerror = function () { chartSettled('failed'); };
+      host.appendChild(el);
+      chartTimer = scheduler.timeout(function () { chartTimer = null; chartSettled('failed'); }, CHART_TIMEOUT_MS);
+    } catch (e) {
+      chartLoad = 'failed';
+    }
   }
 
   function byId(id) { return document.getElementById(id); }
@@ -164,6 +211,7 @@
     errorText = '';
     stale = false;
     model = null;
+    ensureChart();
     var st = APRM.store.get();
     if (st.jobs.length === 0) {
       status = 'idle';
@@ -376,6 +424,11 @@
     if (box) { clear(box); }
     if (!box || !note) { return; }
     if (status !== 'done' || model === null) { note.hidden = true; return; }
+    if (typeof window.Chart !== 'function' && chartLoad === 'loading') {
+      note.textContent = 'Chart.js is still loading. The table above has the numbers; the charts appear when it arrives.';
+      note.hidden = false;
+      return;
+    }
     if (typeof window.Chart !== 'function') {
       note.textContent = 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.';
       note.hidden = false;
@@ -489,6 +542,9 @@
     APRM.store.subscribe(function (s, changed) {
       var panel = byId('compare-panel');
       if (panel) { panel.hidden = s.mode !== 'compare'; }
+      if (s.mode === 'compare') { ensureChart(); }
+      if (changed === 'mode' && s.mode !== 'compare') { destroyCharts(); }
+      if (changed === 'mode' && s.mode === 'compare' && status === 'done') { drawCharts(); }
       if (changed === 'mode' && s.mode !== 'compare' && status === 'running') { cancel(); }
       if ((changed === 'jobs' || changed === 'machine' || changed === 'settings') && status === 'done' && !stale) {
         stale = true;
@@ -504,6 +560,10 @@
     METRIC_COLUMNS: METRIC_COLUMNS,
     mount: mount,
     start: start,
+    ensureChart: ensureChart,
+    CHART_URL: CHART_URL,
+    CHART_INTEGRITY: CHART_INTEGRITY,
+    chartState: function () { return chartLoad; },
     cancel: cancel,
     setSelected: setSelected,
     setScheduler: setScheduler,

@@ -202,8 +202,8 @@
   </footer>
 
   <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
-       The only network request is the Chart.js script below (Compare mode only; D33): exact
-       version, integrity hash, crossorigin. If it fails to load, Compare mode shows its table.
+       No external script here: compare.js injects the pinned, integrity-checked Chart.js the first
+       time Compare mode opens (D33), so Build and Run mode make no network request.
        Still to be added by a later issue, before app.js: share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
@@ -215,7 +215,6 @@
   <script src="js/canvas.js"></script>
   <script src="js/whylog.js"></script>
   <script src="js/player.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
   <script src="js/compare.js"></script>
   <script src="js/app.js"></script>
 </body>

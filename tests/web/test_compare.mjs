@@ -60,7 +60,7 @@ function fakeDocument() {
     byId[m[2]] = el;
   }
   return {
-    byId, getElementById: (id) => byId[id] || null,
+    head: new El('head'), byId, getElementById: (id) => byId[id] || null,
     createElement: (t) => { const e = new El(t); if (t === 'canvas') { e.ctx = fakeCtx(); e.getContext = () => e.ctx; } return e; },
     createTextNode: (t) => new Text(t),
     querySelectorAll: () => [],
@@ -68,6 +68,7 @@ function fakeDocument() {
 }
 
 const tags = [...html.matchAll(/<script\b[^>]*>/g)].map((m) => m[0]);
+const cmpSrc = read('js/compare.js');
 const srcs = tags.map((t) => (t.match(/\bsrc="([^"]+)"/) || [])[1]);
 const localSrcs = srcs.filter((u) => !/^https?:/.test(u));
 
@@ -89,6 +90,7 @@ function page({ createAprm, wasm = false, Chart } = {}) {
   sched.cancelLater = () => { sched.laters.length = 0; };
   sched.runLater = () => { const f = sched.laters.shift(); assert.ok(f, 'a slice is scheduled'); f(); };
   sched.drain = () => { let n = 0; while (sched.laters.length) { sched.runLater(); n++; } return n; };
+  sched.timeout = () => 1; sched.cancelTimeout = () => {};
   A.compare.setScheduler(sched);
   return { ctx, doc, A, sched, el: (id) => doc.byId[id] };
 }
@@ -130,26 +132,86 @@ function ready(opts, pageOpts) {
 const tableText = (p) => p.el('compare-body').children.map((tr) => tr.children.map((c) => c.textContent));
 
 // ---------- static ----------
-test('index.html: Chart.js tag pinned to an exact version with a sha384 integrity and crossorigin', () => {
-  const tag = tags.find((t) => /cdn\.jsdelivr\.net\/npm\/chart\.js@/.test(t));
-  assert.ok(tag, 'a Chart.js script tag exists');
-  const url = tag.match(/\bsrc="([^"]+)"/)[1];
+test('index.html has no external script; Build and Run mode make no network request', () => {
+  assert.equal(tags.filter((t) => /src="(https?:)?\/\//.test(t)).length, 0);
+  assert.ok(!/cdn\.jsdelivr|integrity=/i.test(html), 'no CDN reference in index.html');
+});
+
+test('compare.js pins Chart.js in one place: exact version URL, sha384 integrity', () => {
+  const url = cmpSrc.match(/CHART_URL = '([^']+)'/)[1];
+  const integrity = cmpSrc.match(/CHART_INTEGRITY = '([^']+)'/)[1];
   assert.match(url, /^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@\d+\.\d+\.\d+\/dist\/chart\.umd\.min\.js$/, 'exact version, no range or latest');
-  const integrity = tag.match(/\bintegrity="([^"]+)"/);
-  assert.ok(integrity, 'integrity attribute present');
-  assert.match(integrity[1], /^sha384-[A-Za-z0-9+/]{64}$/, 'sha384 of 48 bytes in base64');
-  assert.match(tag, /\bcrossorigin="anonymous"/);
-  assert.equal(tags.filter((t) => /src="https?:/.test(t)).length, 1, 'Chart.js is the only external script');
+  assert.match(integrity, /^sha384-[A-Za-z0-9+/]{64}$/);
+  assert.equal(cmpSrc.match(/https?:\/\//g).filter((u) => true).length, 1, 'the URL appears once');
   if (process.env.CHARTJS_FILE) {
     const digest = 'sha384-' + createHash('sha384').update(readFileSync(process.env.CHARTJS_FILE)).digest('base64');
-    assert.equal(integrity[1], digest, 'integrity equals the hash of the downloaded file');
+    assert.equal(integrity, digest, 'integrity equals the hash of the downloaded file');
   }
 });
 
-test('script order: player.js, then Chart.js, then compare.js, then app.js', () => {
-  const at = (re) => srcs.findIndex((u) => re.test(u));
-  const player = at(/js\/player\.js/), chart = at(/chart\.js@/), cmp = at(/js\/compare\.js/), app = at(/js\/app\.js/);
-  assert.ok(player >= 0 && player < chart && chart < cmp && cmp < app, String(srcs));
+test('loader: first open of Compare injects one script with integrity and crossorigin; never twice', () => {
+  const p = ready();
+  assert.equal(p.doc.head.children.length, 0, 'nothing injected in Build mode');
+  p.A.store.setMode('run');
+  assert.equal(p.doc.head.children.length, 0, 'nothing injected in Run mode');
+  p.A.store.setMode('compare');
+  assert.equal(p.doc.head.children.length, 1);
+  const el = p.doc.head.children[0];
+  assert.equal(el.tag, 'script');
+  assert.equal(el.getAttribute('src'), p.A.compare.CHART_URL);
+  assert.equal(el.getAttribute('integrity'), p.A.compare.CHART_INTEGRITY);
+  assert.equal(el.getAttribute('crossorigin'), 'anonymous');
+  assert.equal(p.A.compare.chartState(), 'loading');
+  p.A.store.setMode('build'); p.A.store.setMode('compare');
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(p.doc.head.children.length, 1, 'still one script');
+  assert.match(p.el('compare-chart-note').textContent, /still loading/);
+  assert.equal(p.el('compare-table-wrap').hidden, false);
+});
+
+test('loader: onload draws the charts; onerror falls back to the table and never retries', () => {
+  const made = [];
+  const p = ready();
+  p.A.store.setMode('compare');
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  p.ctx.Chart = class { constructor() { made.push(this); } destroy() {} };
+  p.doc.head.children[0].onload();
+  assert.equal(p.A.compare.chartState(), 'loaded');
+  assert.equal(made.length, 4);
+
+  const q = ready();
+  q.A.store.setMode('compare');
+  q.A.compare.setSelected(['fcfs', 'aging']); q.A.compare.start(); q.sched.drain();
+  q.doc.head.children[0].onerror();
+  assert.equal(q.A.compare.chartState(), 'failed');
+  assert.match(q.el('compare-chart-note').textContent, /could not be loaded/);
+  assert.equal(q.el('compare-error').hidden, true);
+  for (let i = 0; i < 5; i++) { q.A.store.setMode('build'); q.A.store.setMode('compare'); q.A.compare.start(); q.sched.drain(); }
+  assert.equal(q.doc.head.children.length, 1, 'a failed load is not retried');
+  assert.equal(tableText(q).length, 2);
+});
+
+test('loader: a load that never finishes times out into the fallback', () => {
+  const p = ready();
+  const timers = [];
+  p.A.compare.setScheduler({ timeout: (fn) => { timers.push(fn); return timers.length; }, cancelTimeout: () => {} });
+  p.A.store.setMode('compare');
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(timers.length, 1);
+  timers[0]();
+  assert.equal(p.A.compare.chartState(), 'failed');
+  assert.match(p.el('compare-chart-note').textContent, /could not be loaded/);
+});
+
+test('leaving Compare mode destroys the charts', () => {
+  const made = [];
+  class FakeChart { constructor() { this.d = false; made.push(this); } destroy() { this.d = true; } }
+  const p = ready({}, { Chart: FakeChart });
+  p.A.store.setMode('compare');
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(made.length, 4);
+  p.A.store.setMode('run');
+  assert.ok(made.every((c) => c.d));
 });
 
 test('compare.js and index.html: no innerHTML, eval, Function, fetch, inline handlers, modules', () => {
@@ -319,6 +381,7 @@ test('Chart.js missing or blocked (offline, wrong integrity): table and timeline
   const p = ready();                               // no window.Chart at all
   p.A.compare.setSelected(['fcfs', 'aging']);
   p.A.compare.start(); p.sched.drain();
+  p.doc.head.children[0].onerror();                // the browser reports the blocked or failed load
   assert.equal(p.A.compare.snapshot().status, 'done');
   assert.equal(p.A.compare.snapshot().error, '');
   assert.equal(p.el('compare-error').hidden, true, 'not an error');
