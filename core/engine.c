@@ -416,7 +416,11 @@ int sim_step(Sim *s)
         /* Aging stores -(1000 b - alpha_milli r), fixed for life (never re-sorted);
          * the other policies have no key and order by their compare function. */
         rc = policy_wait_key(s->cfg.policy, s->cfg.alpha_milli, &jb, &we.key);
-        if (rc != APRM_OK) return rc;  /* unreachable: the job was validated on entry */
+        /* Dead code by construction: policy_wait_key fails only for a priority, arrival or
+         * alpha_milli outside PRD section 3, and sim_add_job and sim_create validated all
+         * three before the job was accepted. Kept so a future bug cannot go unnoticed;
+         * if it ever fired the step would be half done. */
+        if (rc != APRM_OK) return rc;
         rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
         if (rc != APRM_OK) return rc;
     }
