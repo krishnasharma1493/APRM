@@ -200,6 +200,7 @@
     return true;
   }
 
+  var ownChange = false;
   var lastTraySig = '';
   var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
 
@@ -625,7 +626,9 @@
       readEngine(false);
     } catch (err2) { fail(err2); return { ok: false, message: errorText, field: '' }; }
     render();
+    ownChange = true;           /* the run's own mid-run add, not a new case */
     APRM.store.setJobs(stored);
+    ownChange = false;
     if (wasPlaying) { play(); }
     return { ok: true };
   }
@@ -754,6 +757,8 @@
       if (panel) { panel.hidden = s.mode !== 'run'; }
       if (changed === 'mode' && s.mode !== 'run') { pause(); }
       if (changed === 'settings' || changed === 'policies' || changed === 'mode') { syncInputs(s); }
+      /* The run belongs to the jobs and machine it started with; a new case ends it. */
+      if ((changed === 'jobs' || changed === 'machine') && run !== null && !ownChange) { reset(); }
       if (changed === 'jobs' && run === null) { render(); }
       if (changed === 'details' || changed === 'settings' || changed === 'theme') { render(); }
     });
