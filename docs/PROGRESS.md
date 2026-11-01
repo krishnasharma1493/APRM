@@ -18,7 +18,11 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-09 | #10 | Done, PR #64 merged (by Krishna) | Event loop; D59 |
 | K-17 | #18 | Done, PR #63 merged (by Krishna) | Golden cases; Ahaana's paper check of all cases deferred to K-18 |
 | K-10 | #11 | Done, PR #65 merged (by the run, per CLAUDE.md) | Event log; D60. Reviewer measured a skip-log flood (12-25M entries for a 5,000-job queue behind a running job); fixed by logging a skip only when a job's short-resource set changes (20,000 entries). The PRD §5 sentence was removed from the PR (D60 records it) |
-| K-11 | #12 | PR #66 approved, CI green, merged-with-main, **waiting for Krishna (changes PRD §5)** | Metrics and JSON; D61-D63. Contract changes to approve are listed in the PR comment and below |
+| K-11 | #12 | Done, PR #66 merged (Krishna told the run to merge it, including its PRD §5 changes) | Metrics and JSON; D61-D63 |
+| K-12 | #13 | Done, PR #68 merged | Console program, golden runner, 70 CLI checks |
+| K-13 | #14 | Done, PR #67 merged (Krishna told the run to merge it, including the PRD §5 `aprm_last_error` row) | WebAssembly build, 28 JS tests, native ASan driver, CI job; D64 |
+| K-15 | #16 | Done, PR #70 merged | Experiment runner |
+| K-16 | #17 | Done, PR #71 merged | Invariant checker; 10,000 real runs, 0 violations |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -59,37 +63,10 @@ Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UT
 - 2026-11-01: Krishna merged #63 and #64 and asked the run to merge its own PRs from now on. Started K-10 and K-11 in parallel (both touch core/engine.c; the second PR to merge resolves the conflict). If merging is still refused by the permission system the run stops again at the first finished PR.
 - 2026-11-01: K-10 merged by the run (#65): CLAUDE.md now allows squash-merging own PRs once CI is green, except `a/*` and PRD §5 PRs. K-11 (#66) changes PRD §5, so it waits. **Everything after it is blocked on it**: K-12 (CLI, needs sim_results_rows and the metrics JSON), K-13 (WebAssembly), and through them K-15, K-16, K-18 and all of Gate 3.
 
-## Waiting for Krishna: approve and merge PR #66 (K-11)
+## Gate 2 merge record
 
-Branch is up to date with main, conflict-free, all tests and CI green. PRD §5 changes in it:
-1. Number format: averages and utilisations printed with exactly nine decimals, rounded half up, integers only (was e.g. `12.4`).
-2. Some numbers can be `null`: avg_wait/avg_turnaround when nothing finished; util_* when makespan is 0; any empty priority level in avg_wait_by_priority (array stays 10 entries). Consumers (pandas) treat `null` as NaN.
-3. State `score`: live aging score (3 decimals) for aging and aging_reserve; `null` for other policies.
-`gh pr merge 66 --squash --delete-branch` (or the browser), then tell the next session to continue with K-12 and K-13 (parallel).
+All five stacked PRs were merged on 2026-11-01 in the order #66, #68, #67, #70, #71, after Krishna said "merge everything cleanly and close the issues". Issues #12, #13, #14, #16 and #17 are closed. Deleting a base branch closes a PR stacked on it (GitHub did not retarget #67 and #68), so those two were reopened and retargeted to main by hand, and later stacked PRs were retargeted before their base was merged. Squash merges made the stacked branches conflict (Makefile, DECISIONS.md); each was resolved by keeping main's version of files the PR did not own, and tests were re-run before merging.
 
-## Stacked PRs (built on top of unmerged PR #66; they merge after it)
-
-| PR | Issue | Base branch | Status |
-| --- | --- | --- | --- |
-| #66 | K-11 #12 | main | approved, CI green, **needs Krishna: changes PRD §5** |
-| #68 | K-12 #13 console program | k/K-11-metrics-json | reviewed, fixes applied, CI green; auto-retargets to main when #66 merges, then merge |
-| #67 | K-13 #14 WebAssembly | k/K-11-metrics-json | review running; **also changes PRD §5** (the `aprm_last_error` row, decision D64) so needs Krishna too |
-| (next) | K-15 #16 experiment runner | k/K-12-cli | in progress |
-
-Order to merge: #66, then #68, then #67 (after you approve its PRD §5 row). New follow-up: issue #69 (K-42, engine speed, Nice-to-have).
-
-## Status at the end of this stretch (all of Gate 2 that can be built is built)
-
-Merge order (each PR is stacked on the one before; after the previous one is merged and its branch deleted, GitHub retargets the next to `main`):
-
-| Order | PR | Issue | What | Needs Krishna? |
-| --- | --- | --- | --- | --- |
-| 1 | #66 | K-11 #12 | Metrics and JSON outputs; D61-D63 | **Yes: changes PRD §5** (nine-decimal numbers, nulls, score) |
-| 2 | #68 | K-12 #13 | Console program, golden runner, 70 CLI checks | No (auto-merge after #66) |
-| 3 | #67 | K-13 #14 | WebAssembly build, 28 JS tests, native ASan driver, CI job; D64 | **Yes: one PRD §5 row** (`aprm_last_error`) |
-| 4 | #70 | K-15 #16 | Experiment runner | No |
-| 5 | #71 | K-16 #17 | Invariant checker; 10,000 real runs, 0 violations | No |
-
-Not started (blocked): K-18 (freeze API and toolchain; needs the above merged and your sign-off, and all Gate 2 boxes incl. Ahaana's paper check of the golden cases), then all of Gate 3 and later (K-19 depends on K-18). Ahaana's issues A-01..A-06 are hers. Follow-up filed: #69 (K-42, engine speed).
+Not started (blocked): K-18 (freeze API and toolchain; needs Krishna's sign-off and Ahaana's paper check of all golden cases). Gate 3 and later depend on K-18. Follow-up: issue #69 (K-42, engine speed).
 
 Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (misattributed proof), K-08 (missing error record), K-10 (unbounded skip log: up to 25M entries), K-12 (partial outputs on failure; input could be overwritten), K-13 (CSV parser differed from C on a trailing carriage return), K-14 (arrival overflow), K-15 (stale results after an engine rebuild), K-16 (tests could not detect a broken checker).
