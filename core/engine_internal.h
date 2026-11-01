@@ -21,6 +21,7 @@
 #include "eventlog.h"
 #include "heap.h"
 #include "job.h"
+#include "knapsack.h"
 #include "policy.h"
 #include "reserve.h"
 
@@ -60,6 +61,10 @@ struct Sim {
     RunSlot *rscratch;           /* scratch: running jobs for the shadow-time walk */
     size_t rscratch_cap;
     EventLog log;                /* event log (K-10, D60); seq restarts at 1 on reset */
+    KnapWork kw;                 /* knapsack scratch (K-34, D72); kept across reset, freed by destroy */
+    int64_t win_done;            /* knapsack: the last window boundary (a power of two) already handled; 0 = none */
+    int64_t batch_seq;           /* knapsack: next batch position handed to a chosen job (its waiting key) */
+    int64_t n_pool;              /* knapsack: waiting jobs not in any batch yet (key POLICY_KEY_UNCHOSEN) */
 };
 
 #ifdef APRM_DEBUG

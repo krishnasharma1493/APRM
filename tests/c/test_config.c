@@ -15,7 +15,7 @@ static void test_config_ranges(void)
     CHECK(APRM_JOB_ID_MIN <= APRM_JOB_ID_MAX);
     CHECK(APRM_ALPHA_MILLI_MIN <= APRM_ALPHA_MILLI_DEFAULT && APRM_ALPHA_MILLI_DEFAULT <= APRM_ALPHA_MILLI_MAX);
     CHECK(APRM_RESERVE_T_MIN <= APRM_RESERVE_T_DEFAULT && APRM_RESERVE_T_DEFAULT <= APRM_RESERVE_T_MAX);
-    CHECK(APRM_KNAPSACK_EPS_MIN <= APRM_KNAPSACK_EPS_DEFAULT && APRM_KNAPSACK_EPS_DEFAULT <= APRM_KNAPSACK_EPS_MAX);
+    CHECK(APRM_KNAPSACK_EPS_MILLI_MIN <= APRM_KNAPSACK_EPS_MILLI_DEFAULT && APRM_KNAPSACK_EPS_MILLI_DEFAULT <= APRM_KNAPSACK_EPS_MILLI_MAX);
 
     /* PRD 3 values, spelled out so a typo in config.h is caught. */
     CHECK(APRM_CPU_CAP_DEFAULT == 16 && APRM_CPU_CAP_MAX == 1000000);
@@ -25,7 +25,7 @@ static void test_config_ranges(void)
     CHECK(APRM_JOB_ID_MAX == INT32_MAX);
     CHECK(APRM_ALPHA_MILLI_DEFAULT == 100 && APRM_ALPHA_MILLI_MAX == 10000);
     CHECK(APRM_RESERVE_T_DEFAULT == 50 && APRM_RESERVE_T_MAX == 1000000);
-    CHECK(APRM_KNAPSACK_EPS_DEFAULT == 0.1 && APRM_KNAPSACK_EPS_MIN == 0.01 && APRM_KNAPSACK_EPS_MAX == 1);
+    CHECK(APRM_KNAPSACK_EPS_MILLI_DEFAULT == 100 && APRM_KNAPSACK_EPS_MILLI_MIN == 10 && APRM_KNAPSACK_EPS_MILLI_MAX == 1000);
     CHECK(APRM_JOB_ID_MIN == 0 && APRM_ARRIVAL_MIN == 0 && APRM_DURATION_MIN == 1);
     CHECK(APRM_ALPHA_MILLI_MIN == 0 && APRM_RESERVE_T_MIN == 0);
     CHECK(APRM_EXACT_MAX_JOBS == 9);
@@ -57,7 +57,7 @@ static void test_job_types(void)
     CHECK(sizeof(j.cpu) == 8 && sizeof(j.mem) == 8);
     CHECK(sizeof(c.cpu_cap) == 8 && sizeof(c.mem_cap) == 8);
     CHECK(sizeof(c.alpha_milli) == 8 && sizeof(c.reserve_threshold) == 8);
-    CHECK(sizeof(c.max_jobs) == 8 && sizeof(c.knapsack_eps) == 8);
+    CHECK(sizeof(c.max_jobs) == 8 && sizeof(c.knapsack_eps_milli) == 8);
     CHECK((int)POL_FCFS == 0 && (int)POL_KNAPSACK == 5);
 }
 

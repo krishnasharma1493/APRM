@@ -22,7 +22,7 @@ static SimConfig cfg_for(PolicyKind p, int64_t alpha_milli)
     SimConfig c;
     memset(&c, 0, sizeof c);
     c.cpu_cap = 16; c.mem_cap = 32768; c.policy = p;
-    c.alpha_milli = alpha_milli; c.reserve_threshold = 50; c.knapsack_eps = 0.1;
+    c.alpha_milli = alpha_milli; c.reserve_threshold = 50; c.knapsack_eps_milli = 100;
     c.max_jobs = 5000;
     return c;
 }
@@ -72,7 +72,8 @@ static void test_fcfs_compare_for_table(void)
     CHECK(policy_compare_for(POL_SJF) == policy_sjf_compare);
     CHECK(policy_compare_for(POL_AGING) != NULL);
     CHECK(policy_compare_for(POL_AGING_RESERVE) == policy_aging_compare);   /* K-26: aging order */
-    CHECK(policy_compare_for(POL_KNAPSACK) == NULL);        /* K-34 */
+    CHECK(policy_compare_for(POL_KNAPSACK) == policy_fcfs_compare);   /* K-34: pool order */
+    CHECK(policy_compare_for((PolicyKind)99) == NULL);
 }
 
 /* ---- aging key ---- */

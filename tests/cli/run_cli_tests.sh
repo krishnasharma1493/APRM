@@ -126,16 +126,20 @@ rm -f "$OUT"
 "$BIN" --in $GOOD --out "$T/ldir" 2>/dev/null
 if [ $? = 4 ] && [ -d "$T/ldir" ]; then echo "ok    exit-4 --out is a directory"; ok; else bad "--out directory"; fi
 # --out existing regular file is untouched on every kind of failure.
-for spec in "--policy knapsack" "--cpu 1" "--cpu 0"; do
+for spec in "--cpu 1" "--cpu 0"; do
     echo old >"$T/prev.csv"
     "$BIN" --in $GOOD --out "$T/prev.csv" $spec 2>/dev/null
     if [ $? != 0 ] && [ "$(cat "$T/prev.csv")" = "old" ]; then echo "ok    failed run ($spec) leaves --out untouched"; ok; else bad "$spec changed --out"; fi
 done
 
-# ---- exit 4: internal error (unimplemented policy) ----
-for p in knapsack; do
-    expect "exit-4 policy $p not implemented" 4 "INVALID_ARGUMENT: policy $p is not implemented yet." -- --policy $p --in $GOOD --out $OUT
-done
+# ---- knapsack (K-34): runs, and --eps is read as integer thousandths (D72) ----
+expect "exit-1 eps 4 decimals"      1 "at most 3 decimals"  -- --in $GOOD --out $OUT --eps 0.1234
+rm -f "$OUT"
+"$BIN" --policy knapsack --eps 0.1 --in $GOOD --out "$OUT" >/dev/null 2>&1
+rc1=$?
+cp "$OUT" "$T/k1.csv" 2>/dev/null
+"$BIN" --policy knapsack --eps 0.100 --in $GOOD --out "$OUT" >/dev/null 2>&1
+if [ $rc1 = 0 ] && [ $? = 0 ] && cmp -s "$OUT" "$T/k1.csv"; then echo "ok    knapsack runs; --eps 0.1 == 0.100"; ok; else bad "knapsack run / eps spelling"; fi
 # An output that cannot be written is an internal error and leaves nothing.
 expect "exit-4 unwritable output"   4 "cannot write" -- --in $GOOD --out $T/no_such_dir/out.csv
 

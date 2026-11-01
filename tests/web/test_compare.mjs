@@ -229,20 +229,22 @@ test('compare.js attaches only to window.APRM', () => {
   assert.ok(ctx.APRM.compare);
 });
 
-test('mount builds the policy boxes; knapsack is listed but disabled; the panel follows the mode', () => {
+test('mount builds the policy boxes; knapsack is listed and enabled; the panel follows the mode', () => {
   const p = ready();
   const boxes = p.el('compare-policies').children;
   assert.equal(boxes.length, 6);
   const inputs = boxes.map((l) => l.firstChild);
   const knap = inputs.find((i) => i.getAttribute('data-policy') === 'knapsack');
-  assert.equal(knap.disabled, true);
+  assert.equal(knap.disabled, false);
   assert.equal(knap.checked, false);
-  assert.match(boxes[5].textContent, /not implemented yet/);
+  assert.doesNotMatch(boxes[5].textContent, /not implemented/);
+  assert.match(boxes[5].textContent, /knapsack/);
   p.A.store.setMode('compare');
   assert.equal(p.el('compare-panel').hidden, false);
   p.A.store.setMode('build');
   assert.equal(p.el('compare-panel').hidden, true);
-  assert.deepEqual(plain(p.A.compare.setSelected(['knapsack', 'sjf', 'fcfs'])), ['fcfs', 'sjf'], 'unavailable policies are ignored');
+  assert.deepEqual(plain(p.A.compare.setSelected(['knapsack', 'sjf', 'fcfs'])), ['fcfs', 'sjf', 'knapsack'], 'knapsack can be selected');
+  assert.deepEqual(plain(p.A.compare.setSelected(['bogus', 'sjf'])), ['sjf'], 'unknown policies are ignored');
 });
 
 // ---------- running ----------

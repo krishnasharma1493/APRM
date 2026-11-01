@@ -142,7 +142,7 @@ if (haveEngine) {
       [{ ...GOOD, id: 4, cpu: 17 }], [{ ...GOOD, id: 4, mem: 40960 }],
     ];
     for (const [job] of cases) {
-      const h = M._aprm_create(16, 32768, 0, 100, 50, 0.1);
+      const h = M._aprm_create(16, 32768, 0, 100, 50, 100);
       const rc = M._aprm_add_job(h, job.id, job.arrival, job.duration, job.cpu, job.mem, job.priority);
       assert.ok(rc < 0, JSON.stringify(job));
       const eng = JSON.parse(M.UTF8ToString(M._aprm_last_error(h))).error;
@@ -152,12 +152,12 @@ if (haveEngine) {
       M._aprm_destroy(h);
     }
     for (const [which, v] of [['cpu', 0], ['cpu', 1000001], ['mem', 0], ['mem', 1e9 + 1]]) {
-      const h = which === 'cpu' ? M._aprm_create(v, 100, 0, 100, 50, 0.1) : M._aprm_create(4, v, 0, 100, 50, 0.1);
+      const h = which === 'cpu' ? M._aprm_create(v, 100, 0, 100, 50, 100) : M._aprm_create(4, v, 0, 100, 50, 100);
       assert.ok(h < 0);
       const eng = JSON.parse(M.UTF8ToString(M._aprm_last_error(0))).error;
       assert.equal(A.editor.capacityProblem(which, v), eng.message);
     }
-    const h = M._aprm_create(16, 32768, 0, 100, 50, 0.1);
+    const h = M._aprm_create(16, 32768, 0, 100, 50, 100);
     M._aprm_add_job(h, 1, 0, 5, 2, 100, 1);
     assert.ok(M._aprm_add_job(h, 1, 0, 5, 2, 100, 1) < 0);
     assert.equal(JSON.parse(M.UTF8ToString(M._aprm_last_error(h))).error.message,

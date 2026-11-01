@@ -17,7 +17,7 @@ int main(void)
 
     memset(&c, 0, sizeof c);
     c.cpu_cap = 4; c.mem_cap = 4; c.policy = POL_FCFS; c.alpha_milli = 100;
-    c.reserve_threshold = 1; c.knapsack_eps = 0.1; c.max_jobs = 10;
+    c.reserve_threshold = 1; c.knapsack_eps_milli = 100; c.max_jobs = 10;
     CHECK(sim_create(&c, &s) == APRM_OK);
     json_init(&j);
 

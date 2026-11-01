@@ -148,13 +148,23 @@
     });
   }
 
-  /* Create a simulation: returns a handle (1..4096). Throws EngineError with
-   * the message from aprm_last_error(0) on failure. */
+  /* Epsilon as typed (0.1) to integer thousandths (100) for aprm_create (D72).
+   * A value with more than 3 decimals is passed on unrounded, so the engine
+   * refuses it with its own message instead of silently changing it. */
+  function epsToMilli(eps) {
+    var scaled = eps * 1000;
+    var rounded = Math.round(scaled);
+    return Math.abs(scaled - rounded) < 1e-6 ? rounded : scaled;
+  }
+
+  /* Create a simulation: returns a handle (1..4096). eps is the knapsack
+   * epsilon as a decimal (0.1). Throws EngineError with the message from
+   * aprm_last_error(0) on failure. */
   function create(cpu, mem, policy, alphaMilli, threshold, eps) {
     var m = need();
     var p = (typeof policy === 'string') ? POLICIES[policy] : policy;
     checkNumbers([cpu, mem, p, alphaMilli, threshold, eps]);
-    var h = m._aprm_create(cpu, mem, p, alphaMilli, threshold, eps);
+    var h = m._aprm_create(cpu, mem, p, alphaMilli, threshold, epsToMilli(eps));
     if (h < 0) {
       try { parseEnvelope(m.UTF8ToString(m._aprm_last_error(0))); } catch (e) {
         if (e instanceof EngineError && e.code !== 0) { throw e; }

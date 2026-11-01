@@ -143,10 +143,11 @@ int sim_validate_config(const SimConfig *cfg, SimError *err)
     if (cfg->reserve_threshold < APRM_RESERVE_T_MIN || cfg->reserve_threshold > APRM_RESERVE_T_MAX)
         return fail(err, APRM_INVALID_FIELD, "reserve_threshold",
                     "reserve_threshold must be %d to %d.", APRM_RESERVE_T_MIN, APRM_RESERVE_T_MAX);
-    /* Written so that NaN fails the test. */
-    if (!(cfg->knapsack_eps >= APRM_KNAPSACK_EPS_MIN && cfg->knapsack_eps <= APRM_KNAPSACK_EPS_MAX))
-        return fail(err, APRM_INVALID_FIELD, "knapsack_eps", "knapsack_eps must be %.2f to %d.",
-                    APRM_KNAPSACK_EPS_MIN, APRM_KNAPSACK_EPS_MAX);
+    if (cfg->knapsack_eps_milli < APRM_KNAPSACK_EPS_MILLI_MIN ||
+        cfg->knapsack_eps_milli > APRM_KNAPSACK_EPS_MILLI_MAX)
+        return fail(err, APRM_INVALID_FIELD, "knapsack_eps_milli",
+                    "knapsack_eps_milli must be %d to %d (epsilon 0.01 to 1).",
+                    APRM_KNAPSACK_EPS_MILLI_MIN, APRM_KNAPSACK_EPS_MILLI_MAX);
     if (cfg->max_jobs < 1)
         return fail(err, APRM_INVALID_FIELD, "max_jobs", "max_jobs must be at least 1.");
     if ((int)cfg->policy < (int)POL_FCFS || (int)cfg->policy > (int)POL_KNAPSACK)
@@ -165,6 +166,9 @@ static void sim_clear_scalars(Sim *s)
     s->fin_len = 0;
     memset(&s->err, 0, sizeof s->err);
     memset(&s->resv, 0, sizeof s->resv);  /* no reservation */
+    s->win_done = 0;   /* knapsack: no window handled yet */
+    s->batch_seq = 0;
+    s->n_pool = 0;
 }
 
 int sim_create(const SimConfig *cfg, Sim **out)
@@ -201,6 +205,7 @@ void sim_destroy(Sim *s)
     free(s->fin);
     free(s->skip);
     free(s->rscratch);
+    knapsack_work_free(&s->kw);
     eventlog_free(&s->log);
     free(s);
 }
@@ -370,30 +375,97 @@ static int start_job(Sim *s, const WaitEntry *we, int backfill)
     return rc;
 }
 
-/* Time of the next event into *t: the earlier of the first pending arrival
- * and the first running finish. If only waiting jobs remain (cannot happen
+/* Largest window boundary handled: 2^60, so zeta = 2 * gamma stays below 2^61. */
+#define WINDOW_MAX ((int64_t)1 << 60)
+
+/* The smallest power of two strictly greater than now (the next knapsack
+ * window boundary gamma_k = 2^k, counted from time 0), or 0 if there is none
+ * up to WINDOW_MAX. O(log now). */
+static int64_t next_window(int64_t now)
+{
+    int64_t w = 1;
+    while (w <= now) {
+        if (w >= WINDOW_MAX) return 0;
+        w *= 2;
+    }
+    return w;
+}
+
+/* Time of the next event into *t: the earlier of the first pending arrival,
+ * the first running finish and, for knapsack while any job waits outside every
+ * batch, the next window boundary. If only waiting jobs remain (cannot happen
  * after a selection step, since a job fits an empty machine) the next event
  * is "now". Returns 1 if there is an event, 0 if the simulation is finished.
- * O(1). */
+ * O(log now). */
 static int next_event(const Sim *s, int64_t *t)
 {
     Job a;
     RunEntry r;
     int has_a = heap_peek(&s->pending, &a) == APRM_OK;
     int has_r = heap_peek(&s->running, &r) == APRM_OK;
+    int found = 1, knap_pool = s->cfg.policy == POL_KNAPSACK && s->n_pool > 0;
     if (has_a && has_r) *t = a.arrival < r.finish ? a.arrival : r.finish;
     else if (has_a) *t = a.arrival;
     else if (has_r) *t = r.finish;
-    else if (heap_size(&s->waiting) > 0) *t = s->now;
-    else return 0;
-    return 1;
+    else found = 0;
+    if (knap_pool) {
+        int64_t w = next_window(s->now);
+        if (w > 0 && (!found || w < *t)) { *t = w; found = 1; }
+    }
+    if (!found && !knap_pool && heap_size(&s->waiting) > 0) { *t = s->now; found = 1; }
+    return found;
+}
+
+/* Knapsack window at boundary t = gamma_k (BLUEPRINT 3.6, D72): take every
+ * waiting job that is in no batch yet and has duration <= t (its arrival is
+ * <= t already), solve the knapsack with capacity zeta = 2t, put the chosen
+ * jobs into a batch in WSJF order (weighted shortest job first, then arrival,
+ * then id) and give each the next batch position as its waiting key, so they
+ * start before everything else and in batch order. Logs one BATCH_SELECT per
+ * chosen job. All memory (skip list, knapsack workspace, log room) was
+ * reserved at the top of sim_step, so this cannot run out of memory. Returns
+ * APRM_OK, or a knapsack error code (cannot happen for jobs the engine
+ * accepted) with every job back in the waiting heap and no key changed.
+ * Time O(m log m) for m waiting jobs plus the DP, O(n^2 / eps) for n
+ * candidates. The Sim owns the scratch. */
+static int knapsack_window(Sim *s, int64_t t)
+{
+    size_t m = heap_size(&s->waiting), i, nc = 0, nch = 0;
+    KnapResult res;
+    int rc = APRM_OK;
+    /* Pop everything: chosen jobs first (by key), then the pool in (arrival, id) order. */
+    for (i = 0; i < m; i++) heap_pop(&s->waiting, &s->skip[i]);
+    for (i = 0; i < m && nc < (size_t)APRM_KNAPSACK_N_MAX; i++) {
+        if (s->skip[i].key == POLICY_KEY_UNCHOSEN && s->skip[i].job.duration <= t) {
+            s->kw.items[nc].job = s->skip[i].job;
+            s->kw.items[nc].src = i;
+            nc++;
+        }
+    }
+    if (nc > 0) {
+        rc = knapsack_select(&s->kw, nc, s->cfg.cpu_cap, s->cfg.mem_cap, 2 * t,
+                             s->cfg.knapsack_eps_milli, &res);
+        if (rc == APRM_OK) {
+            for (i = 0; i < nc; i++)
+                if (s->kw.items[i].take) s->kw.items[nch++] = s->kw.items[i];
+            qsort(s->kw.items, nch, sizeof s->kw.items[0], knapsack_item_wsjf_cmp);
+            for (i = 0; i < nch; i++) {
+                WaitEntry *we = &s->skip[s->kw.items[i].src];
+                we->key = s->batch_seq++;
+                s->n_pool--;
+                eventlog_push(&s->log, t, LOG_BATCH_SELECT, we->job.id, (int64_t)nch, 0, 0, 0);
+            }
+        }
+    }
+    for (i = 0; i < m; i++) heap_push(&s->waiting, &s->skip[i]);  /* cannot fail: room was just freed */
+    return rc;
 }
 
 int sim_step(Sim *s)
 {
     int64_t t, w_max, r_max;
     size_t skipped = 0, i;
-    int is_res, trigger_open = 1;
+    int is_res, is_knap, win_due, trigger_open = 1;
     int rc;
     Job jb;
     RunEntry re;
@@ -407,6 +479,10 @@ int sim_step(Sim *s)
     }
     if (!next_event(s, &t)) return 0;
     is_res = s->cfg.policy == POL_AGING_RESERVE;
+    is_knap = s->cfg.policy == POL_KNAPSACK;
+    /* A knapsack window is due at a boundary t = 2^k not handled yet (a second
+     * step at the same tick, D59, does not repeat it). */
+    win_due = is_knap && t > s->win_done && t <= WINDOW_MAX && (t & (t - 1)) == 0;
 
     /* Reserve every buffer this step can need, so that nothing below can
      * fail halfway (a step is all-or-nothing). Bounds are the live counts,
@@ -428,11 +504,14 @@ int sim_step(Sim *s)
         heap_reserve(&s->running, (size_t)r_max) != APRM_OK ||
         reserve_skip(s, (size_t)w_max) != APRM_OK ||
         (is_res && reserve_rscratch(s, (size_t)r_max) != APRM_OK) ||
+        (win_due && knapsack_work_reserve(&s->kw, w_max < APRM_KNAPSACK_N_MAX ? (size_t)w_max : (size_t)APRM_KNAPSACK_N_MAX,
+                                          s->cfg.knapsack_eps_milli) != APRM_OK) ||
         reserve_fin(s, s->fin_len + heap_size(&s->running)) != APRM_OK ||
         /* log entries: <= one per finish, arrival and examined waiting job (D60) */
         /* the reserve policy may add a second line per job (SKIP + RESERVE, START + BACKFILL) */
+        /* knapsack: up to one BATCH_SELECT per waiting job at a window */
         eventlog_reserve(&s->log, heap_size(&s->running) + heap_size(&s->pending)
-                                  + (size_t)w_max * (is_res ? 2 : 1)) != APRM_OK) {
+                                  + (size_t)w_max * (is_res || is_knap ? 2 : 1)) != APRM_OK) {
         fail(&s->err, APRM_OUT_OF_MEMORY, "", "Out of memory.");
         return APRM_OUT_OF_MEMORY;
     }
@@ -470,6 +549,14 @@ int sim_step(Sim *s)
         if (rc != APRM_OK) return rc;
         rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
         if (rc != APRM_OK) return rc;
+        if (is_knap) s->n_pool++;  /* waits outside every batch until a window chooses it */
+    }
+
+    /* 2b. Knapsack window (BLUEPRINT 3.6): at t = 1, 2, 4, 8, ... choose the batch. */
+    if (win_due) {
+        rc = knapsack_window(s, t);
+        if (rc != APRM_OK) return rc;
+        s->win_done = t;
     }
 
     /* 3a. The shadow time has come: the reserved job starts first (BLUEPRINT
@@ -518,6 +605,11 @@ int sim_step(Sim *s)
     while (heap_size(&s->waiting) > 0 && s->free_cpu > 0 && s->free_mem > 0) {
         int fits;
         heap_pop(&s->waiting, &we);
+        if (is_knap && we.key == POLICY_KEY_UNCHOSEN) {
+            /* Knapsack starts only chosen jobs; everything from here on is in the pool. */
+            s->skip[skipped++] = we;
+            break;
+        }
         if (is_res && s->resv.active && we.job.id == s->resv.id) {
             s->skip[skipped++] = we;  /* h waits for its shadow time */
             continue;
@@ -614,7 +706,7 @@ int sim_run_until(Sim *s, int64_t t)
 
 int sim_check_invariants(const Sim *s, const char **why)
 {
-    int64_t used_cpu = 0, used_mem = 0;
+    int64_t used_cpu = 0, used_mem = 0, pool = 0;
     size_t i, n;
     const RunEntry *r;
     const WaitEntry *w;
@@ -657,6 +749,11 @@ int sim_check_invariants(const Sim *s, const char **why)
          * With a reservation the only jobs that may fit and wait are the
          * reserved job (before its shadow time) and jobs the backfill rule
          * refuses (tested on a copy, so the extra room is not consumed). */
+        if (s->cfg.policy == POL_KNAPSACK && w->key == POLICY_KEY_UNCHOSEN) {
+            pool++;
+            continue;  /* the pool waits for a window even if it would fit */
+        }
+        if (w->key >= s->batch_seq && s->cfg.policy == POL_KNAPSACK) BAD("a chosen job has a batch position that was never handed out");
         if (w->job.cpu <= s->free_cpu && w->job.mem <= s->free_mem) {
             Reservation tmp = s->resv;
             if (!s->resv.active)
@@ -667,6 +764,13 @@ int sim_check_invariants(const Sim *s, const char **why)
             if (w->job.id == s->resv.id)
                 BAD("the reserved job fits before its shadow time");
         }
+    }
+    if (s->cfg.policy == POL_KNAPSACK) {
+        if (pool != s->n_pool) BAD("knapsack pool count does not match the waiting heap");
+        if (s->win_done != 0 && (s->win_done & (s->win_done - 1)) != 0) BAD("last knapsack window is not a power of two");
+        if (s->win_done > s->now) BAD("a knapsack window lies in the future");
+    } else if (s->n_pool != 0 || s->win_done != 0) {
+        BAD("knapsack state under another policy");
     }
     for (i = 0; i < heap_size(&s->pending); i++) {
         p = (const Job *)(s->pending.data + i * s->pending.elem_size);

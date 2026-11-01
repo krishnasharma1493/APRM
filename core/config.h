@@ -46,11 +46,18 @@
 #define APRM_RESERVE_T_MIN 0
 #define APRM_RESERVE_T_MAX 1000000
 
-/* Knapsack epsilon: smaller is more accurate and slower. The final
- * representation is an open decision (DECISIONS O-2). */
-#define APRM_KNAPSACK_EPS_DEFAULT 0.1
-#define APRM_KNAPSACK_EPS_MIN 0.01
-#define APRM_KNAPSACK_EPS_MAX 1
+/* Knapsack epsilon, stored as an integer number of thousandths (D72):
+ * eps_milli = epsilon * 1000, so 100 means epsilon = 0.1. Smaller is more
+ * accurate and slower. */
+#define APRM_KNAPSACK_EPS_MILLI_DEFAULT 100
+#define APRM_KNAPSACK_EPS_MILLI_MIN 10
+#define APRM_KNAPSACK_EPS_MILLI_MAX 1000
+
+/* Knapsack limits (D72). At most APRM_KNAPSACK_N_MAX candidate jobs are solved
+ * in one window, and the DP take-table has at most APRM_KNAPSACK_TABLE_MAX
+ * cells (items x (scaled capacity + 1)); above that the scale is coarsened. */
+#define APRM_KNAPSACK_N_MAX 65536
+#define APRM_KNAPSACK_TABLE_MAX 67108864 /* 2^26 cells = 8 MiB of bits */
 
 /* Exact solver job limit: fixed, not configurable. Above this the solver
  * returns TOO_LARGE. */

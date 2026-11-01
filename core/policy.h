@@ -3,8 +3,9 @@
  *
  * A policy is a compare function: it says which of two waiting jobs is
  * served first. FCFS (K-09), static priority, SJF, adaptive aging (K-19) and
- * aging with a reservation (K-26, the same order as aging) are built; knapsack
- * comes later. Pure functions: no state,
+ * aging with a reservation (K-26, the same order as aging) and knapsack (K-34,
+ * pool order = FCFS; the batch order lives in knapsack.h) are built. Pure
+ * functions: no state,
  * no I/O, integers only (no floating point in any decision, D13).
  *
  * Aging (BLUEPRINT 3.3) keeps a fixed integer key per job, computed once at
@@ -47,13 +48,18 @@ int policy_aging_compare(const Job *a, const Job *b);
  * allocated. */
 int policy_aging_key(const Job *j, int64_t alpha_milli, int64_t *key);
 
+/* Key of a knapsack job that is not in any chosen batch yet. Chosen jobs get
+ * smaller keys (their position in the batch order), so they are served first. */
+#define POLICY_KEY_UNCHOSEN INT64_MAX
+
 /* The key the engine stores in a waiting entry (smaller = served first):
- * -K for POL_AGING, 0 for every other policy (their order is the compare
- * function alone). Returns what policy_aging_key returns. O(1). */
+ * -K for the aging policies, POLICY_KEY_UNCHOSEN for knapsack (the engine
+ * lowers it when the job is chosen), 0 for every other policy (their order is
+ * the compare function alone). Returns what policy_aging_key returns. O(1). */
 int policy_wait_key(PolicyKind kind, int64_t alpha_milli, const Job *j, int64_t *key);
 
-/* The compare for a policy, or NULL if that policy is not implemented yet
- * (or kind is unknown). O(1). The returned pointer is a function, not owned
+/* The compare for a policy, or NULL if kind is unknown. Knapsack uses the
+ * FCFS compare for its pool of unchosen jobs. O(1). The returned pointer is a function, not owned
  * memory. */
 PolicyCompare policy_compare_for(PolicyKind kind);
 

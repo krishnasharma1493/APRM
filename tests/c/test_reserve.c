@@ -177,7 +177,7 @@ static Sim *mk(int64_t cpu, int64_t mem, int64_t alpha, int64_t T, PolicyKind po
     Sim *s = NULL;
     memset(&c, 0, sizeof c);
     c.cpu_cap = cpu; c.mem_cap = mem; c.policy = pol;
-    c.alpha_milli = alpha; c.reserve_threshold = T; c.knapsack_eps = 0.1;
+    c.alpha_milli = alpha; c.reserve_threshold = T; c.knapsack_eps_milli = 100;
     c.max_jobs = 5000;
     CHECK(sim_create(&c, &s) == APRM_OK);
     return s;

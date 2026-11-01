@@ -35,9 +35,9 @@ int main(int argc, char **argv){
     if(rc!=APRM_OK){ rejected++; if(jobs!=NULL||n!=0){fprintf(stderr,"BAD: out/n set on failure\n");return 1;} if(strlen(e.message)>=sizeof e.message){return 1;} continue; }
     accepted++;
     /* run the engine on accepted jobs, every policy implemented */
-    for(int pol=0; pol<5; pol++){
+    for(int pol=0; pol<6; pol++){
       SimConfig c; Sim *s=NULL; memset(&c,0,sizeof c);
-      c.cpu_cap=16; c.mem_cap=32768; c.policy=(PolicyKind)pol; c.alpha_milli=rnd()%10001; c.reserve_threshold=rnd()%20; c.knapsack_eps=0.1; c.max_jobs=1000;
+      c.cpu_cap=16; c.mem_cap=32768; c.policy=(PolicyKind)pol; c.alpha_milli=rnd()%10001; c.reserve_threshold=rnd()%20; c.knapsack_eps_milli=100; c.max_jobs=1000;
       if(sim_create(&c,&s)!=APRM_OK) {fprintf(stderr,"create failed\n");return 1;}
       for(int64_t k=0;k<n;k++){ int r=sim_add_job(s,&jobs[k]); if(r!=APRM_OK && r!=APRM_CAPACITY_EXCEEDED && r!=APRM_DUPLICATE_ID && r!=APRM_ARRIVAL_IN_PAST){fprintf(stderr,"unexpected add rc %d\n",r);return 1;} }
       while(sim_step(s)==1){}

@@ -37,16 +37,21 @@ class Fail extends Error {
 
 // Parse the command line. Throws Fail(1, ...) on anything unknown or malformed.
 function parseArgs(argv) {
-  const opt = { policy: 'fcfs', in: null, cpu: 16, mem: 32768, alphaMilli: 100, threshold: 50, eps: 0.1 };
+  const opt = { policy: 'fcfs', in: null, cpu: 16, mem: 32768, alphaMilli: 100, threshold: 50, epsMilli: 100 };
   const flags = { '--policy': 'policy', '--in': 'in', '--cpu': 'cpu', '--mem': 'mem',
-                  '--alpha-milli': 'alphaMilli', '--threshold': 'threshold', '--eps': 'eps' };
+                  '--alpha-milli': 'alphaMilli', '--threshold': 'threshold', '--eps': 'epsMilli' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = flags[argv[i]];
     if (!key) throw new Fail(1, `INVALID_ARGUMENT: unknown option ${argv[i]}.`);
     if (i + 1 >= argv.length) throw new Fail(1, `INVALID_ARGUMENT: ${argv[i]} needs a value.`);
     const v = argv[i + 1];
     if (key === 'policy' || key === 'in') opt[key] = v;
-    else {
+    else if (key === 'epsMilli') {
+      // Decimal text to integer thousandths with string arithmetic (D72): 0.1 -> 100.
+      const m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(v);
+      if (!m) throw new Fail(1, `INVALID_ARGUMENT: --eps needs a decimal number like 0.1 with at most 3 decimals, got "${v}".`);
+      opt.epsMilli = Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
+    } else {
       if (!/^-?\d+(\.\d+)?$/.test(v)) throw new Fail(1, `INVALID_ARGUMENT: ${argv[i]} needs a number, got "${v}".`);
       opt[key] = Number(v);
     }
@@ -93,7 +98,7 @@ async function main() {
     return `${CODE_NAMES[e.code]}: ${e.message}`;
   };
 
-  const h = M._aprm_create(opt.cpu, opt.mem, POLICIES[opt.policy], opt.alphaMilli, opt.threshold, opt.eps);
+  const h = M._aprm_create(opt.cpu, opt.mem, POLICIES[opt.policy], opt.alphaMilli, opt.threshold, opt.epsMilli);
   if (h < 0) throw new Fail(h === -7 ? 4 : 1, errText(0));
   try {
     for (const j of jobs) {
@@ -102,7 +107,7 @@ async function main() {
     }
     for (;;) {
       const rc = M._aprm_step(h);
-      if (rc < 0) throw new Fail(4, errText(h));   // includes "policy not implemented yet"
+      if (rc < 0) throw new Fail(4, errText(h));   
       if (rc === 0) break;
     }
     process.stdout.write(resultsCsv(str(M._aprm_results(h))));
