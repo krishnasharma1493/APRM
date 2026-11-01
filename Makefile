@@ -49,7 +49,7 @@ TEST_SRC  := $(sort $(wildcard tests/c/test_*.c))
 TEST_BIN  := $(patsubst tests/c/%.c,$(OBJDIR)/tests/%,$(TEST_SRC))
 HAVE_CLI  := $(wildcard cli/main.c)
 
-.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test web-test hardening
+.PHONY: all debug sanitize test wasm web clean cli-build tests-build tests-run cli-test web-test hardening
 
 all:
 	@$(MAKE) --no-print-directory MODE=release cli-build
@@ -70,6 +70,11 @@ test:
 
 wasm:
 	@sh wasm/build.sh
+
+# K-49: the website as one file that opens from file:// with no network (web/dist/index.html).
+# Needs web/vendor/aprm.js (make wasm) and Node with npm.
+web:
+	@cd web && npm ci --no-audit --no-fund && node build.mjs
 
 # K-30 hardening checks: fuzz, allocation-failure injection, stress, grep-unsafe (tests/hardening/run.sh).
 hardening:

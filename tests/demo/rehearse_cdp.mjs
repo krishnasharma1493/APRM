@@ -30,6 +30,7 @@ const port = 9300 + Math.floor(Math.random() * 500);
 const args = ['--headless=new', '--no-first-run', '--no-default-browser-check',
   '--remote-debugging-port=' + port, '--user-data-dir=' + profile, '--window-size=1400,1000'];
 if (offline) { args.push('--host-resolver-rules=MAP * ~NOTFOUND'); }
+if (process.env.CHROME_EXTRA_ARGS) { args.push(...process.env.CHROME_EXTRA_ARGS.split(' ').filter(Boolean)); }  // e.g. --no-sandbox on CI
 const chrome = spawn(CHROME, args, { stdio: 'ignore' });
 
 async function connect() {
@@ -120,7 +121,9 @@ try {
   const chartState = await ev(`APRM.compare.chartState()`);
   console.log('     chart state: ' + chartState + '; note: ' + note);
   check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
-  if (offline) { check('offline: Chart.js did not load, table fallback message shown', chartState === 'failed' && /could not load/.test(note || '')); }
+  // The built single file (make web) carries the chart library, so offline it still draws charts; the
+  // unbuilt web/index.html loads it from the CDN and offline falls back to the table with a message.
+  if (offline) { check('offline: charts drawn from the bundled library, or the table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load/.test(note || '')), chartState); }
   check('row 4: exact-optimum row explains the 9-job limit (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('compare-exact')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log
@@ -169,6 +172,7 @@ try {
   console.log('     failed loads: ' + JSON.stringify(netFails));
   console.log('     uncaught exceptions: ' + JSON.stringify(consoleErrors));
   check('no uncaught page exceptions', consoleErrors.length === 0);
+  if (/[\\/]dist[\\/]index\.html$/.test(page)) { check('built single file: no network request at all', real.length === 0, JSON.stringify(real)); }
 } catch (e) {
   check('rehearsal script ran to the end', false, e.message);
 } finally {

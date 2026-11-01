@@ -40,12 +40,25 @@ test('index.html: script order follows PRD section 7, vendor first, app.js last'
 function webFiles(dir = web, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'vendor') continue;                       // build output, not our code
+    if (e.name === 'dist' || e.name === 'node_modules') continue;   // the built copy of these files and third-party code (K-49)
+    if (e.name === 'build.mjs') continue;                    // the build script, run by Node, not shipped to the page
     const p = join(dir, e.name);
     if (e.isDirectory()) webFiles(p, out);
     else if (/\.(html|js|css)$/.test(e.name)) out.push(p);
   }
   return out;
 }
+
+test('build: web/dist/index.html is one file with no external script, stylesheet or module', () => {
+  const built = join(web, 'dist', 'index.html');
+  if (!existsSync(built)) { console.log('note: web/dist/index.html not built (run make web); built-file test skipped'); return; }
+  const b = readFileSync(built, 'utf8');
+  assert.ok(!/<script\b[^>]*\bsrc=/.test(b), 'no script src');
+  assert.ok(!/<link\b[^>]*rel="stylesheet"/.test(b), 'no linked stylesheet');
+  assert.ok(!/type="module"/.test(b), 'no module script');
+  assert.ok(!/https?:\/\/cdn\./.test(b.replace(/var CHART_URL = '[^']*'/, '')), 'no CDN reference outside the unused fallback constant');
+  assert.ok(b.includes('window.APRM') && /Chart\.js v4\.5\.1/.test(b), 'page scripts and the bundled chart library are inside');
+});
 
 test('grep-safety: no innerHTML, eval, new Function, inline handlers, modules, fetch', () => {
   const bad = [

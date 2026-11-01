@@ -112,6 +112,19 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           emcc --version | head -1
           make wasm
+      - name: Build the website into one offline file (make web, K-49)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node --version
+          make web
+      - name: Offline rehearsal of the built website in headless Chrome (K-49)
+        env:
+          CHROME: google-chrome
+          CHROME_EXTRA_ARGS: --no-sandbox
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          google-chrome --version
+          node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline
       - name: API tests and golden cases through Node
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
