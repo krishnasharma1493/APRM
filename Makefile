@@ -49,7 +49,7 @@ TEST_SRC  := $(sort $(wildcard tests/c/test_*.c))
 TEST_BIN  := $(patsubst tests/c/%.c,$(OBJDIR)/tests/%,$(TEST_SRC))
 HAVE_CLI  := $(wildcard cli/main.c)
 
-.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test web-test
+.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test web-test hardening
 
 all:
 	@$(MAKE) --no-print-directory MODE=release cli-build
@@ -70,6 +70,10 @@ test:
 
 wasm:
 	@sh wasm/build.sh
+
+# K-30 hardening checks: fuzz, allocation-failure injection, stress, grep-unsafe (tests/hardening/run.sh).
+hardening:
+	@sh tests/hardening/run.sh
 
 clean:
 	rm -rf build
