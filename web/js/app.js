@@ -14,7 +14,7 @@
   var APRM = (window.APRM = window.APRM || {});
 
   var TEXT_LOADING = APRM.copy ? APRM.copy.get('engine.loading') : 'Starting the engine…';
-  var TEXT_EMPTY = 'No jobs yet. Add one, load a preset, or generate a random set.';
+  var TEXT_EMPTY = APRM.copy ? APRM.copy.get('build.empty') : 'No jobs yet. Add one, or start with an example.';
 
   /* Where the backup demo video lives (M13). Not recorded yet, so empty: the
    * error state then says the link is still to be added. Set when the video exists. */

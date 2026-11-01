@@ -344,13 +344,13 @@
 
   /* Colours from the CSS variables, with fixed fallbacks. */
   function themeColours() {
-    var out = { text: '#1c2330', muted: '#5b6577', border: '#d5dae3', jobs: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6', '#ec4899', '#84cc16'] };
+    var out = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', jobs: ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'] };
     if (typeof getComputedStyle !== 'function' || !document.documentElement) { return out; }
     try {
       var cs = getComputedStyle(document.documentElement);
       var pick = function (n, fb) { var v = String(cs.getPropertyValue(n) || '').trim(); return v || fb; };
       out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border);
-      for (var i = 0; i < 8; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
+      for (var i = 0; i < 10; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
     } catch (e) { /* keep the fallbacks */ }
     return out;
   }
@@ -382,7 +382,7 @@
       var bh = Math.max(1, Math.min(10, rowH - 1));
       ctx.fillStyle = col.muted;
       ctx.fillRect(sx(job.arrival), y + bh / 2, Math.max(0, sx(res.start) - sx(job.arrival)), 1);
-      ctx.fillStyle = col.jobs[APRM.canvas ? APRM.canvas.paletteIndex(job.id) : job.id % 8];
+      ctx.fillStyle = col.jobs[APRM.canvas ? APRM.canvas.paletteIndex(job.id) : job.id % 10];
       ctx.fillRect(sx(res.start), y, Math.max(1, sx(res.finish) - sx(res.start)), bh);
     }
     ctx.fillStyle = col.muted; ctx.font = '11px sans-serif';

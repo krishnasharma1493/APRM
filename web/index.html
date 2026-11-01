@@ -116,52 +116,92 @@
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
-    <h2>Run</h2>
-    <div class="run-grid">
-      <fieldset class="build-box">
-        <legend>Scheduler</legend>
-        <label for="run-policy">Policy</label>
-        <select id="run-policy"></select>
-        <label for="run-alpha">Aging rate alpha_milli (0 to 10000)</label>
+    <h2 data-copy="run.heading">Run your jobs</h2>
+
+    <div class="card run-setup">
+      <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
+      <select id="run-policy"></select>
+      <p id="run-settings-summary" class="hint"></p>
+      <details class="disclosure" id="run-more">
+        <summary data-copy="run.more">More settings</summary>
+        <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
         <input id="run-alpha" type="text" inputmode="numeric" value="100">
-        <label for="run-threshold">Reservation threshold T (ticks)</label>
+        <p class="hint" data-copy="run.alpha.hint"></p>
+        <label for="run-threshold" class="label" data-copy="run.threshold">Reservation threshold T (ticks)</label>
         <input id="run-threshold" type="text" inputmode="numeric" value="50">
-        <label for="run-eps">Knapsack epsilon</label>
+        <p class="hint" data-copy="run.threshold.hint"></p>
+        <label for="run-eps" class="label" data-copy="run.eps">Knapsack &epsilon; (epsilon)</label>
         <input id="run-eps" type="text" inputmode="decimal" value="0.1">
-        <button type="button" id="run-start">Run (start over)</button>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>Player</legend>
-        <div class="player-buttons">
-          <button type="button" id="run-play" disabled>Play</button>
-          <button type="button" id="run-step" disabled>Step</button>
-          <button type="button" id="run-jump" disabled>Jump to end</button>
-          <button type="button" id="run-reset" disabled>Reset</button>
-        </div>
-        <label for="run-speed">Events per frame: <output id="run-speed-out">1</output></label>
-        <input id="run-speed" type="range" min="1" max="200" value="1">
-        <p id="run-status" class="status" role="status">idle</p>
-        <p id="run-clock" class="empty" role="status">No run yet. Press Run.</p>
-        <p id="run-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>Add a job at the current time</legend>
-        <div class="add-grid">
-          <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
-          <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
-          <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
-          <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
-          <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
-          <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
-        </div>
-        <button type="button" id="ra-submit" disabled>Add job (pauses first)</button>
-        <p id="ra-note" class="empty">Arrival defaults to the next tick. An arrival equal to the current time is allowed, but the job is then considered after jobs that already started at this time.</p>
-        <p id="ra-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
+        <p class="hint" data-copy="run.eps.hint"></p>
+      </details>
+      <button type="button" class="btn btn-primary" id="run-start" data-copy="run.start">Run</button>
     </div>
-    <p class="next-row"><span class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</span> <button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
+
+    <div id="resource-strip" class="card resource-strip" aria-label="Machine resources">
+      <div class="res-row"><span class="res-name" data-copy="run.res.cpu">CPU</span><div class="meter" aria-hidden="true"><span id="res-cpu-fill"></span></div><span id="res-cpu-text" class="num"></span></div>
+      <div class="res-row"><span class="res-name" data-copy="run.res.mem">Memory</span><div class="meter" aria-hidden="true"><span id="res-mem-fill"></span></div><span id="res-mem-text" class="num"></span></div>
+    </div>
+    <div id="reserve-card" class="card reserve-card" role="status" hidden></div>
+
+    <main id="app-main" data-engine="loading" data-mode="build" hidden>
+      <aside class="panel panel-left" aria-label="Machine and jobs">
+        <h2 data-copy="run.jobs">Your jobs</h2>
+        <p id="machine-text" class="hint">CPU 16 cores, memory 32768 MB</p>
+        <p id="jobs-empty" class="empty">No jobs yet. Add one, or start with an example.</p>
+        <ul id="job-list" class="job-list"></ul>
+      </aside>
+
+      <section class="panel panel-centre" aria-label="Timeline">
+        <h2 data-copy="run.timeline">Timeline</h2>
+        <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
+        <canvas id="run-canvas" class="run-canvas" width="640" height="640" aria-label="Live picture of the run: resource bars, waiting line, running jobs and timeline" hidden></canvas>
+      </section>
+
+      <aside class="panel panel-right" aria-label="Why log">
+        <h2 data-copy="run.why">Why</h2>
+        <p id="whylog-empty" class="empty">Each decision is explained here once the run starts.</p>
+        <p id="whylog-filter" class="empty" hidden></p>
+        <button type="button" class="btn" id="whylog-clear" hidden data-copy="run.why.all">Show all jobs</button>
+        <ol id="whylog-list" class="why-list"></ol>
+      </aside>
+    </main>
+
+    <footer id="app-footer" class="card panel-bottom" aria-label="Metrics" hidden>
+      <h2 data-copy="run.metrics">How it went</h2>
+      <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
+      <ul id="metrics-list" class="metrics-list"></ul>
+    </footer>
+
+    <details class="disclosure" id="run-add">
+      <summary data-copy="run.add">Add a job right now</summary>
+      <div class="add-grid">
+        <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
+        <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
+        <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
+        <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
+        <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
+        <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
+      </div>
+      <button type="button" class="btn" id="ra-submit" disabled data-copy="run.add.submit">Add job (pauses first)</button>
+      <p id="ra-note" class="hint" data-copy="run.add.note"></p>
+      <p id="ra-error" class="field-error" role="alert" hidden></p>
+    </details>
+
+    <div class="dock material" role="group" aria-label="Run controls">
+      <div class="player-buttons">
+        <button type="button" class="btn" id="run-play" disabled>Play</button>
+        <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
+        <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
+        <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
+      </div>
+      <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span>: <output id="run-speed-out">1</output></label>
+      <input id="run-speed" type="range" min="1" max="200" value="1">
+      <p id="run-status" class="status" role="status">idle</p>
+      <p id="run-clock" class="hint" role="status" data-copy="run.clock.none">No run yet. Press Run.</p>
+      <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
+      <p id="run-error" class="field-error" role="alert" hidden></p>
+    </div>
+    <p class="next-row"><button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
   </section>
 
   <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
@@ -190,36 +230,6 @@
     <div id="compare-charts" class="compare-charts"></div>
     <p class="next-row"><button type="button" class="btn" data-next="build" data-copy="next.compare">Back to your jobs</button></p>
   </section>
-
-  <main id="app-main" data-engine="loading" data-mode="build" hidden>
-    <aside class="panel panel-left" aria-label="Machine and jobs">
-      <h2>Machine</h2>
-      <p id="machine-text">CPU 16 cores, memory 32768 MB</p>
-      <h2>Jobs</h2>
-      <p id="jobs-empty" class="empty">No jobs yet. Add one, load a preset, or generate a random set.</p>
-      <ul id="job-list" class="job-list"></ul>
-    </aside>
-
-    <section class="panel panel-centre" aria-label="Timeline">
-      <h2>Timeline</h2>
-      <p id="canvas-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
-      <canvas id="run-canvas" class="run-canvas" width="640" height="640" aria-label="Live picture of the run: resource bars, waiting line, running jobs and timeline" hidden></canvas>
-    </section>
-
-    <aside class="panel panel-right" aria-label="Why log">
-      <h2>Why</h2>
-      <p id="whylog-empty" class="empty">The reasons for each decision appear here once a run starts.</p>
-      <p id="whylog-filter" class="empty" hidden></p>
-      <button type="button" id="whylog-clear" hidden>Show all jobs</button>
-      <ol id="whylog-list" class="why-list"></ol>
-    </aside>
-  </main>
-
-  <footer id="app-footer" class="panel panel-bottom" aria-label="Metrics" hidden>
-    <h2>Metrics</h2>
-    <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
-    <ul id="metrics-list" class="metrics-list"></ul>
-  </footer>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
