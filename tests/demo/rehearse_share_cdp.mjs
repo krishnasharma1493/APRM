@@ -107,7 +107,7 @@ try {
   await nav('about:blank'); await nav(base + '#aprm1=' + 'Zm9v');
   const err2 = await text('share-error');
   console.log('     garbled: ' + err2);
-  check('garbled link: error text shown, no jobs loaded, controls still work', /settings line/.test(err2) && (await ev(`APRM.store.get().jobs.length`)) === 0 && (await ev(`document.getElementById('preset-load').click(); true`)) === true);
+  check('garbled link: error text shown, no jobs loaded, controls still work', /settings line/.test(err2) && (await ev(`APRM.store.get().jobs.length`)) === 0 && (await ev(`document.querySelector('#preset-tiles button').click(); true`)) === true);
   await nav('about:blank'); await nav(base + '#aprm1=' + 'A'.repeat(20000));
   check('oversized link: rejected as too long', /too long/.test(await text('share-error')), (await text('share-error')).slice(0, 80));
   // bad row, same words as the CSV importer
