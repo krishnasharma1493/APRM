@@ -18,6 +18,15 @@ Audit of the site as shipped by K-43 to K-48, against `PRODUCT.md` and the direc
 | 12 | P3 | All | "Engine ready" sits in the top bar permanently. | Show only loading and error; ready is silent (PR 4) |
 | 13 | P3 | All | Primary buttons were restyled twice to beat page rules (`.panel .btn-primary`); page rules fight components. | One component layer in the rebuild; remove the overrides (PR 3/4) |
 
-Accepted: all. Deferred: none yet. Each PR states which numbers it closes.
+Accepted: all 13. Status at the end of K-49: all fixed; none deferred.
+
+| PR | Findings closed |
+| --- | --- |
+| #115 build | 5 (charts bundled; they work offline) |
+| #116 Build page | 7, 8, 12, 13 |
+| #117 Run page | 1, 2, 3, 4, 6, 10, 11 |
+| #118 Compare | 9 |
+
+Finish-review note: PRs 4, 5 and 6 each used the two review rounds Impeccable allows. The last partial item in each (phone layout) was fixed afterwards and proved by a measured check in `tests/demo/check_layout_cdp.mjs`, not rescored by the finish reviewer.
 
 Typeface decision: the site is an Operate surface; Impeccable's guidance is that system stacks serve it well, and the system face already has tabular figures. No web font is added (one less dependency to defend). Revisit only if the board's stamped numbers need a face the system does not provide.

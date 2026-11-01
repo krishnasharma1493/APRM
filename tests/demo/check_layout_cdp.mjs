@@ -99,7 +99,11 @@ try {
   await tabWalk('Compare', 8);
 
   // 3. Space and Right arrow act on the Run step, and do nothing while a button has focus
-  const key = async (k, code, vk) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: vk }); };
+  const key = async (k, code, vk) => {
+    const text = k === 'Enter' ? '\r' : undefined;      // a real Enter carries text; that is what presses a button
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, text });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
+  };
   await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.activeElement.blur(); true`);
   let n = await ev(`APRM.player.snapshot().events`);
   await key('ArrowRight', 'ArrowRight', 39);
@@ -142,6 +146,49 @@ try {
   check('focus stays on a tray row after the pick', await ev(`document.activeElement.parentNode === document.getElementById('tray-list')`));
   await key('Escape', 'Escape', 27);
   check('Esc on a tray row clears the selection', (await ev(`APRM.player.snapshot().selected`)) === null);
+
+  // 3e. the demo path by keyboard alone, in day and night, with no console error (PRD 10A rows 4 to 6)
+  const tabTo = async (expr) => {
+    for (let i = 0; i < 120; i++) {
+      if (await ev(`document.activeElement === (${expr})`)) { return true; }
+      await pressTab();
+    }
+    return false;
+  };
+  for (const scheme of ['light', 'dark']) {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await load(1366);
+    await ev(`window.addEventListener('error', (e) => { (window.__errs = window.__errs || []).push(String(e.message)); }); document.activeElement.blur(); true`);
+    const q = (sel) => `document.querySelector('${sel}')`;
+    const failed = [];
+    const need = (name, ok) => { if (!ok) { failed.push(name); } };
+    need('reach the example', await tabTo(q('#preset-tiles [data-preset=memory_hog]')));
+    await key('Enter', 'Enter', 13);
+    need('load the example', (await ev(`APRM.store.get().jobs.length`)) === 12);
+    need('reach step 2', await tabTo(q('[data-mode-button=run]')));
+    await key('Enter', 'Enter', 13);
+    need('open step 2', (await ev(`APRM.store.get().mode`)) === 'run');
+    need('reach Run', await tabTo(q('#run-start')));
+    await key('Enter', 'Enter', 13);
+    await ev(`document.activeElement.blur(); true`);
+    await key('ArrowRight', 'ArrowRight', 39);
+    await key('ArrowRight', 'ArrowRight', 39);
+    need('step twice', (await ev(`APRM.player.snapshot().events`)) === 2);
+    need('reach Jump to end', await tabTo(q('#run-jump')));
+    await key('Enter', 'Enter', 13);
+    for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
+    need('finish the run', (await ev(`APRM.player.snapshot().status`)) === 'finished');
+    need('reach step 3', await tabTo(q('[data-mode-button=compare]')));
+    await key('Enter', 'Enter', 13);
+    need('reach Compare', await tabTo(q('#compare-start')));
+    await key('Enter', 'Enter', 13);
+    for (let i = 0; i < 100 && (await ev(`APRM.compare.snapshot().status`)) !== 'done'; i++) await sleep(50);
+    need('finish Compare', (await ev(`APRM.compare.snapshot().status`)) === 'done');
+    const errs = await ev(`window.__errs || []`);
+    check(`${scheme}: the demo path runs by keyboard alone with no page error`, failed.length === 0 && errs.length === 0, failed.concat(errs).join(' | '));
+  }
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  await load(1280);
 
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
