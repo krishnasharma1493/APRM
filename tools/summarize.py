@@ -1,18 +1,19 @@
-"""Summary statistics for experiments E1-E3 (issue K-20) and E5 (issue K-28).
+"""Summary statistics for experiments E1-E3 (K-20), E5 (K-28), E4 and E6 (K-35).
 
 Reads the raw run tree written by tools/run_experiments.py
 
     <raw>/<experiment>/<setting>/<policy>/<seed>/{results.csv, metrics.json, run.json}
 
 and writes the PRD section 5 "Summary CSV formats" files into the summary folder:
-e1_summary.csv, e2_summary.csv, e2_wait_cdf.csv, e3_summary.csv and e5_summary.csv.  Python never
+e1_summary.csv, e2_summary.csv, e2_wait_cdf.csv, e3_summary.csv, e4_summary.csv,
+e5_summary.csv, e6_summary.csv and e6_ratios.csv.  Python never
 schedules: every number here comes from results.csv / metrics.json of the C program.
 
 The unit of statistics is the seed: each run gives one value per metric, and the
 mean and the Student-t 95% interval are taken over seeds (never over pooled jobs).
 
 Usage:
-    python tools/summarize.py --experiments E1 E2 E3 E5 [--raw results/raw] [--out results/summaries]
+    python tools/summarize.py --experiments E1 E2 E3 E4 E5 E6 [--raw results/raw] [--out results/summaries]
 """
 
 from __future__ import annotations
@@ -377,6 +378,138 @@ def summarize_e5(raw: str | Path, table: dict[int, float] | None = None) -> pd.D
 
 
 # ---------------------------------------------------------------------------
+# E4 (K-35): the aging-rate trade-off, groups by priority (D57)
+# ---------------------------------------------------------------------------
+def e4_group_values(res: pd.DataFrame) -> tuple[float, float]:
+    """One seed's (high_prio_avg_wait, low_prio_max_wait) from its results table.
+
+    High group = jobs with priority 7..9, low group = priority 0..2 (D57, bounds
+    in config).  high_prio_avg_wait = mean wait over the high jobs (jobs pooled
+    inside the seed); low_prio_max_wait = largest wait among the low jobs.
+    ValueError if a group has no job in this seed (nothing to average, D62).  O(n).
+    """
+    hi_lo, hi_hi = config.E4_HIGH_PRIORITIES
+    lo_lo, lo_hi = config.E4_LOW_PRIORITIES
+    high = res[(res["priority"] >= hi_lo) & (res["priority"] <= hi_hi)]
+    low = res[(res["priority"] >= lo_lo) & (res["priority"] <= lo_hi)]
+    if high.empty or low.empty:
+        raise ValueError("an E4 priority group has no job in this seed; cannot average it")
+    return float(high["wait"].mean()), float(low["wait"].max())
+
+
+def summarize_e4(raw: str | Path, table: dict[int, float] | None = None) -> pd.DataFrame:
+    """E4: high_prio_avg_wait and low_prio_max_wait per alpha with 95% intervals.
+
+    One row per alpha_milli with usable runs (policy aging), in config order;
+    x_value = alpha_milli / 1000.  Statistics are over seeds (T_975: 30 seeds).
+    """
+    rows = []
+    for (setting, policy), runs in collect_runs("E4", raw).items():
+        per_seed = [e4_group_values(run["results"]) for _, run in runs]
+        stats = [mean_ci([v[k] for v in per_seed], table) for k in (0, 1)]
+        alpha_milli = int(setting.split("_", 1)[1])
+        rows.append(_row("E4", config.summary_label("E4", setting), alpha_milli / 1000, policy,
+                         len(runs), stats))
+    return pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e4_summary.csv"])
+
+
+# ---------------------------------------------------------------------------
+# E6 (K-35): gap to the exact optimum (D40, D41)
+# ---------------------------------------------------------------------------
+def e6_seeds(n_jobs: int) -> list[int]:
+    """Instance seeds of the E6 size n_jobs: 1000 * n + i, i = 0..49 (D58)."""
+    return [config.E6_SEED_BASE * n_jobs + i for i in range(config.E6_PER_COUNT)]
+
+
+def e6_totals(res: pd.DataFrame) -> tuple[int, int]:
+    """(total turnaround, total wait) of a results table, as exact integers.  O(n)."""
+    return int(res["turnaround"].sum()), int(res["wait"].sum())
+
+
+def e6_row(n_jobs: int, seed: int, policy: str, run: tuple[int, int], opt: tuple[int, int]) -> dict[str, Any]:
+    """One e6_ratios.csv row from a scheduler's and the optimum's (turnaround, wait) totals.
+
+    turnaround_ratio = scheduler total turnaround / optimum total turnaround;
+    wait_gap = scheduler total wait - optimum total wait (ticks).  The optimum's
+    total turnaround is at least the sum of durations, hence positive, so the
+    ratio is always defined; ValueError if it is not (a broken input).  A ratio
+    below 1 or a negative gap means the "optimum" was beaten: ValueError, since
+    that is a bug in the solver or in this metric, never data (D71).  O(1).
+    """
+    (turn, wait), (opt_turn, opt_wait) = run, opt
+    if opt_turn <= 0:
+        raise ValueError(f"E6 n={n_jobs} seed={seed}: optimum total turnaround {opt_turn} is not positive")
+    if turn < opt_turn or wait < opt_wait:
+        raise ValueError(f"E6 n={n_jobs} seed={seed} {policy}: the exact optimum was beaten "
+                         f"(turnaround {turn} < {opt_turn} or wait {wait} < {opt_wait})")
+    return {"experiment": "E6", "n_jobs": n_jobs, "instance_seed": seed, "policy": policy,
+            "total_turnaround": turn, "opt_total_turnaround": opt_turn,
+            "turnaround_ratio": turn / opt_turn, "total_wait": wait,
+            "opt_total_wait": opt_wait, "wait_gap": wait - opt_wait}
+
+
+def _ok_seed_folders(pdir: Path) -> dict[int, Path]:
+    """{seed: folder} of the finished (status ok) runs inside a policy folder."""
+    found: dict[int, Path] = {}
+    if pdir.is_dir():
+        for sdir in pdir.iterdir():
+            if sdir.name.isdigit() and _read_status(sdir / "run.json") == STATUS_OK:
+                found[int(sdir.name)] = sdir
+    return found
+
+
+def collect_e6(raw: str | Path) -> pd.DataFrame:
+    """Read the E6 raw tree into the e6_ratios.csv table (ratio still a float).
+
+    Folders: <raw>/E6/<n>/<policy>/<seed>/results.csv, with the policy "exact"
+    holding the optimum.  Rows follow config order (n, policy, seed).  A policy
+    with no usable run (knapsack before K-34) gets no rows.  No instance is
+    skipped: every instance of a size needs an exact run, and a policy that ran
+    must have run every one of them, else ValueError.  O(total jobs).
+    """
+    base = Path(raw) / "E6"
+    rows: list[dict[str, Any]] = []
+    for n_jobs in config.E6_JOB_COUNTS:
+        exact = _ok_seed_folders(base / str(n_jobs) / config.E6_EXACT)
+        if not exact:
+            raise ValueError(f"no exact runs for E6 n={n_jobs} under {base}; "
+                             f"run `python tools/run_experiments.py --experiment E6` first")
+        opt = {s: e6_totals(read_results(f / "results.csv")) for s, f in exact.items()}
+        for policy in config.E6_POLICIES:
+            runs = _ok_seed_folders(base / str(n_jobs) / policy)
+            if not runs:
+                continue
+            if set(runs) != set(exact):
+                raise ValueError(f"E6 n={n_jobs} {policy}: runs for seeds {sorted(set(runs) ^ set(exact))[:5]} "
+                                 f"are missing on one side; no instance may be skipped")
+            for seed in sorted(runs):
+                rows.append(e6_row(n_jobs, seed, policy,
+                                   e6_totals(read_results(runs[seed] / "results.csv")), opt[seed]))
+    return pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e6_ratios.csv"])
+
+
+def summarize_e6(raw: str | Path, table: dict[int, float] | None = None
+                 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """E6: (summary per (job count, policy), per-instance ratios for the box plot).
+
+    The summary has the mean and 95% interval (t for n = 50, D39/D67) of
+    turnaround_ratio and wait_gap over the instances; x_value = n_jobs.  The
+    ratios table has six decimals on turnaround_ratio (PRD section 5).
+    """
+    ratios = collect_e6(raw)
+    rows = []
+    for (n_jobs, policy), grp in ratios.groupby(["n_jobs", "policy"], sort=False):
+        stats = [mean_ci(grp["turnaround_ratio"].to_numpy(), table),
+                 mean_ci(grp["wait_gap"].to_numpy(), table)]
+        rows.append(_row("E6", config.summary_label("E6", str(n_jobs)), int(n_jobs), policy,
+                         len(grp), stats))
+    summary = pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e6_summary.csv"])
+    out = ratios.copy()
+    out["turnaround_ratio"] = out["turnaround_ratio"].map(lambda r: f"{r:.6f}")
+    return summary, out
+
+
+# ---------------------------------------------------------------------------
 # Writing
 # ---------------------------------------------------------------------------
 def write_csv(df: pd.DataFrame, path: Path) -> None:
@@ -387,10 +520,11 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 
 def summarize(experiments: list[str], raw: str | Path, out: str | Path,
               table: dict[int, float] | None = None) -> list[Path]:
-    """Write the summary files of the given experiments (E1, E2, E3, E5); return their paths.
+    """Write the summary files of the given experiments (E1 to E6); return their paths.
 
     E1 -> e1_summary.csv; E2 -> e2_summary.csv and e2_wait_cdf.csv; E3 -> e3_summary.csv;
-    E5 -> e5_summary.csv.  ValueError for an unknown experiment (E4, E6 belong to K-35) or bad data.
+    E4 -> e4_summary.csv; E5 -> e5_summary.csv; E6 -> e6_summary.csv and e6_ratios.csv.
+    ValueError for an unknown experiment or bad data.
     """
     outdir = Path(out)
     written: list[Path] = []
@@ -402,10 +536,15 @@ def summarize(experiments: list[str], raw: str | Path, out: str | Path,
             files = {"e2_summary.csv": summary, "e2_wait_cdf.csv": cdf}
         elif exp == "E3":
             files = {"e3_summary.csv": summarize_e3(raw, table)}
+        elif exp == "E4":
+            files = {"e4_summary.csv": summarize_e4(raw, table)}
         elif exp == "E5":
             files = {"e5_summary.csv": summarize_e5(raw, table)}
+        elif exp == "E6":
+            summary, ratios = summarize_e6(raw, table)
+            files = {"e6_summary.csv": summary, "e6_ratios.csv": ratios}
         else:
-            raise ValueError(f"summarize.py handles E1, E2, E3 and E5 only, not {exp}")
+            raise ValueError(f"summarize.py handles E1 to E6 only, not {exp}")
         for name, df in files.items():
             write_csv(df, outdir / name)
             written.append(outdir / name)
@@ -414,8 +553,8 @@ def summarize(experiments: list[str], raw: str | Path, out: str | Path,
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point; returns the exit code (0 ok, 1 error)."""
-    ap = argparse.ArgumentParser(description="Summarise APRM experiments E1-E3 into summary CSVs.")
-    ap.add_argument("--experiments", nargs="+", default=["E1", "E2", "E3"], help="E1 E2 E3 E5")
+    ap = argparse.ArgumentParser(description="Summarise APRM experiments E1-E6 into summary CSVs.")
+    ap.add_argument("--experiments", nargs="+", default=["E1", "E2", "E3"], help="E1 .. E6")
     ap.add_argument("--raw", default=config.RAW_DIR, help="raw results folder")
     ap.add_argument("--out", default=config.SUMMARY_DIR, help="summary folder")
     args = ap.parse_args(argv)

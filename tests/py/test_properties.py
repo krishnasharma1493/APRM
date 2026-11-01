@@ -704,3 +704,68 @@ def test_aging_order_counts_the_resources_of_the_passing_job():
         assert cp.check_aging_order(jobs, bad, 4, 100, 100) != [], jr
         good = mk_results(jobs, {1: 0, 2: 10, 3: 15})
         assert cp.check_aging_order(jobs, good, 4, 100, 100) == []
+
+
+# ---- exact never beaten (K-35, PRD section 10) -------------------------------
+def _res(waits: list[int]) -> pd.DataFrame:
+    """A results table of unit jobs (ids 1..n) with the given waits."""
+    return pd.DataFrame([{"id": i + 1, "arrival": 0, "start": w, "finish": w + 1, "wait": w,
+                          "turnaround": w + 1, "priority": 1, "cpu": 1, "mem": 1}
+                         for i, w in enumerate(waits)], columns=RES_COLS)
+
+
+def test_exact_not_beaten_passes_when_optimum_is_lowest() -> None:
+    opt = _res([0, 2])                                   # total wait 2
+    assert cp.check_exact_not_beaten(opt, {"fcfs": _res([0, 2]), "sjf": _res([1, 2])}) == []
+
+
+def test_exact_not_beaten_fails_on_hand_built_violation() -> None:
+    opt = _res([0, 2])
+    msgs = cp.check_exact_not_beaten(opt, {"fcfs": _res([0, 1]), "sjf": _res([0, 3])})
+    assert len(msgs) == 1 and "fcfs" in msgs[0] and "total wait 1 < exact optimum 2" in msgs[0]
+
+
+def test_exact_not_beaten_reports_different_job_sets() -> None:
+    msgs = cp.check_exact_not_beaten(_res([0, 2]), {"fcfs": _res([0])})
+    assert len(msgs) == 1 and "ids differ" in msgs[0]
+
+
+def _put(root: Path, n: int, policy: str, seed: int, res: pd.DataFrame) -> None:
+    folder = root / "E6" / str(n) / policy / str(seed)
+    folder.mkdir(parents=True)
+    res.to_csv(folder / "results.csv", index=False)
+    (folder / "run.json").write_text('{"status": "ok"}')
+
+
+def test_exact_never_beaten_on_a_raw_tree(tmp_path) -> None:
+    for n in (6, 7, 8, 9):
+        _put(tmp_path, n, "exact", 1000 * n, _res([0, 2]))
+        _put(tmp_path, n, "fcfs", 1000 * n, _res([0, 2] if n != 8 else [0, 1]))   # n = 8 beats the optimum
+        _put(tmp_path, n, "sjf", 1000 * n, _res([1, 2]))
+    rep = cp.exact_never_beaten(tmp_path)
+    assert rep["instances"] == 4 and rep["policies"] == ["fcfs", "sjf"]
+    assert "knapsack" in rep["not_implemented"]
+    assert [(v["n_jobs"], v["seed"]) for v in rep["violations"]] == [(8, 8000)]
+    with pytest.raises(ValueError, match="no exact runs"):
+        cp.exact_never_beaten(tmp_path / "empty")
+
+
+def test_exact_check_policy_list_is_the_config_list() -> None:
+    import config
+    assert cp.config.EXACT_CHECK_POLICIES is config.EXACT_CHECK_POLICIES
+    assert {"fcfs", "priority", "sjf", "aging", "reserve"} <= set(config.EXACT_CHECK_POLICIES)
+
+
+@needs_cli
+def test_exact_never_beaten_200_workloads():
+    """The real 200 tiny E6 workloads (50 per size): the exact total wait is never beaten."""
+    rep = cp.run_exact_check(str(REAL), jobs=4)
+    assert rep["instances"] == 200
+    assert rep["violations"] == [], rep["violations"][:2]
+    assert {"fcfs", "priority", "sjf", "aging", "reserve"} <= set(rep["policies"])
+
+
+@needs_cli
+def test_exact_check_cli_exit_codes(capsys):
+    assert cp.main(["--exact-never-beaten", "--jobs", "4"]) == 0
+    assert "200 instances" in capsys.readouterr().out

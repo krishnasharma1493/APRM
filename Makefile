@@ -49,7 +49,7 @@ TEST_SRC  := $(sort $(wildcard tests/c/test_*.c))
 TEST_BIN  := $(patsubst tests/c/%.c,$(OBJDIR)/tests/%,$(TEST_SRC))
 HAVE_CLI  := $(wildcard cli/main.c)
 
-.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test web-test hardening
+.PHONY: all debug sanitize test wasm web clean cli-build tests-build tests-run cli-test web-test hardening
 
 all:
 	@$(MAKE) --no-print-directory MODE=release cli-build
@@ -71,17 +71,22 @@ test:
 wasm:
 	@sh wasm/build.sh
 
+# K-49: the website as one file that opens from file:// with no network (web/dist/index.html).
+# Needs web/vendor/aprm.js (make wasm) and Node with npm.
+web:
+	@cd web && npm ci --no-audit --no-fund && node build.mjs
+
 # K-30 hardening checks: fuzz, allocation-failure injection, stress, grep-unsafe (tests/hardening/run.sh).
 hardening:
 	@sh tests/hardening/run.sh
 
 clean:
-	rm -rf build
+	rm -rf build web/dist web/node_modules
 
 # Website shell tests (K-23): need only Node, not emcc. Skipped with a note if
 # node is missing; the real-engine part runs only if web/vendor/aprm.js is built.
 web-test:
-	@if command -v node >/dev/null 2>&1; then node tests/web/test_web.mjs && node tests/web/test_editor.mjs && node tests/web/test_player.mjs && node tests/web/test_compare.mjs; \
+	@if command -v node >/dev/null 2>&1; then sh tests/web/run_suite.sh tests/web/test_web.mjs && sh tests/web/run_suite.sh tests/web/test_editor.mjs && sh tests/web/run_suite.sh tests/web/test_player.mjs && sh tests/web/run_suite.sh tests/web/test_compare.mjs && sh tests/web/run_suite.sh tests/web/test_share.mjs && sh tests/web/run_suite.sh tests/web/test_copy.mjs && sh tests/web/run_suite.sh tests/web/test_keys.mjs && sh tests/web/run_suite.sh tests/web/test_motion.mjs && sh tests/web/run_suite.sh tests/web/test_build_copy.mjs && node tests/web/check_contrast.mjs; \
 	else echo "web-test: node not found, skipping website tests"; fi
 
 # ---- internal targets (run with MODE set) ----

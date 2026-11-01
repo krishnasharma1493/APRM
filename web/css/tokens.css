@@ -1,0 +1,116 @@
+/* tokens.css: the design tokens (K-43). Every colour, size and timing used by the
+ * site is a CSS variable defined here, with light and dark values.
+ *
+ * Idea: one place to change the look. Light is the default; dark follows the
+ * system unless the page sets data-theme="light" or data-theme="dark".
+ * Rules (docs/design/APPLE_DESIGN.md): flat solid colours, hairline borders, one
+ * whisper shadow, system sans-serif only, numbers with tabular-nums.
+ * "Chart gray" (--chart-gray) is for chart marks and rules only, never for text.
+ */
+:root {
+  /* Colour: light */
+  --canvas: #F2F3F1;
+  --surface: #FFFFFF;
+  --text: #1B1F1D;
+  --muted: #5B625E;
+  --border: #CFD3D0;
+  --accent: #0B5E6B;
+  --on-accent: #FFFFFF;
+  --red: #B42318;
+  --amber: #8A4B00;
+  --green: #1D7A34;
+  --chart-gray: #8A918D;
+  --focus: #0B5E6B;
+  --hatch: rgba(255, 255, 255, 0.45);
+  --error-bg: #FBEDEB;
+  --warn-bg: #FBF1E3;
+  --ok-bg: #E9F5EC;
+  --material: rgba(255, 255, 255, 0.72);
+  --material-edge: rgba(255, 255, 255, 0.85);
+  --scrim: rgba(27, 31, 29, 0.28);
+  --shadow: 0 1px 2px rgba(27, 31, 29, 0.06);
+
+  /* Job colours: muted, colour-blind-safe. Colour is never the only signal:
+   * every block also carries its number and one of three hatch patterns. */
+  --job-0: #3A6EA5; --job-1: #C27A1A; --job-2: #2E8B6A; --job-3: #B4483C; --job-4: #8A6D2E;
+  --job-5: #5E8FA8; --job-6: #A8567A; --job-7: #6E7F2A; --job-8: #6B7280; --job-9: #94741A;
+
+  /* Type: system sans-serif only, no web fonts, no monospace */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --fs-title: 1.75rem;   --lh-title: 1.15;  --ls-title: -0.02em;  --fw-title: 650;
+  --fs-section: 1.25rem; --lh-section: 1.25; --ls-section: -0.01em; --fw-section: 600;
+  --fs-body: 0.9375rem;  --lh-body: 1.5;    --ls-body: 0;
+  --fs-caption: 0.8125rem; --lh-caption: 1.4; --ls-caption: 0.01em;
+
+  /* Space, radius, motion */
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem; --s-6: 1.5rem; --s-10: 2.5rem;
+  --r-1: 0.375rem; --r-2: 0.625rem; --r-3: 0.875rem;
+  --press: 100ms; --move: 240ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --blur: blur(20px) saturate(180%);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #121513;
+    --surface: #1B1F1D;
+    --text: #ECEFED;
+    --muted: #A3ABA6;
+    --border: #343A37;
+    --accent: #5FB6C4;
+    --on-accent: #0B1F22;
+    --red: #F0877C;
+    --amber: #E0A24A;
+    --green: #6FCB87;
+    --focus: #5FB6C4;
+    --error-bg: #3A1F1C;
+    --warn-bg: #38290F;
+    --ok-bg: #14301C;
+    --material: rgba(27, 31, 29, 0.72);
+    --material-edge: rgba(236, 239, 237, 0.14);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --hatch: rgba(0, 0, 0, 0.3);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --job-0: #7FA6D1; --job-1: #E0A24A; --job-2: #5FBF9C; --job-3: #E27C6F; --job-4: #C2A25C;
+    --job-5: #8FB8CC; --job-6: #D08AAA; --job-7: #A2B35A; --job-8: #9AA1AD; --job-9: #D9BC5E;
+  }
+}
+
+:root[data-theme="dark"] {
+  --canvas: #121513;
+  --surface: #1B1F1D;
+  --text: #ECEFED;
+  --muted: #A3ABA6;
+  --border: #343A37;
+  --accent: #5FB6C4;
+  --on-accent: #0B1F22;
+  --red: #F0877C;
+  --amber: #E0A24A;
+  --green: #6FCB87;
+  --focus: #5FB6C4;
+  --error-bg: #3A1F1C;
+  --warn-bg: #38290F;
+  --ok-bg: #14301C;
+  --material: rgba(27, 31, 29, 0.72);
+  --material-edge: rgba(236, 239, 237, 0.14);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --hatch: rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --job-0: #7FA6D1; --job-1: #E0A24A; --job-2: #5FBF9C; --job-3: #E27C6F; --job-4: #C2A25C;
+  --job-5: #8FB8CC; --job-6: #D08AAA; --job-7: #A2B35A; --job-8: #9AA1AD; --job-9: #D9BC5E;
+  color-scheme: dark;
+}
+
+/* Materials become solid when the user asks for less transparency or more contrast. */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root { --material: var(--surface); --material-edge: var(--border); --blur: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --border: #5B625E; }
+  :root[data-theme="dark"] { --border: #A3ABA6; }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --border: #A3ABA6; }
+}

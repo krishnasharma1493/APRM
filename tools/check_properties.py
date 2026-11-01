@@ -19,7 +19,12 @@ that are visible in the file:
 greedy fill (fcfs).  `check_aging_order` and `check_starvation_bound` (K-29)
 check the aging policy's waiting order and the provable starvation bound.
 
+`check_exact_not_beaten` and `exact_never_beaten` (K-35, PRD section 10) check that
+the exact optimum is never beaten: on the 200 tiny E6 workloads, the exact total
+wait is at most the total wait of every implemented policy.
+
 Usage:
+    python tools/check_properties.py --exact-never-beaten [--jobs 4] [--binary build/aprm]
     python tools/check_properties.py --runs 10000 [--policy fcfs] [--seed0 1]
         [--jobs 4] [--binary build/aprm]
 Exit code 0 = no violation, 1 = at least one violation, 2 = usage / run error.
@@ -41,6 +46,7 @@ import pandas as pd
 import config
 import gen_workload
 import run_experiments
+import summarize
 
 RESULT_COLUMNS = run_experiments.RESULT_COLUMNS
 INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
@@ -676,6 +682,72 @@ def random_runs(n_runs: int, seed0: int, policies: tuple[str, ...] | list[str] =
     return out
 
 
+# ---------------------------------------------------------------------------
+# Exact never beaten (K-35, PRD section 10)
+# ---------------------------------------------------------------------------
+def check_exact_not_beaten(exact: pd.DataFrame, others: dict[str, pd.DataFrame]) -> list[str]:
+    """Return violation messages (empty = pass): exact total wait <= every policy's total wait.
+
+    exact and each value of `others` (keyed by policy) are results tables
+    (PRD section 5 columns).  A policy table that does not list exactly the
+    ids of the exact table is also reported, since totals of different job
+    sets cannot be compared.  O(total rows).
+    """
+    msgs: list[str] = []
+    opt = int(exact["wait"].sum())
+    for policy, res in others.items():
+        if sorted(res["id"].tolist()) != sorted(exact["id"].tolist()):
+            msgs.append(f"{policy}: job ids differ from the exact schedule's")
+            continue
+        total = int(res["wait"].sum())
+        if total < opt:
+            msgs.append(f"{policy}: total wait {total} < exact optimum {opt}")
+    return msgs
+
+
+def exact_never_beaten(raw: str | Path) -> dict[str, Any]:
+    """Check every instance of the E6 raw tree <raw>/E6 (200 in the full grid).
+
+    Returns {"instances": count of (size, seed) instances, "policies": policies
+    that had runs, "not_implemented": policies with none, "violations":
+    [{"n_jobs", "seed", "messages"}]}.  Uses the same raw tree as the E6 summary.
+    ValueError when the tree has no exact run.
+    """
+    base = Path(raw) / "E6"
+    instances = 0
+    violations: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for n_jobs in config.E6_JOB_COUNTS:
+        exact = summarize._ok_seed_folders(base / str(n_jobs) / config.E6_EXACT)
+        per_policy = {p: summarize._ok_seed_folders(base / str(n_jobs) / p)
+                      for p in config.EXACT_CHECK_POLICIES}
+        seen |= {p for p, runs in per_policy.items() if runs}
+        for seed in sorted(exact):
+            instances += 1
+            opt = pd.read_csv(exact[seed] / "results.csv")
+            others = {p: pd.read_csv(runs[seed] / "results.csv")
+                      for p, runs in per_policy.items() if seed in runs}
+            msgs = check_exact_not_beaten(opt, others)
+            if msgs:
+                violations.append({"n_jobs": n_jobs, "seed": seed, "messages": msgs})
+    if instances == 0:
+        raise ValueError(f"no exact runs under {base}: run E6 first")
+    return {"instances": instances, "policies": [p for p in config.EXACT_CHECK_POLICIES if p in seen],
+            "not_implemented": [p for p in config.EXACT_CHECK_POLICIES if p not in seen],
+            "violations": violations}
+
+
+def run_exact_check(binary: str, jobs: int = 1) -> dict[str, Any]:
+    """Run the full E6 grid (every policy plus exact) into a temp folder and check it.
+
+    Same return value as exact_never_beaten.  A policy the engine does not
+    implement is reported in "not_implemented", not failed.
+    """
+    with tempfile.TemporaryDirectory(prefix="aprm_exact_") as tmp:
+        run_experiments.execute_grid("E6", binary=binary, out=tmp, jobs=jobs)
+        return exact_never_beaten(tmp)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point; returns 0 (pass), 1 (violation) or 2 (usage / setup error)."""
     ap = argparse.ArgumentParser(description="Check APRM invariants over random runs of build/aprm.")
@@ -684,6 +756,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed0", type=int, default=1, help="first seed (a run is reproduced by its seed)")
     ap.add_argument("--jobs", type=int, default=1, help="parallel runs (default 1)")
     ap.add_argument("--binary", default=config.APRM_BINARY, help="console program")
+    ap.add_argument("--exact-never-beaten", action="store_true",
+                    help="instead of random runs: run the 200 tiny E6 workloads and check that "
+                         "the exact optimum is never beaten")
     ap.add_argument("--keep", help="folder to keep jobs.csv and results.csv of every run in")
     args = ap.parse_args(argv)
     if args.runs < 1 or args.jobs < 1 or args.seed0 < 0:
@@ -692,6 +767,21 @@ def main(argv: list[str] | None = None) -> int:
     if not Path(args.binary).is_file():
         print(f"check_properties: {args.binary} not found (run `make` first)", file=sys.stderr)
         return 2
+    if args.exact_never_beaten:
+        try:
+            rep = run_exact_check(args.binary, args.jobs)
+        except (run_experiments.RunError, ValueError) as err:
+            print(f"check_properties: {err}", file=sys.stderr)
+            return 2
+        for pol in rep["not_implemented"]:
+            print(f"policy {pol}: not implemented in the engine yet; skipped")
+        for v in rep["violations"][:20]:
+            print(f"VIOLATION n_jobs={v['n_jobs']} seed={v['seed']}")
+            for m in v["messages"]:
+                print(f"    {m}")
+        print(f"exact never beaten: {rep['instances']} instances, policies {','.join(rep['policies'])}, "
+              f"{len(rep['violations'])} with violations")
+        return 1 if rep["violations"] else 0
     pols = [p.strip() for p in args.policy.split(",") if p.strip()]
     out = random_runs(args.runs, args.seed0, pols, args.binary, args.jobs, args.keep)
     for pol in out["not_implemented"]:

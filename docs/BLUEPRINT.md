@@ -216,7 +216,7 @@ The website is a scheduling playground: the user builds any case, runs our C eng
 | --- | --- | --- |
 | Build | Set CPU and memory capacity. Add, edit, delete jobs in a table. Generate random jobs with sliders. Load a preset. Upload or download CSV | Job table with validation (red cell if a job exceeds capacity) |
 | Run | Pick a scheduler and its settings (α, reservation threshold T, knapsack ε). Play, pause, step one event, change speed, jump to end. Pause and add a job at the current time | Live canvas, "why" panel, live metrics |
-| Compare | Tick two or more schedulers. Run them on the same jobs | Side-by-side timelines, metrics table, Chart.js charts, and the exact optimum when there are 9 jobs or fewer |
+| Compare | Tick two or more schedulers. Run them on the same jobs | Side-by-side timelines, metrics table, bundled charts with a table fallback, and the exact optimum when there are 9 jobs or fewer |
 
 **The live canvas (Run mode).**
 
@@ -233,7 +233,7 @@ The website is a scheduling playground: the user builds any case, runs our C eng
 
 Clicking a job anywhere highlights it in all views and filters the log to that job.
 
-**Presets (starting points, all editable; made by Krishna).** The master copies are CSVs in `data/presets/`; the page reads them from the JavaScript data file `web/js/presets_data.js` (no `fetch`, so it works from `file://`). Each preset carries its own machine capacities; how capacities are stored next to the job CSV is settled in `DECISIONS.md` O-9.
+**Presets (starting points, all editable; made by Krishna).** The master copies are CSVs in `data/presets/`; the page reads them from the JavaScript data file `web/js/presets_data.js`, bundled into the build (no `fetch`, so it works from `file://`). Each preset carries its own machine capacities; how capacities are stored next to the job CSV is settled in `DECISIONS.md` O-9.
 
 | Preset | What it demonstrates |
 | --- | --- |
@@ -248,6 +248,7 @@ Clicking a job anywhere highlights it in all views and filters the log to that j
 
 - Keyboard: Space plays or pauses, the right arrow steps one event.
 - Works in light and dark mode, and on a laptop screen without scrolling sideways.
+- Design authority: Impeccable (`PRODUCT.md`, `DESIGN.md`); frameworks, a build tool and self-hosted fonts are allowed, and the built site works offline from `file://` (D76).
 - Results export as CSV, so a case found on the website can be re-run in Python.
 - A case can be shared as a link: the job list is encoded in the URL hash.
 

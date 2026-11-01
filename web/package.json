@@ -1,0 +1,11 @@
+{
+  "name": "aprm-web",
+  "private": true,
+  "description": "Build of the APRM website into one file that opens from file:// with no network (K-49, D77).",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "chart.js": "4.5.1"
+  }
+}

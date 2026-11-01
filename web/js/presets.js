@@ -43,38 +43,76 @@
 
   var mounted = false;
 
-  /* Fill the picker and wire its button. Missing elements are skipped. */
+  /* Plain title and hint for a preset: from copy.js when written there, else the preset's own text. */
+  function tileText(p) {
+    var C = APRM.copy;
+    var title = C && C.has('preset.' + p.name + '.title') ? C.get('preset.' + p.name + '.title') : p.title;
+    var hint = C && C.has('preset.' + p.name + '.hint') ? C.get('preset.' + p.name + '.hint') : '';
+    return { title: title, hint: hint };
+  }
+
+  /* The example's real jobs as a row of small magnets: width from duration, height from CPU share,
+   * colour from the same job palette as the Run page. Decorative for screen readers. O(jobs shown). */
+  function rackOf(p) {
+    var rack = document.createElement('span');
+    rack.setAttribute('class', 'tile-rack');
+    rack.setAttribute('aria-hidden', 'true');
+    var shown = p.jobs.slice(0, 14);
+    var maxD = 1;
+    for (var i = 0; i < shown.length; i++) { maxD = Math.max(maxD, shown[i].duration); }
+    for (var k = 0; k < shown.length; k++) {
+      var m = document.createElement('span');
+      m.setAttribute('class', 'magnet-' + (((shown[k].id % 10) + 10) % 10) + ' hatch-' + (((shown[k].id % 3) + 3) % 3));
+      var w = Math.round(3 + 21 * shown[k].duration / maxD);
+      var h = Math.max(18, Math.round(100 * shown[k].cpu / p.cpu_cap));
+      if (m.style) {
+        m.style.width = w + 'px';
+        m.style.height = h + '%';
+      }
+      rack.appendChild(m);
+    }
+    return rack;
+  }
+
+  /* Mark the tile of the loaded preset (aria-pressed) and show the toast. */
+  function markLoaded(tiles, name, title) {
+    var buttons = tiles.children;
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute('aria-pressed', buttons[i].getAttribute('data-preset') === name ? 'true' : 'false');
+    }
+    if (APRM.app && typeof APRM.app.toast === 'function' && APRM.copy) {
+      APRM.app.toast(APRM.copy.fill('toast.loaded', { name: title }));
+    }
+  }
+
+  /* One tile per preset: plain name, one-line hint, and (Show details) the full technical description. */
   function mount() {
     if (mounted) { return; }
     mounted = true;
-    var select = document.getElementById('preset-select');
-    var button = document.getElementById('preset-load');
+    var tiles = document.getElementById('preset-tiles');
     var desc = document.getElementById('preset-desc');
     var list = all();
-    if (!select) { return; }
+    if (!tiles) { return; }
     if (list.length === 0) {
-      if (desc) { desc.textContent = 'No presets are available (js/presets_data.js did not load).'; desc.hidden = false; }
-      if (button) { button.disabled = true; }
+      if (desc) { desc.textContent = 'No examples are available (js/presets_data.js did not load).'; desc.hidden = false; }
       return;
     }
-    for (var i = 0; i < list.length; i++) {
-      var opt = document.createElement('option');
-      opt.setAttribute('value', list[i].name);
-      opt.textContent = list[i].title;
-      select.appendChild(opt);
-    }
-    function describe() {
-      var p = find(select.value);
-      if (desc) { desc.textContent = p ? p.description : ''; desc.hidden = !p; }
-    }
-    select.addEventListener('change', describe);
-    if (button) {
-      button.addEventListener('click', function () {
-        if (load(select.value) !== null) { describe(); }
+    list.forEach(function (p) {
+      var t = tileText(p);
+      var b = document.createElement('button');
+      b.setAttribute('type', 'button');
+      b.setAttribute('class', 'btn tile');
+      b.setAttribute('data-preset', p.name);
+      b.setAttribute('aria-pressed', 'false');
+      var name = document.createElement('span'); name.setAttribute('class', 'tile-title'); name.textContent = t.title;
+      var hint = document.createElement('span'); hint.setAttribute('class', 'tile-hint'); hint.textContent = t.hint || p.description;
+      var more = document.createElement('span'); more.setAttribute('class', 'tile-detail detail-only'); more.textContent = p.description;
+      b.appendChild(name); b.appendChild(hint); b.appendChild(more); b.appendChild(rackOf(p));
+      b.addEventListener('click', function () {
+        if (load(p.name) !== null) { markLoaded(tiles, p.name, t.title); }
       });
-    }
-    if (!select.value) { select.value = list[0].name; }
-    describe();
+      tiles.appendChild(b);
+    });
   }
 
   APRM.presets = { all: all, find: find, load: load, mount: mount };

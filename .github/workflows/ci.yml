@@ -6,7 +6,7 @@
 #  - runner image          ubuntu-24.04 (what GitHub's runner-images README lists for ubuntu-latest)
 #  - Python 3.13           the line recorded in docs/TOOLCHAIN.md; setup-python picks the newest 3.13.x patch (K-18 freeze).
 #  - pip packages          installed from requirements.lock.txt (K-18 freeze).
-#  - emsdk                 pinned exactly in the build-wasm job (env EMSDK_VERSION), same as docs/TOOLCHAIN.md.
+#  - emsdk                 pinned exactly in the build-wasm and deploy jobs (env EMSDK_VERSION, equal in both), same as docs/TOOLCHAIN.md.
 # No secrets are used.
 name: CI
 
@@ -112,6 +112,23 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           emcc --version | head -1
           make wasm
+      - name: Build the website into one offline file (make web, K-49)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node --version
+          make web
+      - name: Offline rehearsal of the built website in headless Chrome (K-49)
+        env:
+          CHROME: google-chrome
+          CHROME_EXTRA_ARGS: --no-sandbox
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          google-chrome --version
+          node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline
+      - name: Website tests with the built file present (K-49)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node tests/web/test_web.mjs
       - name: API tests and golden cases through Node
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
@@ -154,7 +171,55 @@ jobs:
             core/*.c wasm/api.c wasm/native_check.c -o build/native_check -lm
           ASAN_OPTIONS=detect_leaks=1 build/native_check
 
-  # deploy: added in K-37 (main only, publish web/ to GitHub Pages).
-  # deploy:
-  #   if: github.ref == 'refs/heads/main'
-  #   needs: [build-c, test-c, sanitize, python, build-wasm]
+  # deploy (K-37): publishes web/ to GitHub Pages. Main pushes only, and only once Krishna has
+  # enabled Pages (Settings > Pages > Source: GitHub Actions) and set the repository variable
+  # PAGES_ENABLED=true. Until then the job is skipped, so main stays green. aprm.js is rebuilt here
+  # (never committed). Action versions looked up on 2026-11-01 (K-37 PR):
+  #  - actions/configure-pages       v6  (latest release v6.0.0)
+  #  - actions/upload-pages-artifact v5  (latest release v5.0.0)
+  #  - actions/deploy-pages          v5  (latest release v5.0.1; README: pages: write + id-token: write)
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'
+    needs: [build-c, test-c, sanitize, python, build-wasm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install the pinned emsdk
+        env:
+          # Exact version, kept equal to the build-wasm job and docs/TOOLCHAIN.md (change all together).
+          EMSDK_VERSION: "6.0.13"
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          cd "$HOME/emsdk"
+          ./emsdk install "$EMSDK_VERSION"
+          ./emsdk activate "$EMSDK_VERSION"
+      - name: Build web/vendor/aprm.js (never committed)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          make wasm
+          test -s web/vendor/aprm.js
+      - name: Build the one-file website (never committed)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          make web
+          test -s web/dist/index.html
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist/
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

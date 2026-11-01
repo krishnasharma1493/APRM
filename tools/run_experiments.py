@@ -132,6 +132,36 @@ def run_one(binary: str, jobs_csv: str, policy: str, out_dir: str,
             "exit_code": 0, "wall_seconds": wall}
 
 
+def run_exact(binary: str, jobs_csv: str, out_dir: str, *, timeout: float | None = None,
+              context: dict | None = None) -> dict:
+    """Run `binary --in jobs_csv --out results.csv --exact` (the optimal schedule, D71).
+
+    The exact solver writes only results.csv (the console program refuses
+    --metrics with --exact).  Returns {"paths", "command", "exit_code",
+    "wall_seconds"}; RunError on any non-zero exit or timeout.  Never a shell.
+    """
+    ctx = dict(context or {})
+    ctx.setdefault("policy", config.E6_EXACT)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    results = str(out / "results.csv")
+    cmd = [str(binary), "--in", str(jobs_csv), "--out", results, "--exact"]
+    limit = config.RUN_TIMEOUT_S if timeout is None else timeout
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=limit)
+    except subprocess.TimeoutExpired as err:
+        raise RunError(f"aprm --exact timed out after {limit} s", None, "", ctx) from err
+    except OSError as err:
+        raise RunError(f"cannot run {binary}: {err}", None, "", ctx) from err
+    line = _first_line(proc.stderr)
+    if proc.returncode != 0:
+        raise RunError(f"aprm --exact exited {proc.returncode}: {line or '(no stderr)'}",
+                       proc.returncode, line, ctx)
+    return {"paths": {"jobs": str(jobs_csv), "results": results}, "command": cmd,
+            "exit_code": 0, "wall_seconds": time.monotonic() - start}
+
+
 # ---------------------------------------------------------------------------
 # The grid
 # ---------------------------------------------------------------------------
@@ -218,12 +248,17 @@ def _read_json(path: Path) -> Any:
         return None
 
 
-def _outputs_valid(folder: Path, n_jobs: int) -> bool:
-    """True if results.csv and metrics.json parse: PRD header, one row per job, strict JSON."""
+def _outputs_valid(folder: Path, n_jobs: int, need_metrics: bool = True) -> bool:
+    """True if results.csv and metrics.json parse: PRD header, one row per job, strict JSON.
+
+    need_metrics=False is for the exact solver, which writes results.csv only.
+    """
     try:
         lines = (folder / "results.csv").read_text(encoding="utf-8").splitlines()
         if not lines or lines[0].split(",") != RESULT_COLUMNS or len(lines) - 1 != n_jobs:
             return False
+        if not need_metrics:
+            return True
         env = _strict_loads((folder / "metrics.json").read_text(encoding="utf-8"))
         return isinstance(env, dict) and env.get("ok") is True and isinstance(env.get("data"), dict)
     except (OSError, ValueError):
@@ -248,7 +283,7 @@ def _is_done(folder: Path, fresh_jobs: Path, extra: list[str], binary_sha: str) 
     if not jobs_file.is_file() or jobs_file.read_bytes() != fresh_jobs.read_bytes():
         return False
     n_jobs = len(fresh_jobs.read_text(encoding="utf-8").splitlines()) - 1
-    return _outputs_valid(folder, n_jobs)
+    return _outputs_valid(folder, n_jobs, need_metrics=run.get("policy") != config.E6_EXACT)
 
 
 def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
@@ -257,7 +292,7 @@ def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
     exp, setting, policy, seed = cell
     ctx = {"experiment": exp, "setting": setting, "policy": policy, "seed": seed}
     folder = run_dir(out_root, exp, setting, policy, seed)
-    extra = extra_args_for(exp, setting, policy)
+    extra = ["--exact"] if policy == config.E6_EXACT else extra_args_for(exp, setting, policy)
     jobs, params = gen_workload.generate_family(exp, _workload_setting(exp, setting), seed)
     params["setting"] = setting
     params["policy"] = policy
@@ -279,8 +314,11 @@ def _run_cell(cell: tuple[str, str, str, int], binary: str, out_root: str,
         "python": sys.version.split()[0], "numpy": np.__version__,
         "jobs_sha256": _sha256(folder / "jobs.csv")}
     try:
-        res = run_one(binary, str(folder / "jobs.csv"), policy, str(folder), extra,
-                      log=log, context=ctx)
+        if policy == config.E6_EXACT:
+            res = run_exact(binary, str(folder / "jobs.csv"), str(folder), context=ctx)
+        else:
+            res = run_one(binary, str(folder / "jobs.csv"), policy, str(folder), extra,
+                          log=log, context=ctx)
         record.update(status=STATUS_OK, command=res["command"], exit_code=0,
                       wall_seconds=round(res["wall_seconds"], 6))
     except PolicyNotImplemented as err:
@@ -323,7 +361,15 @@ def execute_grid(experiment: str, quick: bool = False, *, binary: str | None = N
     """
     binary = binary or config.APRM_BINARY
     out = out or config.RAW_DIR
-    cells = grid(experiment, quick, policies, settings)
+    # E6 also runs the exact solver ("exact", D71) for every instance: it is
+    # not a policy of the grid (grid() is unchanged), so it is split off here.
+    want_exact = experiment.upper() == "E6" and (policies is None or config.E6_EXACT in policies)
+    if policies is not None:
+        policies = [p for p in policies if p != config.E6_EXACT or experiment.upper() != "E6"]
+    cells = [] if policies == [] else grid(experiment, quick, policies, settings)
+    if want_exact:
+        cells += [(e, s, config.E6_EXACT, seed) for e, s, p, seed in grid(
+            experiment, quick, [config.E6_POLICIES[0]], settings)]
     if not os.path.isfile(binary) or not os.access(binary, os.X_OK):
         raise RunError(f"console program not found or not executable: {binary} "
                        f"(run `make` first)", None, "", {"experiment": experiment.upper()})
@@ -383,7 +429,8 @@ def main(argv: list[str] | None = None) -> int:
                     help=f"only the first {config.QUICK_SEEDS} seeds of every setting")
     ap.add_argument("--binary", default=config.APRM_BINARY, help="console program")
     ap.add_argument("--out", default=config.RAW_DIR, help="raw results folder")
-    ap.add_argument("--policies", help="comma-separated subset of the experiment's policies")
+    ap.add_argument("--policies", help="comma-separated subset of the experiment's policies "
+                    "(E6 also accepts exact, the optimal schedule from --exact)")
     ap.add_argument("--settings", help="comma-separated subset of the experiment's settings")
     ap.add_argument("--jobs", type=int, default=1, help="parallel runs (default 1)")
     ap.add_argument("--force", action="store_true", help="redo runs that already exist")

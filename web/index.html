@@ -5,208 +5,280 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>APRM Scheduler</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>APRM scheduler</h1>
-    <div class="modes" role="group" aria-label="Mode">
-      <button type="button" data-mode-button="build" aria-pressed="true">Build</button>
-      <button type="button" data-mode-button="run" aria-pressed="false">Run</button>
-      <button type="button" data-mode-button="compare" aria-pressed="false">Compare</button>
+  <header class="topbar material">
+    <h1 data-copy="app.title">APRM scheduler</h1>
+    <div class="segmented modes" role="group" data-copy-label="steps.label" aria-label="Steps">
+      <button type="button" data-mode-button="build" aria-pressed="true" data-copy="step.build">1 Build</button>
+      <button type="button" data-mode-button="run" aria-pressed="false" data-copy="step.run">2 Run</button>
+      <button type="button" data-mode-button="compare" aria-pressed="false" data-copy="step.compare">3 Compare</button>
     </div>
-    <p id="engine-status" class="status" role="status" aria-live="polite">Loading engine&hellip;</p>
+    <div class="view-controls">
+      <p id="engine-status" class="status" role="status" aria-live="polite" data-state="loading" data-copy="engine.loading">Starting the engine&hellip;</p>
+      <label class="switch" for="details-switch">
+        <input id="details-switch" type="checkbox" aria-describedby="details-hint">
+        <span class="track" aria-hidden="true"></span>
+        <span data-copy="details.label">Show details</span>
+      </label>
+      <span id="details-hint" class="visually-hidden" data-copy="details.hint"></span>
+      <button type="button" class="btn btn-small" id="theme-toggle" data-copy="theme.night" aria-describedby="theme-hint">Night mode</button>
+      <span id="theme-hint" class="visually-hidden" data-copy="theme.hint"></span>
+    </div>
   </header>
 
   <div id="engine-error" class="error-box" role="alert" hidden></div>
 
-  <noscript><p class="error-box">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
+  <noscript><p class="error-box" data-copy="noscript">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
 
   <section id="build-panel" class="panel build-panel" aria-label="Build">
-    <h2>Build</h2>
-    <div class="build-grid">
-      <fieldset class="build-box">
-        <legend>Machine</legend>
-        <label for="cpu-input">CPU cores</label>
-        <input id="cpu-input" type="text" inputmode="numeric" value="16">
-        <p id="cpu-error" class="field-error" role="alert" hidden></p>
-        <label for="mem-input">Memory (MB)</label>
-        <input id="mem-input" type="text" inputmode="numeric" value="32768">
-        <p id="mem-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
+    <h2 data-copy="build.heading">Let&rsquo;s schedule some jobs</h2>
+    <p class="intro" data-copy="build.intro"></p>
 
-      <fieldset class="build-box">
-        <legend>Preset</legend>
-        <label for="preset-select">Choose a preset</label>
-        <select id="preset-select"></select>
-        <button type="button" id="preset-load">Load preset</button>
-        <p id="preset-desc" class="empty" hidden></p>
-      </fieldset>
+    <h3 data-copy="build.examples">Try an example</h3>
+    <div id="preset-tiles" class="tiles"></div>
+    <p id="preset-desc" class="empty" hidden></p>
 
-      <fieldset class="build-box">
-        <legend>Generate random jobs</legend>
-        <label for="gen-seed">Seed</label>
-        <input id="gen-seed" type="text" inputmode="numeric" value="42">
-        <button type="button" id="gen-newseed">New seed</button>
-        <label for="gen-count">Jobs: <output id="gen-count-out">12</output></label>
-        <input id="gen-count" type="range" min="1" max="200" value="12">
-        <label for="gen-arrival">Latest arrival (ticks): <output id="gen-arrival-out">30</output></label>
-        <input id="gen-arrival" type="range" min="0" max="200" value="30">
-        <label for="gen-duration">Longest duration (ticks): <output id="gen-duration-out">10</output></label>
-        <input id="gen-duration" type="range" min="1" max="100" value="10">
-        <label for="gen-cpu">Largest CPU (% of machine): <output id="gen-cpu-out">50</output></label>
-        <input id="gen-cpu" type="range" min="1" max="100" value="50">
-        <label for="gen-mem">Largest memory (% of machine): <output id="gen-mem-out">50</output></label>
-        <input id="gen-mem" type="range" min="1" max="100" value="50">
-        <button type="button" id="gen-run">Generate (replaces the table)</button>
-        <p id="gen-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>CSV</legend>
-        <label for="csv-file">Import jobs.csv (up to 1 MB, 5000 jobs)</label>
-        <input id="csv-file" type="file" accept=".csv,text/csv">
-        <button type="button" id="csv-export">Export jobs.csv</button>
-        <p id="csv-status" role="status" hidden></p>
-        <ul id="csv-errors" class="error-list" hidden></ul>
-      </fieldset>
+    <h3 data-copy="build.jobs">Your jobs</h3>
+    <div class="jobs-meta">
+      <p id="table-summary"></p>
+      <p id="machine-summary"></p>
     </div>
-
-    <h3>Job table</h3>
-    <p id="table-summary" class="empty"></p>
-    <p id="table-empty" class="empty">The table is empty. Add a job below, load a preset, generate a set or import a CSV.</p>
+    <p id="table-empty" class="empty" data-copy="build.empty">No jobs yet. Add one, or start with an example.</p>
     <div class="table-wrap">
       <table class="job-table">
         <thead>
-          <tr><th>id</th><th>arrival</th><th>duration</th><th>cpu</th><th>mem (MB)</th><th>priority</th><th>problem</th><th></th></tr>
+          <tr>
+            <th data-copy="col.id"></th><th data-copy="col.arrival"></th><th data-copy="col.duration"></th>
+            <th data-copy="col.cpu"></th><th data-copy="col.mem"></th><th data-copy="col.priority"></th>
+            <th><span class="visually-hidden" data-copy="col.problem"></span></th><th></th>
+          </tr>
         </thead>
         <tbody id="job-body"></tbody>
         <tfoot>
-          <tr>
-            <td><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
-            <td><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
-            <td><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
-            <td><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
-            <td><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
-            <td><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
-            <td colspan="2"><button type="button" id="add-submit">Add job</button></td>
+          <tr class="new-head"><td colspan="8" data-copy="job.new">New job</td></tr>
+          <tr class="new-row">
+            <td data-copy-attr="short.col.id"><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
+            <td data-copy-attr="short.col.arrival"><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
+            <td data-copy-attr="short.col.duration"><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
+            <td data-copy-attr="short.col.cpu"><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
+            <td data-copy-attr="short.col.mem"><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
+            <td data-copy-attr="short.col.priority"><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
+            <td colspan="2" class="row-actions"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
           </tr>
         </tfoot>
       </table>
     </div>
+    <p id="add-error-lead" class="field-error lead" hidden data-copy="job.add.lead">Can&rsquo;t add this job.</p>
     <p id="add-error" class="field-error" role="alert" hidden></p>
+
+    <details class="disclosure" id="more-ways">
+      <summary data-copy="build.more">More ways to add jobs</summary>
+      <div class="build-grid">
+        <fieldset class="build-box">
+          <legend data-copy="machine.title">Your machine</legend>
+          <label for="cpu-input" data-copy="machine.cpu">Processor cores (CPU)</label>
+          <input id="cpu-input" type="text" inputmode="numeric" value="16">
+          <p id="cpu-error" class="field-error" role="alert" hidden></p>
+          <label for="mem-input" data-copy="machine.mem">Memory (MB)</label>
+          <input id="mem-input" type="text" inputmode="numeric" value="32768">
+          <p class="hint" data-copy="machine.mem.hint"></p>
+          <p id="mem-error" class="field-error" role="alert" hidden></p>
+        </fieldset>
+
+        <fieldset class="build-box">
+          <legend data-copy="random.title">Make random jobs</legend>
+          <label for="gen-seed" data-copy="random.seed"></label>
+          <input id="gen-seed" type="text" inputmode="numeric" value="42">
+          <button type="button" class="btn" id="gen-newseed" data-copy="random.newseed">New seed</button>
+          <label for="gen-count"><span data-copy="random.count"></span>: <output id="gen-count-out">12</output></label>
+          <input id="gen-count" type="range" min="1" max="200" value="12">
+          <label for="gen-arrival"><span data-copy="random.arrival"></span>: <output id="gen-arrival-out">30</output></label>
+          <input id="gen-arrival" type="range" min="0" max="200" value="30">
+          <p class="hint" data-copy="random.tick.hint"></p>
+          <label for="gen-duration"><span data-copy="random.duration"></span>: <output id="gen-duration-out">10</output></label>
+          <input id="gen-duration" type="range" min="1" max="100" value="10">
+          <label for="gen-cpu"><span data-copy="random.cpu"></span>: <output id="gen-cpu-out">50</output></label>
+          <input id="gen-cpu" type="range" min="1" max="100" value="50">
+          <label for="gen-mem"><span data-copy="random.mem"></span>: <output id="gen-mem-out">50</output></label>
+          <input id="gen-mem" type="range" min="1" max="100" value="50">
+          <button type="button" class="btn" id="gen-run" data-copy="random.make">Make jobs (replaces your list)</button>
+          <p id="gen-error" class="field-error" role="alert" hidden></p>
+        </fieldset>
+
+        <fieldset class="build-box">
+          <legend data-copy="csv.title">Import or export jobs</legend>
+          <label for="csv-file" data-copy="csv.import"></label>
+          <input id="csv-file" type="file" accept=".csv,text/csv">
+          <button type="button" class="btn" id="csv-export" data-copy="csv.export">Export jobs.csv</button>
+          <p id="csv-status" role="status" hidden></p>
+          <ul id="csv-errors" class="error-list" hidden></ul>
+        </fieldset>
+
+        <fieldset class="build-box">
+          <legend data-copy="share.title">Share this case</legend>
+          <p class="hint" data-copy="share.hint"></p>
+          <button type="button" class="btn" id="share-copy" data-copy="share.copy">Copy link to this case</button>
+          <label for="share-link" data-copy="share.link">Link</label>
+          <input id="share-link" type="text" readonly value="">
+          <p id="share-status" role="status" hidden></p>
+          <p id="share-error" class="field-error" role="alert" hidden></p>
+        </fieldset>
+      </div>
+    </details>
+    <p class="next-row"><button type="button" class="btn btn-primary" data-next="run" data-copy="next.build">Next: run your jobs</button></p>
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
-    <h2>Run</h2>
-    <div class="run-grid">
-      <fieldset class="build-box">
-        <legend>Scheduler</legend>
-        <label for="run-policy">Policy</label>
+    <h2 data-copy="run.heading">Run your jobs</h2>
+
+    <div class="run-setup">
+      <div class="run-choice">
+        <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
         <select id="run-policy"></select>
-        <label for="run-alpha">Aging rate alpha_milli (0 to 10000)</label>
-        <input id="run-alpha" type="text" inputmode="numeric" value="100">
-        <label for="run-threshold">Reservation threshold T (ticks)</label>
-        <input id="run-threshold" type="text" inputmode="numeric" value="50">
-        <label for="run-eps">Knapsack epsilon</label>
-        <input id="run-eps" type="text" inputmode="decimal" value="0.1">
-        <button type="button" id="run-start">Run (start over)</button>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>Player</legend>
-        <div class="player-buttons">
-          <button type="button" id="run-play" disabled>Play</button>
-          <button type="button" id="run-step" disabled>Step</button>
-          <button type="button" id="run-jump" disabled>Jump to end</button>
-          <button type="button" id="run-reset" disabled>Reset</button>
+      </div>
+      <button type="button" class="btn" id="run-start" data-copy="run.start">Run</button>
+      <p id="run-settings-summary" class="hint"></p>
+      <details class="disclosure" id="run-more">
+        <summary data-copy="run.more">More settings</summary>
+        <div class="settings-grid">
+          <div>
+            <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
+            <input id="run-alpha" type="text" inputmode="numeric" value="100">
+            <p class="hint" data-copy="run.alpha.hint"></p>
+          </div>
+          <div>
+            <label for="run-threshold" class="label" data-copy="run.threshold">Reservation threshold T (ticks)</label>
+            <input id="run-threshold" type="text" inputmode="numeric" value="50">
+            <p class="hint" data-copy="run.threshold.hint"></p>
+          </div>
+          <div>
+            <label for="run-eps" class="label" data-copy="run.eps">Knapsack &epsilon; (epsilon)</label>
+            <input id="run-eps" type="text" inputmode="decimal" value="0.1">
+            <p class="hint" data-copy="run.eps.hint"></p>
+          </div>
         </div>
-        <label for="run-speed">Events per frame: <output id="run-speed-out">1</output></label>
-        <input id="run-speed" type="range" min="1" max="200" value="1">
-        <p id="run-status" class="status" role="status">idle</p>
-        <p id="run-clock" class="empty" role="status">No run yet. Press Run.</p>
-        <p id="run-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>Add a job at the current time</legend>
-        <div class="add-grid">
-          <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
-          <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
-          <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
-          <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
-          <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
-          <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
-        </div>
-        <button type="button" id="ra-submit" disabled>Add job (pauses first)</button>
-        <p id="ra-note" class="empty">Arrival defaults to the next tick. An arrival equal to the current time is allowed, but the job is then considered after jobs that already started at this time.</p>
-        <p id="ra-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
+      </details>
     </div>
+    <p id="run-error" class="field-error" role="alert" hidden></p>
+
+    <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
+      <section class="module tray" aria-labelledby="tray-title">
+        <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
+        <p id="tray-empty" class="empty" data-copy="run.tray.empty">Nobody is waiting.</p>
+        <ol id="tray-list" class="tray-list"></ol>
+        <p id="tray-more" class="hint" hidden></p>
+        <details class="disclosure">
+          <summary data-copy="run.alljobs">All jobs</summary>
+          <p id="machine-text" class="hint">CPU 16 cores, memory 32768 MB</p>
+          <p id="jobs-empty" class="empty">No jobs yet. Add one, or start with an example.</p>
+          <ul id="job-list" class="job-list"></ul>
+        </details>
+      </section>
+
+      <section class="module board" aria-labelledby="board-title">
+        <h3 id="board-title" class="tab" data-copy="run.timeline">The board</h3>
+        <div class="board-lines" role="group" aria-label="Machine resources">
+          <p><span class="res-name" data-copy="run.res.cpu">CPU</span> <span id="res-cpu-text" class="num"></span></p>
+          <p><span class="res-name" data-copy="run.res.mem">Memory</span> <span id="res-mem-text" class="num"></span></p>
+          <p id="reserve-card" class="reserve-line" role="status" hidden></p>
+        </div>
+        <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
+        <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
+        <div class="control-rail" role="group" aria-label="Run controls">
+          <button type="button" class="btn btn-primary" id="run-play" disabled>Play</button>
+          <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
+          <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
+          <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
+          <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span> <output id="run-speed-out">1</output></label>
+          <input id="run-speed" type="range" min="1" max="200" value="1">
+          <p id="run-status" class="status" role="status">idle</p>
+        </div>
+        <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
+        <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
+      </section>
+
+      <section class="module log" aria-labelledby="log-title">
+        <h3 id="log-title" class="tab" data-copy="run.why">Why</h3>
+        <p id="whylog-empty" class="empty">Each decision is explained here once the run starts.</p>
+        <p id="whylog-filter" class="empty" hidden></p>
+        <button type="button" class="btn btn-small" id="whylog-clear" hidden data-copy="run.why.all">Show all jobs</button>
+        <ol id="whylog-list" class="why-list"></ol>
+      </section>
+    </main>
+
+    <footer id="app-footer" class="module" aria-labelledby="metrics-title" hidden>
+      <h3 id="metrics-title" class="tab" data-copy="run.metrics">How it went</h3>
+      <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
+      <ul id="metrics-list" class="metrics-list"></ul>
+    </footer>
+
+    <details class="disclosure" id="run-add">
+      <summary data-copy="run.add">Add a job right now</summary>
+      <div class="add-grid">
+        <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
+        <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
+        <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
+        <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
+        <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
+        <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
+      </div>
+      <button type="button" class="btn" id="ra-submit" disabled data-copy="run.add.submit">Add job (pauses first)</button>
+      <p id="ra-note" class="hint" data-copy="run.add.note"></p>
+      <p id="ra-error" class="field-error" role="alert" hidden></p>
+    </details>
+
+    <p class="next-row"><button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
   </section>
 
   <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
-    <h2>Compare</h2>
-    <fieldset class="build-box">
-      <legend>Schedulers (tick two or more)</legend>
+    <h2 data-copy="compare.heading">Compare schedulers</h2>
+    <div class="compare-setup">
+      <p data-copy="compare.pick">Pick two or more. They all run on the same jobs and machine.</p>
       <div id="compare-policies" class="compare-policies"></div>
-      <p class="empty">All ticked schedulers run on the same jobs and machine. The aging rate and reservation threshold come from the Run panel settings.</p>
-      <button type="button" id="compare-start">Compare</button>
-      <p id="compare-status" class="status" role="status" aria-live="polite">Idle. Tick two or more schedulers and press Compare.</p>
+      <div class="compare-go">
+        <button type="button" class="btn btn-primary" id="compare-start" data-copy="compare.start">Compare</button>
+        <p id="compare-status" class="status" role="status" aria-live="polite">Ready. Pick two or more.</p>
+      </div>
+      <p class="hint" data-copy="compare.settings.note"></p>
       <p id="compare-error" class="field-error" role="alert" hidden></p>
-    </fieldset>
-    <p id="compare-empty" class="empty">No comparison yet. Load jobs in Build mode, tick two or more schedulers and press Compare.</p>
-    <div id="compare-table-wrap" class="table-wrap" hidden>
-      <table class="job-table compare-table" aria-label="Metrics per scheduler">
-        <thead id="compare-head"></thead>
-        <tbody id="compare-body"></tbody>
-      </table>
-      <p class="empty">A dash means the value does not exist for that run (for example, no finished job).</p>
     </div>
-    <p id="compare-exact" class="empty" hidden></p>
-    <h3>Timelines</h3>
+    <p id="compare-empty" class="empty" data-copy="compare.empty">Nothing to compare yet.</p>
+    <p id="compare-verdict" class="verdict" role="status" hidden></p>
+    <section id="compare-table-wrap" class="module compare-results" aria-labelledby="compare-table-title" hidden>
+      <h3 id="compare-table-title" class="tab" data-copy="compare.table">Same jobs, different schedulers</h3>
+      <div class="scroll-x">
+        <table class="job-table compare-table">
+          <thead id="compare-head"></thead>
+          <tbody id="compare-body"></tbody>
+        </table>
+      </div>
+      <p class="hint" data-copy="compare.dash"></p>
+      <p id="compare-exact" class="exact-line" hidden></p>
+    </section>
+    <h3 data-copy="compare.timelines">Who ran when</h3>
+    <p class="hint" data-copy="compare.key"></p>
     <div id="compare-timelines" class="compare-timelines"></div>
-    <h3>Charts</h3>
-    <p id="compare-chart-note" class="empty" role="status" hidden></p>
-    <div id="compare-charts" class="compare-charts"></div>
+    <details class="disclosure compare-more">
+      <summary data-copy="compare.charts">Charts of the same numbers</summary>
+      <p id="compare-chart-note" class="empty" role="status" hidden></p>
+      <div id="compare-charts" class="compare-charts"></div>
+    </details>
+    <p class="next-row"><button type="button" class="btn" data-next="build" data-copy="next.compare">Back to your jobs</button></p>
   </section>
 
-  <main id="app-main" data-engine="loading" data-mode="build">
-    <aside class="panel panel-left" aria-label="Machine and jobs">
-      <h2>Machine</h2>
-      <p id="machine-text">CPU 16 cores, memory 32768 MB</p>
-      <h2>Jobs</h2>
-      <p id="jobs-empty" class="empty">No jobs yet. Add one, load a preset, or generate a random set.</p>
-      <ul id="job-list" class="job-list"></ul>
-    </aside>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <section class="panel panel-centre" aria-label="Timeline">
-      <h2>Timeline</h2>
-      <p id="canvas-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
-      <canvas id="run-canvas" class="run-canvas" width="640" height="640" aria-label="Live picture of the run: resource bars, waiting line, running jobs and timeline" hidden></canvas>
-    </section>
-
-    <aside class="panel panel-right" aria-label="Why log">
-      <h2>Why</h2>
-      <p id="whylog-empty" class="empty">The reasons for each decision appear here once a run starts.</p>
-      <p id="whylog-filter" class="empty" hidden></p>
-      <button type="button" id="whylog-clear" hidden>Show all jobs</button>
-      <ol id="whylog-list" class="why-list"></ol>
-    </aside>
-  </main>
-
-  <footer class="panel panel-bottom" aria-label="Metrics">
-    <h2>Metrics</h2>
-    <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
-    <ul id="metrics-list" class="metrics-list"></ul>
-  </footer>
-
-  <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
-       No external script here: compare.js injects the pinned, integrity-checked Chart.js the first
-       time Compare mode opens (D33), so Build and Run mode make no network request.
-       Still to be added by a later issue, before app.js: share.js -->
+  <!-- Scripts in a fixed order (PRD section 7). `make web` copies them inline into web/dist/index.html
+       with the chart library, so the built page needs no network (D77, D78). This source page finds no
+       chart library, so compare.js loads the pinned, integrity-checked one the first time Compare opens.
+       -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
+  <script src="js/copy.js"></script>
   <script src="js/store.js"></script>
   <script src="js/presets_data.js"></script>
   <script src="js/presets.js"></script>
@@ -216,6 +288,9 @@
   <script src="js/whylog.js"></script>
   <script src="js/player.js"></script>
   <script src="js/compare.js"></script>
+  <script src="js/motion.js"></script>
+  <script src="js/keys.js"></script>
+  <script src="js/share.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

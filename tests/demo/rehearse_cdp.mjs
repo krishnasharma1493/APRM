@@ -30,6 +30,7 @@ const port = 9300 + Math.floor(Math.random() * 500);
 const args = ['--headless=new', '--no-first-run', '--no-default-browser-check',
   '--remote-debugging-port=' + port, '--user-data-dir=' + profile, '--window-size=1400,1000'];
 if (offline) { args.push('--host-resolver-rules=MAP * ~NOTFOUND'); }
+if (process.env.CHROME_EXTRA_ARGS) { args.push(...process.env.CHROME_EXTRA_ARGS.split(' ').filter(Boolean)); }  // e.g. --no-sandbox on CI
 const chrome = spawn(CHROME, args, { stdio: 'ignore' });
 
 async function connect() {
@@ -69,7 +70,7 @@ window.__h = {
   click(id) { document.getElementById(id).click(); },
   mode(m) { document.querySelector('[data-mode-button="' + m + '"]').click(); },
   text(id) { const e = document.getElementById(id); return e ? e.textContent : null; },
-  loadPreset(name) { this.mode('build'); this.set('preset-select', name); this.click('preset-load'); },
+  loadPreset(name) { this.mode('build'); document.querySelector('#preset-tiles [data-preset="' + name + '"]').click(); },
   tick(policy, on) { const c = document.querySelector('#compare-policies input[data-policy="' + policy + '"]'); c.checked = on; c.dispatchEvent(new Event('change', {bubbles:true})); },
   whyLines() { return Array.from(document.querySelectorAll('#whylog-list li')).map((l) => l.textContent); }
 };`;
@@ -98,7 +99,7 @@ try {
   await send('Page.navigate', { url: pathToFileURL(page).href });
 
   // --- Start-up
-  check('engine ready', await waitFor(`document.getElementById('engine-status').textContent === 'Engine ready'`),
+  check('engine ready', await waitFor(`(document.getElementById('engine-status') || {}).textContent === 'Engine ready'`),
     await ev(`document.getElementById('engine-status').textContent`));
   await ev(H + ' true');
   check('page is served from file://', (await ev('location.protocol')) === 'file:');
@@ -119,9 +120,15 @@ try {
   const note = (await ev(`document.getElementById('compare-chart-note').hidden`)) ? '(hidden)' : await ev(`__h.text('compare-chart-note')`);
   const chartState = await ev(`APRM.compare.chartState()`);
   console.log('     chart state: ' + chartState + '; note: ' + note);
-  check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not be loaded|unavailable/i.test(note || '')), chartState);
-  if (offline) { check('offline: Chart.js did not load, table fallback message shown', chartState === 'failed' && /Charts are unavailable/.test(note || '')); }
-  check('row 4: exact-optimum row says not available yet (K-33 not built)', /not available yet/.test(await ev(`__h.text('compare-exact')`)));
+  check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
+  // The built single file (make web) carries the chart library, so offline it still draws charts; the
+  // unbuilt web/index.html loads it from the CDN and offline falls back to the table with a message.
+  if (offline) {
+    const built = /[\\/]dist[\\/]index\.html$/.test(page);
+    if (built) { check('offline, built file: charts drawn from the bundled library', chartState === 'loaded', chartState); }
+    else { check('offline, source page: table fallback with a message', chartState === 'failed' && /could not load/.test(note || ''), chartState); }
+  }
+  check('row 4: exact-optimum row explains the 9-job limit (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('compare-exact')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log
   await ev(`__h.loadPreset('memory_hog'); true`);
@@ -169,6 +176,7 @@ try {
   console.log('     failed loads: ' + JSON.stringify(netFails));
   console.log('     uncaught exceptions: ' + JSON.stringify(consoleErrors));
   check('no uncaught page exceptions', consoleErrors.length === 0);
+  if (/[\\/]dist[\\/]index\.html$/.test(page)) { check('built single file: no network request at all', real.length === 0, JSON.stringify(real)); }
 } catch (e) {
   check('rehearsal script ran to the end', false, e.message);
 } finally {

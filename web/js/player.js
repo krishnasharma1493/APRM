@@ -62,6 +62,15 @@
   function byId(id) { return document.getElementById(id); }
   function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
+  /* Words from copy.js, with a plain fallback when copy.js is not loaded (tests of single scripts). */
+  function copyText(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
+  function detailsOn() { return !!(APRM.store && APRM.store.get().details); }
+
   function text(id, value) { var el = byId(id); if (el) { el.textContent = value; } }
 
   function showMessage(id, message) {
@@ -72,15 +81,27 @@
   }
 
   /* "field: message" the way the editor shows engine errors. */
+  var SETTING_FIELDS = ['alpha_milli', 'reserve_threshold', 'knapsack_eps'];
+
+  /* A setting is wrong: open More settings, where it can be fixed, and say so before the engine's sentence. */
+  function settingsWords(sentence) {
+    var more = byId('run-more');
+    if (more) { more.open = true; }
+    return copyText('run.error.settings', '', { why: sentence }) || sentence;
+  }
+
   function errorMessage(err) {
     var m = err && err.message ? err.message : String(err);
-    return err && err.field ? err.field + ': ' + m : m;
+    if (err && SETTING_FIELDS.indexOf(err.field) >= 0) { return settingsWords(m); }
+    /* The engine's sentence usually starts with the field already: do not say it twice. */
+    return err && err.field && m.indexOf(err.field) !== 0 ? err.field + ': ' + m : m;
   }
 
   /* ---------- handle management ---------- */
 
   /* Destroy the live simulation if there is one. Never throws. O(1). */
   function destroyRun() {
+    stopFlights();
     if (run !== null) {
       var h = run.handle;
       run = null;
@@ -103,7 +124,7 @@
       var e = fresh[i];
       run.entries.push(e);
       if (e.seq > run.lastSeq) { run.lastSeq = e.seq; }
-      if (e.kind === 'START') { barOf(e.job).start = e.t; }
+      if (e.kind === 'START') { barOf(e.job).start = e.t; run.justStarted.push(e.job); }
       if (e.kind === 'FINISH') { barOf(e.job).finish = e.t; }
     }
     return fresh.length;
@@ -131,15 +152,17 @@
 
   function view() {
     return { state: run ? run.state : null, jobs: run ? run.jobs : [], bars: run ? run.bars : {},
-      selected: selected, events: run ? run.events : 0 };
+      selected: selected, events: run ? run.events : 0, hold: held };
   }
 
-  var METRIC_ROWS = [['avg_wait', 'Average wait'], ['max_wait', 'Longest wait'], ['avg_turnaround', 'Average turnaround'],
-    ['weighted_completion', 'Weighted completion'], ['makespan', 'Makespan'], ['util_cpu', 'CPU utilisation'], ['util_mem', 'Memory utilisation']];
+  var METRIC_KEYS = ['avg_wait', 'max_wait', 'avg_turnaround', 'weighted_completion', 'makespan', 'util_cpu', 'util_mem'];
 
+  /* A metric value as text. The clean view rounds to three decimals; Show details prints the
+   * engine's number unchanged. null means the engine has no value yet. */
   function metricText(v) {
-    if (v === null || v === undefined) { return 'n/a (no finished job yet)'; }
-    return (typeof v === 'number' && Math.floor(v) !== v) ? v.toFixed(3) : String(v);
+    if (v === null || v === undefined) { return copyText('metric.none', 'n/a (no finished job yet)'); }
+    if (typeof v === 'number' && Math.floor(v) !== v && !detailsOn()) { return v.toFixed(3); }
+    return String(v);
   }
 
   function drawMetrics() {
@@ -152,17 +175,197 @@
       return;
     }
     if (empty) { empty.hidden = true; }
-    for (var i = 0; i < METRIC_ROWS.length; i++) {
+    for (var i = 0; i < METRIC_KEYS.length; i++) {
       var li = document.createElement('li');
-      li.textContent = METRIC_ROWS[i][1] + ': ' + metricText(run.metrics[METRIC_ROWS[i][0]]);
+      li.textContent = copyText('metric.' + METRIC_KEYS[i], METRIC_KEYS[i]) + ': ' + metricText(run.metrics[METRIC_KEYS[i]]);
       list.appendChild(li);
+    }
+    var byPri = run.metrics.avg_wait_by_priority;
+    if (Array.isArray(byPri)) {
+      var row = document.createElement('li');
+      var parts = [];
+      for (var q = 0; q < byPri.length; q++) { if (byPri[q] !== null && byPri[q] !== undefined) { parts.push(q + ': ' + metricText(byPri[q])); } }
+      row.textContent = copyText('metric.by_priority', 'Average wait by priority') + ' (' + parts.join(', ') + ')';
+      if (parts.length > 0) { list.appendChild(row); }
     }
   }
 
+  /* The machine in numbers, straight from the state JSON: used = capacity minus free. */
+  function drawResources() {
+    var st = run ? run.state : null;
+    var line = function (textId, key, unitKey) {
+      var label = byId(textId);
+      if (!label) { return; }
+      if (!st) { label.textContent = copyText('run.res.none', ''); return; }
+      var cap = st.cap[key], free = st.free[key], used = cap - free;
+      label.textContent = copyText(unitKey, used + ' of ' + cap + ', ' + free + ' free', { used: used, cap: cap, free: free });
+    };
+    line('res-cpu-text', 'cpu', 'run.res.cpu.text');
+    line('res-mem-text', 'mem', 'run.res.mem.text');
+  }
+
+  /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
+  function policyAvailable(name) {
+    var list = APRM.compare && APRM.compare.POLICIES ? APRM.compare.POLICIES : [];
+    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i].available; } }
+    return true;
+  }
+
+  var ownChange = false;
+  var lastTraySig = '';
+  var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
+
+  /* A job's magnet: colour, hatch and stamped number. Bigger for a higher priority (a fixed ramp). */
+  function magnet(id, priority) {
+    var pal = APRM.canvas.paletteIndex(id);
+    var hatch = ((id % 3) + 3) % 3;
+    var size = priority >= 7 ? 'l' : priority >= 4 ? 'm' : 's';
+    var m = document.createElement('span');
+    m.setAttribute('class', 'magnet magnet-' + pal + ' hatch-' + hatch + ' magnet-size-' + size);
+    m.setAttribute('aria-hidden', 'true');
+    var b = document.createElement('b');
+    b.textContent = String(id);
+    m.appendChild(b);
+    return m;
+  }
+
+  /* The tray: waiting jobs in the order the engine reports, with its score when it gives one. */
+  function drawTray() {
+    var list = byId('tray-list');
+    if (!list) { return; }
+    var w = run && run.state ? run.state.waiting : [];
+    var saved = run && run.state && run.state.reservation ? run.state.reservation.id : null;
+    /* Rebuild only when something shown changed, so a click or keyboard focus survives a playing run. */
+    var sig = selected + '|' + saved + '|' + w.length;
+    for (var s = 0; s < w.length && s < TRAY_ROWS; s++) { sig += ',' + w[s].id + ':' + w[s].score; }
+    if (sig === lastTraySig) { return; }
+    lastTraySig = sig;
+    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
+    clear(list);
+    text('tray-count', '(' + w.length + ')');
+    var empty = byId('tray-empty');
+    if (empty) { empty.hidden = w.length > 0; }
+    var shown = Math.min(w.length, TRAY_ROWS);
+    for (var i = 0; i < shown; i++) {
+      var j = w[i];
+      var li = document.createElement('li');
+      li.setAttribute('data-job', String(j.id));
+      li.setAttribute('class', 'tray-card' + (selected === j.id ? ' selected' : ''));
+      li.setAttribute('tabindex', i === 0 ? '0' : '-1');
+      li.setAttribute('role', 'button');
+      li.setAttribute('aria-pressed', selected === j.id ? 'true' : 'false');
+      li.appendChild(magnet(j.id, j.priority));
+      var body = document.createElement('span');
+      body.setAttribute('class', 'tray-body');
+      var head = document.createElement('span');
+      head.setAttribute('class', 'tray-head');
+      head.textContent = 'Job ' + j.id;
+      body.appendChild(head);
+      if (saved === j.id || i === 0) {
+        var stamp = document.createElement('span');
+        stamp.setAttribute('class', 'stamp' + (saved === j.id ? ' stamp-saved' : ''));
+        stamp.textContent = saved === j.id ? copyText('run.tray.saved', 'Spot saved') : copyText('run.tray.next', 'Next');
+        body.appendChild(stamp);
+      }
+      var meta = document.createElement('span');
+      meta.setAttribute('class', 'tray-meta');
+      var words = copyText('run.tray.needs', 'priority ' + j.priority, { p: j.priority, c: j.cpu, cores: j.cpu === 1 ? 'core' : 'cores', m: j.mem });
+      if (typeof j.score === 'number') { words += ', ' + copyText('run.tray.score', 'score ' + j.score.toFixed(3), { s: j.score.toFixed(3) }); }
+      meta.textContent = words;
+      body.appendChild(meta);
+      li.appendChild(body);
+      list.appendChild(li);
+    }
+    if (APRM.keys) { APRM.keys.refocus(list, keep); }
+    var more = byId('tray-more');
+    if (more) {
+      more.hidden = w.length <= shown;
+      more.textContent = copyText('run.tray.more', 'and ' + (w.length - shown) + ' more', { n: w.length - shown });
+    }
+  }
+
+  var flights = 0;
+  var flightStops = [];
+  var held = {};           /* job id -> true while its magnet is in the air; the board leaves its card out */
+
+  /* True when a started card may travel: motion allowed, speed low, room for another flight. */
+  function canFly() {
+    return !!(APRM.motion && !APRM.motion.reduced() && speed <= 3 && status !== 'jumping' && flights < 3);
+  }
+
+  /* The signature moment: when the engine starts a job, its card is held off the board while its
+   * magnet travels from the tray to the memory lane, then the card lands. Purely visual. */
+  function flyCard(id, from) {
+    var canvasEl = byId('run-canvas');
+    var regs = canvasEl && canvasEl.__regions ? canvasEl.__regions : [];
+    var reg = null;
+    for (var i = 0; i < regs.length; i++) { if (regs[i].id === id && (regs[i].lane === 'mem' || !reg)) { reg = regs[i]; } }
+    var land = function () { delete held[id]; if (run) { APRM.canvas.draw(canvasEl, view()); } };
+    if (!reg || typeof canvasEl.getBoundingClientRect !== 'function' || !document.body) { land(); return; }
+    var box = canvasEl.getBoundingClientRect();
+    var job = null;
+    for (var k = 0; k < run.jobs.length; k++) { if (run.jobs[k].id === id) { job = run.jobs[k]; } }
+    var el = magnet(id, job ? job.priority : 0);
+    el.setAttribute('class', el.getAttribute('class') + ' flying');
+    el.style.left = from.left + 'px';
+    el.style.top = from.top + 'px';
+    document.body.appendChild(el);
+    flights++;
+    var dx = box.left + reg.x + reg.w / 2 - from.left - from.width / 2;
+    var dy = box.top + reg.y + reg.h / 2 - from.top - from.height / 2;
+    var finish = function () {
+      flights--;
+      if (el.parentNode) { el.parentNode.removeChild(el); }
+      var at = flightStops.indexOf(stop);
+      if (at >= 0) { flightStops.splice(at, 1); }
+      land();
+    };
+    var cancel = APRM.motion.animateValue(0, 1, { response: 0.28 }, function (t) {
+      el.style.transform = 'translate(' + (dx * t) + 'px,' + (dy * t) + 'px)';
+    }, finish);
+    function stop() { cancel(); finish(); }
+    flightStops.push(stop);
+  }
+
+  /* Remove any magnet still in the air (a reset or a new run mid-flight). */
+  function stopFlights() {
+    var all = flightStops.slice();
+    flightStops.length = 0;
+    for (var i = 0; i < all.length; i++) { all[i](); }
+  }
+
+  /* Tray positions before a redraw, so a started card can fly from where it was. O(cards shown). */
+  function trayRects() {
+    var out = {};
+    var list = byId('tray-list');
+    var kids = list && list.children ? list.children : [];
+    for (var i = 0; i < kids.length; i++) {
+      var m = kids[i].firstChild;
+      if (m && typeof m.getBoundingClientRect === 'function') { out[kids[i].getAttribute('data-job')] = m.getBoundingClientRect(); }
+    }
+    return out;
+  }
+
+  /* The saved spot for the long-waiting job, as the engine reports it (id and shadow time). */
+  function drawReservation() {
+    var card = byId('reserve-card');
+    if (!card) { return; }
+    var r = run && run.state ? run.state.reservation : null;
+    if (!r) { card.textContent = ''; card.hidden = true; return; }
+    card.textContent = copyText('run.reserve', 'Job ' + r.id + ' is reserved.', { id: r.id, t: r.shadow_time });
+    card.hidden = false;
+  }
+
+  /* One line with the exact settings, always visible even when "More settings" is closed. */
+  function drawSettingsLine() {
+    var s = APRM.store.get().settings;
+    text('run-settings-summary', copyText('run.settings', 'Settings: alpha = ' + s.alphaMilli, { alpha: s.alphaMilli, t: s.threshold, eps: s.eps }));
+  }
+
   function clockText() {
-    if (!run) { return 'No run yet. Press Run.'; }
-    return 'Time ' + run.state.now + ', event ' + run.events + ', ' + run.state.done + ' of ' + run.state.total +
-      ' jobs done. ' + status.charAt(0).toUpperCase() + status.slice(1) + '.';
+    if (!run) { return copyText('run.clock.none', 'No run yet. Press Run.'); }
+    var vars = { now: run.state.now, events: run.events, done: run.state.done, total: run.state.total };
+    return copyText(detailsOn() ? 'run.clock.details' : 'run.clock', 'Time: tick ' + vars.now, vars);
   }
 
   function highlightJobList() {
@@ -177,8 +380,17 @@
 
   /* Redraw every view from the remembered engine answers. O(shown rows + jobs). */
   function render() {
+    var from = run && run.justStarted.length > 0 && canFly() ? trayRects() : null;
+    var flying = [];
+    if (from) {
+      for (var g = 0; g < run.justStarted.length; g++) {
+        var startedId = run.justStarted[g];
+        if (from[startedId] && flying.length + flights < 3) { held[startedId] = true; flying.push(startedId); }
+      }
+    }
+    drawTray();
     text('run-clock', clockText());
-    text('run-status', status);
+    text('run-status', copyText('status.' + status, status));
     var canvasEl = byId('run-canvas');
     var empty = byId('canvas-empty');
     if (canvasEl) {
@@ -186,24 +398,32 @@
       canvasEl.hidden = !painted;
       if (empty) {
         empty.hidden = run !== null && painted;
-        empty.textContent = run !== null && !painted ? clockText() : 'Nothing to show yet. Add jobs, then press Run.';
+        empty.textContent = run !== null && !painted ? clockText() : copyText('run.canvas.empty', 'Nothing to show yet. Add jobs, then press Run.');
       }
     }
     APRM.whylog.render(run ? run.entries : [], selected);
     drawMetrics();
+    drawResources();
+    drawReservation();
+    drawSettingsLine();
     highlightJobList();
+    if (run) { run.justStarted = []; }
+    for (var f = 0; f < flying.length; f++) { flyCard(flying[f], from[flying[f]]); }
     updateButtons();
     if (status !== 'playing') { refreshAddForm(); }
   }
 
   function updateButtons() {
     var play = byId('run-play');
-    if (play) { play.textContent = status === 'playing' ? 'Pause' : 'Play'; }
+    if (play) { play.textContent = status === 'playing' ? copyText('run.pause', 'Pause') : copyText('run.play', 'Play'); }
     var live = run !== null;
+    var hasJobs = APRM.store.get().jobs.length > 0;      /* Play, Step and Jump start the run themselves */
+    var startBtn = byId('run-start');
+    if (startBtn) { startBtn.textContent = live ? copyText('run.restart', 'Start over') : copyText('run.start', 'Run'); }
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
-    set('run-play', !live || status === 'jumping');
-    set('run-step', !live || status === 'playing' || status === 'jumping');
-    set('run-jump', !live || status === 'jumping' || status === 'finished');
+    set('run-play', (!live && !hasJobs) || status === 'jumping');
+    set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping');
+    set('run-jump', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-reset', !live);
     set('ra-submit', !live);
   }
@@ -241,7 +461,7 @@
     var h = null;
     try {
       h = APRM.wasm.create(st.machine.cpu, st.machine.mem, policy, st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
-      run = { handle: h, jobs: st.jobs.map(copyJob), entries: [], lastSeq: 0, bars: {}, events: 0, state: null, metrics: null, policy: policy };
+      run = { handle: h, jobs: st.jobs.map(copyJob), justStarted: [], entries: [], lastSeq: 0, bars: {}, events: 0, state: null, metrics: null, policy: policy };
       for (var i = 0; i < st.jobs.length; i++) {
         var j = st.jobs[i];
         try {
@@ -418,7 +638,9 @@
       readEngine(false);
     } catch (err2) { fail(err2); return { ok: false, message: errorText, field: '' }; }
     render();
+    ownChange = true;           /* the run's own mid-run add, not a new case */
     APRM.store.setJobs(stored);
+    ownChange = false;
     if (wasPlaying) { play(); }
     return { ok: true };
   }
@@ -459,9 +681,15 @@
     return '';
   }
 
+  /* Make sure a run exists: from the first screen, Play, Step and Space simply begin. True when one does. */
+  function ensureRun() {
+    if (run === null) { onStart(); }
+    return run !== null;
+  }
+
   function onStart() {
     var bad = readSettings();
-    if (bad) { showMessage('run-error', bad); return; }
+    if (bad) { showMessage('run-error', settingsWords(bad)); return; }
     start();
   }
 
@@ -507,15 +735,21 @@
       for (var i = 0; i < POLICY_NAMES.length; i++) {
         var opt = document.createElement('option');
         opt.setAttribute('value', POLICY_NAMES[i]);
-        opt.textContent = POLICY_NAMES[i];
+        opt.textContent = copyText('policy.' + POLICY_NAMES[i], POLICY_NAMES[i]);
+        /* One list of what the engine can run: the same flag that greys a scheduler out in Compare. */
+        if (!policyAvailable(POLICY_NAMES[i])) {
+          opt.disabled = true;
+          opt.setAttribute('disabled', 'disabled');
+          opt.textContent = copyText('short.' + POLICY_NAMES[i], POLICY_NAMES[i]) + copyText('policy.knapsack.soon', '');
+        }
         sel.appendChild(opt);
       }
     }
     var on = function (id, fn) { var el = byId(id); if (el) { el.addEventListener('click', fn); } };
     on('run-start', onStart);
-    on('run-play', function () { if (status === 'playing') { pause(); } else { play(); } });
-    on('run-step', stepOnce);
-    on('run-jump', jumpToEnd);
+    on('run-play', function () { if (status === 'playing') { pause(); } else if (ensureRun()) { play(); } });
+    on('run-step', function () { if (ensureRun()) { stepOnce(); } });
+    on('run-jump', function () { if (ensureRun()) { jumpToEnd(); } });
     on('run-reset', reset);
     on('ra-submit', onAdd);
     var sp = byId('run-speed');
@@ -531,6 +765,16 @@
         select(id === selected ? null : id);
       });
     }
+    var tray = byId('tray-list');
+    if (tray) {
+      tray.addEventListener('click', function (ev) {
+        var t = ev.target;
+        while (t && t !== tray && !(t.getAttribute && t.getAttribute('data-job'))) { t = t.parentNode; }
+        var id = t && t !== tray && t.getAttribute ? t.getAttribute('data-job') : null;
+        if (id !== null && id !== undefined) { select(Number(id) === selected ? null : Number(id)); }
+      });
+      if (APRM.keys) { APRM.keys.rovingList(tray, function (id) { select(id === selected ? null : id); }); }
+    }
     var jl = byId('job-list');
     if (jl) {
       jl.addEventListener('click', function (ev) {
@@ -544,7 +788,10 @@
       if (panel) { panel.hidden = s.mode !== 'run'; }
       if (changed === 'mode' && s.mode !== 'run') { pause(); }
       if (changed === 'settings' || changed === 'policies' || changed === 'mode') { syncInputs(s); }
+      /* The run belongs to the jobs and machine it started with; a new case ends it. */
+      if ((changed === 'jobs' || changed === 'machine') && run !== null && !ownChange) { reset(); }
       if (changed === 'jobs' && run === null) { render(); }
+      if (changed === 'details' || changed === 'settings' || changed === 'theme') { render(); }
     });
     syncInputs(APRM.store.get());
     setSpeed(APRM.store.get().settings.speed || 1);
@@ -571,6 +818,7 @@
     start: start,
     reset: reset,
     play: play,
+    ensureRun: ensureRun,
     pause: pause,
     stepOnce: stepOnce,
     setSpeed: setSpeed,

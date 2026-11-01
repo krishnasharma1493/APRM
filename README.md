@@ -85,7 +85,7 @@ Run these in order, from the repository folder, with the virtual environment act
 | 2. C tests | `make test` | Ends with "passed" lines, exit code 0 |
 | 3. Python tests | `pytest tests/py -q` | `passed`, no failures (about a minute) |
 | 4. Engine for the website | `make wasm` | `built web/vendor/aprm.js (... bytes)` |
-| 5. Website | double-click `web/index.html` | The page says "Engine ready" |
+| 5. Website | `make web`, then double-click `web/dist/index.html` | `built web/dist/index.html`; the page opens with the six examples, and works with Wi-Fi off |
 | 6. Figures | `python tools/plot_figures.py` | Prints the paths of `.png` and `.pdf` files in `docs/report/figures/` |
 
 Run step 1 before step 3: some Python tests call `build/aprm`. Step 6 reads `data/sample_summaries/` until real summaries exist in `results/summaries/`. A timed record of this procedure on a fresh clone is in `docs/FRESH_CLONE_TEST.md`.
@@ -128,7 +128,16 @@ Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Input and o
 
 **Website**
 
-Run `make wasm`, then double-click `web/index.html` (or open it from your browser with File > Open). It works offline from the folder; no server is needed. The page shows "Engine ready" when the engine loaded.
+Run `make wasm && make web`, then double-click `web/dist/index.html` (or open it from your browser with File > Open). It is one file with everything inside, so it works offline and needs no server. The page shows "Engine ready" when the engine loaded.
+
+**Optional: GitHub Pages copy**
+
+The laptop is the primary demo. A bonus copy can be published from `main` by the `deploy` job in `.github/workflows/ci.yml`. It stays skipped until two human steps are done, in this order (step 1 before step 2):
+
+1. In the repository, Settings > Pages > Source: GitHub Actions.
+2. Set the repository variable: Settings > Secrets and variables > Actions > Variables > `PAGES_ENABLED` = `true`, or `gh variable set PAGES_ENABLED --body true`.
+
+The next push to `main` (after all five checks pass) publishes only `web/`, with the CI-built `web/vendor/aprm.js`. To stop publishing, delete the variable.
 
 **Python**
 

@@ -99,7 +99,7 @@ function page({ createAprm, wasm = false, Chart } = {}) {
 class EngineError extends Error {
   constructor(code, message, field) { super(message); this.name = 'EngineError'; this.code = code; this.field = field || ''; }
 }
-function fakeWasm({ totalSteps = 10, metrics, failStepFor, failCreateAt } = {}) {
+function fakeWasm({ totalSteps = 10, metrics, failStepFor, failCreateAt, metricsFor, exactTotal } = {}) {
   const f = { live: new Set(), next: 1, created: [], stepCalls: 0, sims: new Map(), destroyed: [] };
   f.create = (cpu, mem, policy, alpha, thr, eps) => {
     if (failCreateAt !== undefined && f.created.length === failCreateAt) throw new EngineError(-7, 'Out of memory.', '');
@@ -115,7 +115,8 @@ function fakeWasm({ totalSteps = 10, metrics, failStepFor, failCreateAt } = {}) 
     if (s.steps >= totalSteps) return 0;
     s.steps++; return 1;
   };
-  f.metrics = (h) => metrics || { avg_wait: 1.5, max_wait: 3, avg_turnaround: 4.25, weighted_completion: 10, makespan: 9, util_cpu: null, util_mem: 0.5 };
+  f.metrics = (h) => (metricsFor && metricsFor(f.sims.get(h).policy)) || metrics || { avg_wait: 1.5, max_wait: 3, avg_turnaround: 4.25, weighted_completion: 10, makespan: 9, util_cpu: null, util_mem: 0.5 };
+  f.exact = () => (exactTotal === undefined ? { total_wait: 3 } : exactTotal);
   f.results = (h) => f.sims.get(h).jobs.map((j, i) => ({ id: j[0], arrival: j[1], start: j[1] + i, finish: j[1] + i + j[2], wait: i, turnaround: i + j[2] }));
   f.destroy = (h) => { if (!f.live.has(h)) throw new EngineError(-1, 'Not a valid simulation handle.', 'handle'); f.live.delete(h); f.destroyed.push(h); return 0; };
   return f;
@@ -184,7 +185,7 @@ test('loader: onload draws the charts; onerror falls back to the table and never
   q.A.compare.setSelected(['fcfs', 'aging']); q.A.compare.start(); q.sched.drain();
   q.doc.head.children[0].onerror();
   assert.equal(q.A.compare.chartState(), 'failed');
-  assert.match(q.el('compare-chart-note').textContent, /could not be loaded/);
+  assert.match(q.el('compare-chart-note').textContent, /could not load/);
   assert.equal(q.el('compare-error').hidden, true);
   for (let i = 0; i < 5; i++) { q.A.store.setMode('build'); q.A.store.setMode('compare'); q.A.compare.start(); q.sched.drain(); }
   assert.equal(q.doc.head.children.length, 1, 'a failed load is not retried');
@@ -200,7 +201,7 @@ test('loader: a load that never finishes times out into the fallback', () => {
   assert.equal(timers.length, 1);
   timers[0]();
   assert.equal(p.A.compare.chartState(), 'failed');
-  assert.match(p.el('compare-chart-note').textContent, /could not be loaded/);
+  assert.match(p.el('compare-chart-note').textContent, /could not load/);
 });
 
 test('leaving Compare mode destroys the charts', () => {
@@ -347,10 +348,49 @@ test('metrics table: one row per policy, numbers as the engine gave them, nulls 
   assert.equal(head.length, 1 + p.A.compare.METRIC_COLUMNS.length);
   const rows = tableText(p);
   assert.equal(rows.length, 2);
-  assert.deepEqual(plain(rows[0]), ['fcfs', '1.500', '3', '4.250', '10', '9', '—', '0.500']);
-  assert.equal(rows[1][0], 'aging');
-  assert.match(p.el('compare-exact').textContent, /not available yet/i);
+  assert.deepEqual(plain(rows[0]), ['First come, first served (FCFS)', '1.500', '3', '4.250', '10', '9', '—', '0.500']);
+  assert.equal(rows[1][0], 'Aging');
+  assert.match(p.el('compare-exact').textContent, /^Exact best order \(up to 9 jobs\): total wait 3\./);
   assert.equal(p.el('compare-exact').hidden, false);
+});
+
+test('verdict, best marks and the exact line come from the engine numbers', () => {
+  const m = (makespan, avg, util) => ({ avg_wait: avg, max_wait: 3, avg_turnaround: 4, weighted_completion: 10, makespan, util_cpu: util, util_mem: 0.5 });
+  const p = ready({ metricsFor: (policy) => (policy === 'fcfs' ? m(20, 2.5, 0.4) : m(15, 1.5, 0.6)), exactTotal: { total_wait: 1 } });
+  p.A.compare.setSelected(['fcfs', 'aging']);
+  p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-verdict').hidden, false);
+  assert.equal(p.el('compare-verdict').textContent, 'Aging finished everything first, at tick 15. First come, first served (FCFS) took 5 ticks longer.');
+  const rows = p.el('compare-body').children;          // fcfs row, aging row
+  const col = (r, i) => rows[r].children[i];
+  assert.equal(col(1, 1).getAttribute('data-best'), 'Best');        // avg_wait: lower is better
+  assert.equal(col(0, 1).getAttribute('data-best'), null);
+  assert.equal(col(1, 6).getAttribute('data-best'), 'Best');        // cpu utilization: higher is better
+  assert.equal(col(1, 2).getAttribute('data-best'), null, 'equal values are not marked');
+  assert.equal(col(1, 1).textContent, '1.500', 'the cell text is still the engine number');
+  assert.match(p.el('compare-exact').textContent, /total wait 1\./);
+  assert.match(p.el('compare-exact').textContent, /Aging is 2 above it\./);
+});
+
+test('verdict: a tie is named, and more than nine jobs skips the exact solver', () => {
+  const p = ready();
+  p.A.compare.setSelected(['fcfs', 'aging']);
+  p.A.compare.start(); p.sched.drain();
+  assert.match(p.el('compare-verdict').textContent, /tied for first, finishing at tick 9\.$/);
+  const many = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, arrival: 0, duration: 1, cpu: 1, mem: 1, priority: 1 }));
+  p.A.store.setJobs(many);
+  p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-exact').textContent, 'The exact best order is only worked out for 9 jobs or fewer.');
+});
+
+test('verdict: no sentence when one column has no makespan; plural names; singular tick', () => {
+  const m = (makespan) => ({ avg_wait: 1, max_wait: 1, avg_turnaround: 1, weighted_completion: 1, makespan, util_cpu: 0.5, util_mem: 0.5 });
+  let p = ready({ metricsFor: (policy) => (policy === 'fcfs' ? m(null) : m(10)) });
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-verdict').hidden, true);
+  p = ready({ metricsFor: (policy) => (policy === 'aging' ? m(10) : m(11)) });
+  p.A.compare.setSelected(['fcfs', 'sjf', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-verdict').textContent, 'Aging finished everything first, at tick 10. First come, first served (FCFS) and Shortest job first (SJF) took 1 tick longer.');
 });
 
 test('timelines: one canvas per policy, drawn with the same time scale', () => {
@@ -361,6 +401,11 @@ test('timelines: one canvas per policy, drawn with the same time scale', () => {
   assert.equal(canvases.length, 3);
   for (const cv of canvases) assert.ok(cv.ctx.calls.filter((c) => c.op === 'fillRect').length >= 3, 'bars drawn');
   assert.equal(p.A.compare.snapshot().tmax, 9);
+  for (const cv of canvases) assert.equal(cv.__layout.tmax, 9, 'every board uses the shared time scale');
+  assert.ok(!canvases[0].ctx.calls.some((c) => c.op === 'fillText' && String(c.a[0]).startsWith('now ')), 'a finished board has no now rail');
+  assert.ok(canvases[0].ctx.calls.some((c) => c.op === 'fillText' && c.a[0] === 'finished 9'), 'it marks where it ended');
+  const cells = p.el('compare-body').children[0].children;
+  assert.equal(cells[1].getAttribute('data-label'), 'Average wait', 'every number keeps its name on a phone');
 });
 
 test('charts: with Chart.js present, one bar chart per key metric; old charts destroyed on re-run', () => {
@@ -390,7 +435,7 @@ test('Chart.js missing or blocked (offline, wrong integrity): table and timeline
   assert.equal(p.el('compare-table-wrap').hidden, false);
   assert.equal(tableText(p).length, 2);
   assert.equal(p.el('compare-chart-note').hidden, false);
-  assert.match(p.el('compare-chart-note').textContent, /Chart\.js could not be loaded/);
+  assert.match(p.el('compare-chart-note').textContent, /Charts could not load/);
   assert.equal(p.el('compare-charts').children.length, 0);
   assert.equal(p.el('compare-timelines').find('canvas').length, 2);
 });

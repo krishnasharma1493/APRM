@@ -30,6 +30,13 @@
   /* One line: "t=12: Job 7 skipped: needs 3 cores, only 1 core free." */
   function lineText(e) { return 't=' + e.t + ': ' + e.msg; }
 
+  /* Words from copy.js, with a fallback when copy.js is not loaded. */
+  function words(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
   function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
   /* Redraw the list. entries: engine log entries; selected: job id or null.
@@ -42,7 +49,7 @@
     var sig = entries.length + ':' + (selected === null || selected === undefined ? '-' : selected);
     var shown = visible(entries, selected);
     if (filter) {
-      filter.textContent = (selected === null || selected === undefined) ? '' : 'Showing only job ' + selected + '.';
+      filter.textContent = (selected === null || selected === undefined) ? '' : words('run.why.only', 'Showing only job ' + selected + '.', { id: selected });
       filter.hidden = (selected === null || selected === undefined);
     }
     var clearBtn = document.getElementById('whylog-clear');
@@ -50,19 +57,32 @@
     if (empty) {
       empty.hidden = shown.length > 0;
       empty.textContent = entries.length === 0
-        ? 'The reasons for each decision appear here once a run starts.'
-        : 'No log lines for job ' + selected + ' yet.';
+        ? words('run.why.empty', 'The reasons for each decision appear here once a run starts.')
+        : words('run.why.none', 'No log lines for job ' + selected + ' yet.', { id: selected });
     }
     if (!list || sig === lastSig) { return shown.length; }
     lastSig = sig;
+    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
     clear(list);
     for (var i = 0; i < shown.length; i++) {
       var li = document.createElement('li');
-      li.textContent = lineText(shown[i]);
+      var kind = document.createElement('span');
+      kind.setAttribute('class', 'why-kind kind-' + String(shown[i].kind).toLowerCase());
+      kind.textContent = words('kind.' + shown[i].kind, String(shown[i].kind));
+      li.appendChild(kind);
+      var raw = document.createElement('span');
+      raw.setAttribute('class', 'why-raw detail-only');
+      raw.textContent = String(shown[i].kind);
+      li.appendChild(raw);
+      li.appendChild(document.createTextNode(lineText(shown[i])));
       li.setAttribute('class', 'why-' + String(shown[i].kind).toLowerCase() + (shown[i].job === selected ? ' why-selected' : ''));
       li.setAttribute('data-job', String(shown[i].job));
+      li.setAttribute('role', 'button');
+      li.setAttribute('tabindex', i === shown.length - 1 ? '0' : '-1');
       list.appendChild(li);
     }
+    if (APRM.keys) { APRM.keys.refocus(list, keep); }
+    if (selected === null || selected === undefined) { list.scrollTop = list.scrollHeight || 0; }   /* newest line in view */
     return shown.length;
   }
 
@@ -79,10 +99,12 @@
     if (list) {
       list.addEventListener('click', function (ev) {
         var t = ev.target;
+        if (t && t.parentNode && typeof t.getAttribute === 'function' && t.getAttribute('data-job') === null) { t = t.parentNode; }
         var id = t && typeof t.getAttribute === 'function' ? t.getAttribute('data-job') : null;
         if (id !== null && id !== '' && APRM.player) { APRM.player.select(Number(id)); }
       });
     }
+    if (list && APRM.keys) { APRM.keys.rovingList(list, function (id) { if (APRM.player) { APRM.player.select(id); } }); }
     var btn = document.getElementById('whylog-clear');
     if (btn) { btn.addEventListener('click', function () { if (APRM.player) { APRM.player.select(null); } }); }
   }
