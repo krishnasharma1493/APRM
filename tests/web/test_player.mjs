@@ -456,6 +456,8 @@ test('a bad setting names the problem once and opens More settings', () => {
   p.doc.byId['run-start'].click();
   assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be 0 to 10000.');
   assert.equal(p.doc.byId['run-more'].open, true);
+});
+
 test('Play, Step and Jump work from the first screen: they start the run themselves', () => {
   let p = ready({ totalSteps: 10 });
   assert.equal(p.doc.byId['run-play'].disabled, false, 'jobs are loaded, so Play is live');
