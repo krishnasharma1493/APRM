@@ -33,3 +33,7 @@ Thumbs.db
 # Research PDFs stay local: the repository is public and most papers are
 # copyrighted. docs/research/README.md lists each file and where to get it.
 docs/research/*.pdf
+
+# Autonomous-run state and logs
+.autorun/
+.playwright-mcp/

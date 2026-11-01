@@ -110,3 +110,31 @@ Golden cases: write them as the issue says, mark
 
 - Commit messages and PR bodies carry no Claude co-author or "Generated with" lines. Krishna's standing rule (2026-10-31) overrides any default attribution.
 - The cut-off sentence is not guessed. Until Krishna supplies the rest, a golden case is written as its issue says but is never merged without Ahaana's recorded paper check; its PR stays a draft labelled `needs-krishna`.
+
+---
+
+## Continuous mode (added 2026-11-01; overrides the sections above where they differ)
+
+Scope: do EVERY open issue in backlog and gate order, including Ahaana's (A-xx) issues. Use parallel subagents in worktrees as described above.
+
+**Ahaana's issues (A-xx):** write the code as the issue's section 12 says (simple Python, pandas and matplotlib only, short functions, a comment on every block, reading only summary CSVs). Add the label `done-by-claude`. For each, add a section to `docs/AHAANA_GUIDE.md` that teaches the code: what each function does, how to run it, how to read each figure, and 3 small exercises. Leave her as owner.
+
+**Special issues:** K-18: try to resolve it (emsdk installs without sudo; verify versions from official sources); if something truly needs a human, do every other part and list the exact commands under "Needs Krishna" in docs/PROGRESS.md. K-31: simulate a fresh clone in a temp folder following only the README; record steps, time and problems; fix the README. K-32: do everything except recording (checklist, `docs/DEMO_SCRIPT.md`, offline check), leave the recording under "Needs Krishna" and keep the issue open with a comment. Golden cases stay marked "awaiting Ahaana's paper check"; that does not block merging.
+
+**Rules**
+- A turn ends ONLY when a stop condition is true. Finishing an issue, merging, closing a gate or writing a summary is not one.
+- After every merge, pick the next issue in the same turn.
+- Do not ask questions. Choose the safest option the docs allow, record it under "Decisions made during autonomous run" in `docs/PROGRESS.md`, continue.
+- A blocked issue never stops the run: label it `needs-krishna`, log it, continue.
+- No long summaries between issues: one line in `docs/PROGRESS.md`.
+- If CI takes more than 10 minutes, work on another issue and return.
+- Keep context small; rely on `docs/PROGRESS.md` and `docs/REVIEW_NOTES.md`. Update "Currently working on" in `docs/PROGRESS.md` at each important step.
+
+**Stop conditions**
+1. Every open issue is done, or blocked only by something that needs Krishna.
+2. main is broken and cannot be fixed safely.
+3. `gh` is no longer authenticated.
+
+On stopping: write the reason on the first line of `docs/PROGRESS.md`; for condition 1 create `.autorun/DONE`; commit and push; give one short report (issues merged, what needs Krishna with exact steps, a reminder that Ahaana should read `docs/AHAANA_GUIDE.md`).
+
+`autorun.sh` restarts the session every 15 minutes until `.autorun/DONE` or `.autorun/STOP` exists.

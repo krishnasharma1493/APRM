@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(git:*)", "Bash(gh:*)", "Bash(make:*)", "Bash(pytest:*)",
+      "Bash(python3:*)", "Bash(python:*)", "Bash(node:*)", "Bash(gcc:*)",
+      "Bash(clang:*)", "Bash(cc:*)", "Bash(emcc:*)", "Bash(ls:*)", "Bash(cat:*)",
+      "Bash(mkdir:*)", "Bash(cp:*)", "Bash(mv:*)", "Bash(grep:*)", "Bash(find:*)",
+      "Bash(diff:*)", "Bash(chmod:*)", "Bash(touch:*)", "WebSearch", "WebFetch"
+    ],
+    "deny": [
+      "Bash(sudo:*)", "Bash(git push --force:*)", "Bash(git push -f:*)"
+    ]
+  }
+}
