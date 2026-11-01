@@ -27,3 +27,13 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-18 | Run-owner-authorised freeze: PRD §5 marker, TOOLCHAIN CI column from real CI logs, lock file, pinned emsdk; D65; independent AI review found wording and unmet-box issues, fixed | PR #75 (not yet merged) | to confirm |
 | 2026-11-01 | Ahaana (owner) | A-02 | Written by the assistant at Krishna's request: shared figure style; independent AI review found tests that did not pin colours, fixed | PR #76 | awaiting Ahaana's reading |
 | 2026-11-01 | Krishna | K-19 | Priority, SJF and aging policies; independent AI review with a reference simulator (3000 workloads) and mutation testing; CI wasm tests fixed | PR #77 | to confirm |
+| 2026-11-01 | Krishna | K-20 | Summaries for E1 to E3 (summarize.py); independent AI review recomputed intervals against scipy, found a missing decision entry (D67) and unpinned t constants, fixed | PR #80 | to confirm |
+| 2026-11-01 | Krishna | K-22 | Six presets; settles O-9 as D66; independent AI review ran every preset under all policies | PR #79 | to confirm |
+| 2026-11-01 | Krishna | K-24 | Website Build mode; independent AI review fuzzed the JS CSV validator against the C reader (3000 files) | PR #81 | to confirm |
+| 2026-11-01 | Krishna | K-25 | Website Run mode (player, canvas, why log); D69; review found a stale add-job form, fixed | PR #84 | to confirm |
+| 2026-11-01 | Krishna | K-26 | Reservation (EASY backfilling), D68; independent reference simulator matched on 6000 workloads | PR #82 | to confirm |
+| 2026-11-01 | Krishna | K-28 | E5 summary writer and full E5 run; review recomputed all 10 rows | PR #85 | to confirm |
+| 2026-11-01 | Krishna | K-21 | Conformance script console vs WebAssembly; mutation-tested, CI step added | PR #86 | to confirm |
+| 2026-11-01 | Krishna | K-29 | Aging-order and starvation-bound checks, D70; brute-force checker agreed on 1500 runs and 2239 perturbations | PR #87 | to confirm |
+| 2026-11-01 | Ahaana (owner) | A-03 | Written by the assistant at Krishna's request: E1 to E3 figures and guide section | PR #78 | to confirm |
+| 2026-11-01 | Ahaana (owner) | A-04 | Written by the assistant at Krishna's request: E5 figure and guide section | PR #83 | to confirm |
