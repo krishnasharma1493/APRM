@@ -408,3 +408,81 @@ repeats the same numbers.
    Aging's largest wait is 36 ticks. (I ran this with pandas.)
 
 </details>
+
+## A-04: the E5 figure
+
+### What E5 asks
+
+E5 asks: **when does reservation pay off?** Every job has a memory need. A
+"big-memory job" is one from the big class (decision D57): it needs 20480 to
+28672 units of memory, i.e. 62% to 88% of the whole machine, so two of them can
+never run together. The experiment changes the **share** of jobs that are
+big-memory: 0, 10, 20, 30 and 40 percent of the 300 jobs. It compares `aging`
+(no reservation) with `reserve` (the big job at the front gets memory held
+for it, with T = 50).
+
+Why reservation helps: without it, small jobs keep slipping into the free
+memory, so memory never becomes empty enough for a big job and the big job
+waits and waits (starvation). With reservation, once a big job has waited long
+enough, smaller jobs are not allowed to take the memory it needs, so it gets
+its turn. The more big jobs there are, the more often this happens, so the
+gap between the lines should grow with the share.
+
+### The code
+
+- **`build_e5_figure(rows, note)`** makes one set of axes, draws one line per
+  policy with `draw_policy_line(ax, rows, policy, "max_wait")` (so it reads
+  `max_wait_mean`, `max_wait_ci_low`, `max_wait_ci_high`), puts an x tick at
+  every share in the file, and sets the title, the labels
+  "Big-memory jobs (%)" and "Maximum wait (ticks)", and the legend.
+- **`plot_e5_max_wait(summary_dir, out_dir)`** reads `e5_summary.csv`, applies
+  the style, builds the figure and saves `e5_max_wait.png` and `.pdf`.
+  It is also in `run_all`. Colours and markers come from `POLICY_LOOK`
+  (aging green dotted diamond, reserve purple long dashes triangle), the same
+  as in every other figure.
+
+### How to run
+
+```sh
+python tools/plot_figures.py --input data/sample_summaries   # fake numbers, title says SAMPLE DATA
+python tools/plot_figures.py --input results/summaries       # real numbers
+pytest tests/py/test_plot_figures.py
+```
+
+### How to read it
+
+x: percent of big-memory jobs. y: maximum wait (the unluckiest job, averaged
+over 30 seeds), in ticks. Two lines with error bars (95% interval) and a
+light band. **The gap between the lines is the worst-case waiting that the
+reservation saves.** If the lines are the same at 0% (no big jobs, nothing to
+reserve for) and then separate, reservation pays off from that share on. If
+the error bars of the two lines do not overlap, the difference is real and not
+luck. In the sample file (fake numbers): both lines are 40 at 0%; at 40%
+aging is 280 and reserve is 120, so aging waits 2.33 times longer. Do not
+quote sample numbers in the report.
+Examiner question: "What does the gap mean?" How much worst-case waiting the
+reservation saves, and the gap grows as big jobs become more common.
+
+### Exercises
+
+1. **Read the gap.** In the sample file, how much worst-case waiting does
+   reservation save at 30% big-memory jobs, and what is reserve's 95% interval
+   there?
+2. **Where is the gap zero?** At which share are the two lines equal, and why
+   does that make sense?
+3. **Wrong metric.** In `build_e5_figure`, change `"max_wait"` to `"avg_wait"`.
+   What happens to the picture and the tests?
+
+<details>
+<summary>Answers (try first!)</summary>
+
+1. Aging 220 minus reserve 100 = 120 ticks saved. Reserve's interval is 96 to
+   104. (I ran this with pandas on the sample file.)
+2. At 0%: both are 40. With no big-memory jobs nothing needs a reservation, so
+   the two schedulers behave the same. (Checked by printing the differences:
+   0, 40, 80, 120, 160 at 0, 10, 20, 30, 40 percent.)
+3. The script still runs, but the y values fall (aging at 40% from 280 to 70)
+   and the y label would be a lie. I ran this: 3 tests failed, 47 passed.
+   Undo it afterwards.
+
+</details>
