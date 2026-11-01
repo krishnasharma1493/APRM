@@ -38,6 +38,7 @@ docs/research/*.pdf
 .autorun/
 .playwright-mcp/
 
-# Generated report figures (A-01 sample-data figure is fake). Not committed by default;
+# Generated report figures, PNG and PDF (sample-data figures are fake). Not committed by default;
 # add a real final figure on purpose with: git add -f <file>
 docs/report/figures/*.png
+docs/report/figures/*.pdf
