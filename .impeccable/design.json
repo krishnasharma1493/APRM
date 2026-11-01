@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-02T00:00:00Z",
+  "title": "Design System: APRM scheduler",
+  "extensions": {
+    "colorMeta": {
+      "teal-rail": { "role": "primary", "displayName": "Teal Rail", "canonical": "#0B5E6B", "tonalRamp": ["#041F23", "#073A42", "#0B5E6B", "#3A8793", "#5FB6C4", "#92D0DA", "#C4E6EB", "#E6F4F6"] },
+      "canvas": { "role": "neutral", "displayName": "Enamel Ground", "canonical": "#F2F3F1", "tonalRamp": ["#121513", "#1B1F1D", "#343A37", "#5B625E", "#8A918D", "#CFD3D0", "#F2F3F1", "#FFFFFF"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "Step titles." },
+      "section": { "displayName": "Section", "purpose": "Sub-sections and the Compare verdict." },
+      "body": { "displayName": "Body", "purpose": "All running text, tabular numerals." },
+      "caption": { "displayName": "Caption", "purpose": "Labels, hints, table headings, module tabs." }
+    },
+    "shadows": [
+      { "name": "whisper", "value": "0 1px 2px rgba(27, 31, 29, 0.06)", "purpose": "The only drop shadow: pressed option, flying magnet, toast, sticky Next." }
+    ],
+    "motion": [
+      { "name": "press", "value": "100ms ease-out", "purpose": "Button press scale to 0.97." },
+      { "name": "move", "value": "240ms cubic-bezier(0.2, 0, 0, 1)", "purpose": "Segmented, switch, disclosure transitions." }
+    ],
+    "breakpoints": [
+      { "name": "tiles-2", "value": "60rem" },
+      { "name": "board-stack", "value": "62rem" },
+      { "name": "table-card", "value": "45rem" },
+      { "name": "tiles-1", "value": "36rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button", "kind": "button", "refersTo": "button-primary",
+      "description": "The one primary action per screen.",
+      "html": "<button class=\"ds-btn-primary\">Play</button>",
+      "css": ".ds-btn-primary{font:inherit;font-weight:600;background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);border-radius:var(--r-2);padding:var(--s-2) var(--s-4);min-height:2.25rem;cursor:pointer;transition:transform 100ms ease-out}.ds-btn-primary:active{transform:scale(.97)}.ds-btn-primary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Button", "kind": "button", "refersTo": "button",
+      "description": "Default secondary action.",
+      "html": "<button class=\"ds-btn\">Reset</button>",
+      "css": ".ds-btn{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:var(--s-2) var(--s-4);min-height:2.25rem;cursor:pointer;transition:transform 100ms ease-out}.ds-btn:active{transform:scale(.97)}.ds-btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    },
+    {
+      "name": "Module", "kind": "card", "refersTo": "module",
+      "description": "A white slot with a caption tab.",
+      "html": "<section class=\"ds-module\"><h3 class=\"ds-tab\">Tray</h3><p>Jobs wait here.</p></section>",
+      "css": ".ds-module{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:var(--s-3)}.ds-tab{font-size:var(--fs-caption);font-weight:650;margin:0 0 var(--s-2)}"
+    },
+    {
+      "name": "Job Magnet", "kind": "custom", "refersTo": "magnet",
+      "description": "A job card: hue, hatch, stamped number.",
+      "html": "<span class=\"ds-magnet\"><b>3</b></span>",
+      "css": ".ds-magnet{display:inline-flex;align-items:center;justify-content:center;min-width:2rem;height:1.625rem;padding:0 3px;border-radius:3px;background-color:var(--job-3);background-image:repeating-linear-gradient(135deg,transparent 0 3px,var(--hatch) 3px 4px)}.ds-magnet b{background:var(--surface);color:var(--text);font-size:var(--fs-caption);font-weight:650;padding:0 3px;border-radius:2px}"
+    },
+    {
+      "name": "Stamp", "kind": "chip", "refersTo": "stamp-reserve",
+      "description": "Outcome tag in a status colour.",
+      "html": "<span class=\"ds-stamp\">reserve</span>",
+      "css": ".ds-stamp{font-size:.75rem;font-weight:650;padding:0 var(--s-1);border:1px solid var(--amber);border-radius:3px;color:var(--amber);background:var(--warn-bg)}"
+    },
+    {
+      "name": "Text Input", "kind": "input", "refersTo": "input",
+      "description": "Hairline field.",
+      "html": "<input class=\"ds-input\" type=\"text\" value=\"12\">",
+      "css": ".ds-input{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-1);padding:var(--s-1) var(--s-2);min-height:2.25rem}.ds-input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Production Planning Board",
+    "overview": "The machine is a planning board that the engine fills, card by card, on an enamel ground with white hairline slots, job magnets with stamped numbers and hatching, a teal now-rail and red, amber and green stamps.",
+    "keyCharacteristics": ["Flat enamel and white surfaces, hairline borders, one whisper shadow.", "Job identity is colour plus stamped number plus hatch.", "One teal accent.", "System sans-serif only; tabular numerals.", "Light and dark values for every colour."],
+    "rules": [
+      { "name": "The Never-Alone Rule", "body": "Colour is never the only signal.", "section": "colors" },
+      { "name": "The Chart Gray Rule", "body": "Chart Gray is for marks and rules, never for text.", "section": "colors" },
+      { "name": "The One Rail Rule", "body": "Teal is the single accent; status colours appear as stamps.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Numbers use tabular-nums globally.", "section": "typography" },
+      { "name": "The Flat Enamel Rule", "body": "Surfaces are flat at rest; the whisper appears only on raised or moving things.", "section": "elevation" }
+    ],
+    "dos": ["Do read every colour from the tokens; give any new colour light and dark values.", "Do pair a hue with its number plate and hatch for anything that identifies a job.", "Do keep one primary teal button per screen."],
+    "donts": ["Don't build a dashboard of stat cards, sidebars or decorative charts on top of the board.", "Don't nest cards in cards.", "Don't use Chart Gray for text.", "Don't signal state by colour alone."]
+  }
+}

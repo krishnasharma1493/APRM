@@ -53,3 +53,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-49 | PR 4: Build page and top bar in the planning-board world (no nested cards, tile racks from real job data, phone job cards, compact top bar, one page CSS layer) | K-49 PR 4, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-49 | PR 5: Run page as the planning board (lanes, cards, now rail, waiting tray, card flight, why-log labels); tests rewritten for the board | K-49 PR 5, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-49 | PR 6: Compare as finished boards on one shared scale, verdict first, key, single-colour charts, numbers right-aligned | K-49 PR 6, issue #112 | to confirm |
+| 2026-11-02 | Krishna | K-49 | PR 7: dead CSS removed, keyboard-only demo path check in day and night, findings closed, DESIGN.md recorded from the shipped site | K-49 PR 7, issue #112 | to confirm |
