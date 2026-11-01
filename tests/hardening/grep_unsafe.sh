@@ -13,10 +13,12 @@ hits=$(grep -rnEi '[[:space:]]on[a-z]+[[:space:]]*=[[:space:]]*["'"'"']|setAttri
 if [ -n "$hits" ]; then
   echo "grep-unsafe: FAIL (inline handler)"; echo "$hits"; exit 1
 fi
+# (COLUMN_NAMES is `static const char *const []`: ELF puts it in .data.rel.ro, read-only after
+# relocation, but nm shows 'd'; macOS shows nothing. Everything else must be absent.)
 # core/ keeps no writable file-scope or static data: only const tables allowed
 for o in build/hardening/core/*.o; do
   [ -e "$o" ] || continue
-  if nm "$o" | grep -E ' [dDbB] ' | grep -v -E ' (___asan|_?__asan|_?__ubsan|l_|ltmp)' >/dev/null; then
+  if nm "$o" | grep -E ' [dDbB] ' | grep -v -E ' (___asan|_?__asan|_?__ubsan|l_|ltmp|_?COLUMN_NAMES$)' >/dev/null; then
     echo "grep-unsafe: FAIL writable data in $o"; nm "$o" | grep -E ' [dDbB] '; exit 1
   fi
 done
