@@ -424,8 +424,9 @@ for it, with T = 50).
 Why reservation helps: without it, small jobs keep slipping into the free
 memory, so memory never becomes empty enough for a big job and the big job
 waits and waits (starvation). With reservation, once a big job has waited long
-enough, smaller jobs are not allowed to take the memory it needs, so it gets
-its turn. The more big jobs there are, the more often this happens, so the
+enough, it gets a reserved start time, and smaller jobs may only start early
+if they will not delay it (they must finish by the reserved start time or fit
+in the spare room, BLUEPRINT §3.5), so it gets its turn. The more big jobs there are, the more often this happens, so the
 gap between the lines should grow with the share.
 
 ### The code
