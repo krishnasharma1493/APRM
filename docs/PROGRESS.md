@@ -1,3 +1,5 @@
+**STOPPED 2026-11-01 (stop condition 1: no eligible issue).** Every open Must-have K issue depends on K-18 (#19), which needs Ahaana's paper check of the golden cases and format approval, her laptop's TOOLCHAIN column and Krishna's freeze sign-off. K-42 (#69) is Nice-to-have and was not started. Ahaana's A-01..A-06 are hers.
+
 # Autonomous run: progress
 
 Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after each round.
