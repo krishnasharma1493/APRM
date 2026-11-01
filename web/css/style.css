@@ -1,61 +1,21 @@
-/* Colours are CSS variables with light and dark values; dark follows the system. */
+/* Page layout rules. Colours, type and spacing come from tokens.css and components.css (K-43).
+ * The old variable names below are aliases for the new tokens, kept until K-44 to K-46
+ * restyle each page. Nothing here defines a colour of its own. */
 :root {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --text: #1c2330;
-  --muted: #5b6577;
-  --border: #d5dae3;
-  --accent: #1f5fbf;
-  --accent-text: #ffffff;
-  --error-bg: #fdecec;
-  --error-text: #8a1c1c;
-  --error-border: #e5a3a3;
-  --ok-text: #1d6b34;
-  --mark: #c0392b;
-  --job-0: #3b82f6; --job-1: #d97706; --job-2: #059669; --job-3: #dc2626;
-  --job-4: #7c3aed; --job-5: #0d9488; --job-6: #db2777; --job-7: #65a30d;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161d;
-    --panel: #1b212b;
-    --text: #e6eaf1;
-    --muted: #9aa5b8;
-    --border: #323b4a;
-    --accent: #6aa3f5;
-    --accent-text: #0c1018;
-    --error-bg: #3a1c1c;
-    --error-text: #ffc9c9;
-    --error-border: #7a3a3a;
-    --ok-text: #7fd89a;
-    --mark: #ff8a7a;
-    --job-0: #6aa3f5; --job-1: #fbbf24; --job-2: #34d399; --job-3: #f87171;
-    --job-4: #a78bfa; --job-5: #2dd4bf; --job-6: #f472b6; --job-7: #a3e635;
-  }
+  --bg: var(--canvas);
+  --panel: var(--surface);
+  --accent-text: var(--on-accent);
+  --error-text: var(--red);
+  --error-border: var(--red);
+  --ok-text: var(--green);
+  --mark: var(--red);
 }
 
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-h1 { font-size: 1.25rem; margin: 0; }
-h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 
 .topbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem;
-  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel);
+  padding: 0.75rem 1rem;
 }
-.modes { display: flex; gap: 0.25rem; }
-.modes button {
-  font: inherit; padding: 0.35rem 0.9rem; cursor: pointer;
-  border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px;
-}
-.modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-.modes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .status { margin: 0 0 0 auto; color: var(--muted); }
 
 main {
@@ -162,3 +122,5 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .topbar .hint { margin: 0; }
 .topbar .status { margin: 0 0 0 auto; }
 .next-row { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-4); margin: var(--s-6) 0 0; }
+.next-row .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.next-row .btn { padding: var(--s-2) var(--s-4); border-radius: var(--r-2); }

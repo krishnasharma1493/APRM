@@ -68,7 +68,7 @@ test('no hard-coded colours outside the :root variable blocks', () => {
   const css = read('css/style.css');
   const outside = css.replace(/:root\s*\{[^}]*\}/g, '');
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(outside), 'colour literal outside :root');
-  assert.ok(/prefers-color-scheme:\s*dark/.test(css), 'dark theme');
+  assert.ok(/prefers-color-scheme:\s*dark/.test(read('css/tokens.css')), 'dark theme');
 });
 
 // ---------- a tiny fake DOM, enough for app.js ----------
@@ -87,6 +87,7 @@ class El {
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   click() { for (const fn of this.listeners.click || []) fn({ currentTarget: this }); }
+  change() { for (const fn of this.listeners.change || []) fn({ currentTarget: this }); }
   get currentTarget() { return this; }
 }
 class Text { constructor(t) { this._t = t; } get textContent() { return this._t; } }
@@ -102,12 +103,15 @@ function fakeDocument() {
   const buttons = [...html.matchAll(/data-mode-button="([^"]+)"/g)].map((m) => {
     const b = new El('button'); b.setAttribute('data-mode-button', m[1]); return b;
   });
+  const nexts = [...html.matchAll(/data-next="([^"]+)"/g)].map((m) => {
+    const b = new El('button'); b.setAttribute('data-next', m[1]); return b;
+  });
   return {
-    byId, buttons,
+    byId, buttons, nexts,
     getElementById: (id) => byId[id] || null,
     createElement: (t) => new El(t),
     createTextNode: (t) => new Text(t),
-    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : []),
+    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : sel === '[data-next]' ? nexts : []),
   };
 }
 
@@ -355,6 +359,28 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.match(doc.byId['job-list'].children[0].textContent, /^Job 3:/);
   APRM.store.setJobs([]);
   assert.equal(doc.byId['jobs-empty'].hidden, false);
+});
+
+test('shell: one step at a time, Next buttons move on, Show details switch works without storage', async () => {
+  const { doc, APRM } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
+  await tick(); await tick();
+  assert.equal(doc.byId['app-main'].hidden, true, 'dashboard hidden on Build');
+  assert.equal(doc.byId['app-footer'].hidden, true);
+  const next = (to) => doc.nexts.find((b) => b.getAttribute('data-next') === to);
+  next('run').click();
+  assert.equal(APRM.store.get().mode, 'run');
+  assert.equal(doc.byId['app-main'].hidden, false, 'dashboard shown on Run');
+  next('compare').click();
+  assert.equal(APRM.store.get().mode, 'compare');
+  assert.equal(doc.byId['app-main'].hidden, true);
+  next('build').click();
+  assert.equal(APRM.store.get().mode, 'build');
+  const sw = doc.byId['details-switch'];
+  assert.equal(APRM.store.get().details, false);
+  sw.checked = true; sw.change();                       // window.localStorage is undefined here: must not throw
+  assert.equal(APRM.store.get().details, true);
+  sw.checked = false; sw.change();
+  assert.equal(APRM.store.get().details, false);
 });
 
 test('app: wasm missing shows the error state with a message, not a blank page', async () => {
