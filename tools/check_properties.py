@@ -16,7 +16,8 @@ that are visible in the file:
     first at one tick).
 
 `check_greedy_fill_postcondition` is a separate check for policies that use
-greedy fill (fcfs).  Aging order and starvation checks belong to K-29.
+greedy fill (fcfs).  `check_aging_order` and `check_starvation_bound` (K-29)
+check the aging policy's waiting order and the provable starvation bound.
 
 Usage:
     python tools/check_properties.py --runs 10000 [--policy fcfs] [--seed0 1]
@@ -54,6 +55,9 @@ RESERVE_POLICIES = ("reserve",)
 # Reservation thresholds T tried by the random runs (chosen by seed): 0 reserves
 # at once, 5 and 50 (the default) need the best job to have waited.
 RESERVE_THRESHOLDS = (0, 5, 50)
+# Aging rates alpha_milli tried by the random aging runs (chosen by seed): 0 is
+# static priority (the starvation check skips it), 100 is the engine default.
+AGING_ALPHAS = (100, 0, 1, 50, 1000, 10000, 100)
 MAX_MESSAGES_PER_CHECK = 5        # keep reports short: first few offenders only
 
 
@@ -286,6 +290,105 @@ def check_greedy_fill_postcondition(jobs: pd.DataFrame, results: pd.DataFrame,
     return msgs
 
 
+def _aging_keys(priority: np.ndarray, arrival: np.ndarray, alpha_milli: int) -> np.ndarray:
+    """Aging keys K = 1000*b - alpha_milli*r as Python ints (object array): no int64 overflow
+    for any input, even values far outside the PRD limits.  Higher key = better rank."""
+    return np.array([1000 * int(b) - int(alpha_milli) * int(r) for b, r in zip(priority, arrival)],
+                    dtype=object)
+
+
+def _overtaken_pairs(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_cap: int,
+                     alpha_milli: int, only_beyond_bound: bool) -> list[str]:
+    """Shared engine of check_aging_order and check_starvation_bound.
+
+    A violation is a pair (j, k), j waiting and strictly better ranked than k,
+    where k starts at tick t, j starts later, and j provably fit at the moment
+    k started.  j fits for sure when cpu_j <= free_cpu(t) + cpu_k and
+    mem_j <= free_mem(t) + mem_k, with free(t) = capacity minus the jobs running
+    at t after all starts of tick t (start <= t < finish, k included in it).
+    Reason: the greedy fill pops jobs in rank order, so j was looked at before k;
+    free resources only shrink during a pass, so at k's turn at least
+    free(t) + cpu_k was free, and at j's earlier turn at least that.  Ties of the
+    key are never flagged (strictly better only) and j must start strictly after t.
+    With only_beyond_bound the pair must also satisfy the starvation bound
+    alpha_milli*(r_k - r_j) > 1000*(b_max - b_j).  Time O(S*n) for S distinct start
+    ticks and n jobs; integers only.
+    """
+    jn = _joined(jobs, results)
+    if jn is None or not len(jn):
+        return []
+    ok = jn["finish"].to_numpy() > jn["start"].to_numpy()
+    start, finish = jn["start"].to_numpy(), jn["finish"].to_numpy()
+    cpu, mem = jn["cpu_in"].to_numpy(), jn["mem_in"].to_numpy()
+    arrival, prio = jn["arrival_in"].to_numpy(), jn["priority_in"].to_numpy()
+    ids = jn["id"].to_numpy()
+    if not ok.any():
+        return []
+    times, used_cpu, used_mem = _profile(start[ok], finish[ok], cpu[ok], mem[ok])
+    keys = _aging_keys(prio, arrival, alpha_milli)
+    bmax = config.PRIORITY_MAX
+
+    msgs: list[str] = []
+    for k in np.argsort(start, kind="stable"):
+        t = start[k]
+        pos = int(np.searchsorted(times, t, side="right")) - 1   # profile entry at tick t (exists: k starts)
+        if pos < 0 or not ok[k]:
+            continue
+        room_cpu = cpu_cap - int(used_cpu[pos]) + int(cpu[k])
+        room_mem = mem_cap - int(used_mem[pos]) + int(mem[k])
+        cand = np.nonzero((arrival <= t) & (start > t) & (cpu <= room_cpu) & (mem <= room_mem))[0]
+        for j in cand:
+            if not keys[j] > keys[k]:
+                continue
+            if only_beyond_bound and not (
+                    int(alpha_milli) * (int(arrival[k]) - int(arrival[j])) > 1000 * (bmax - int(prio[j]))):
+                continue
+            what = "starvation bound" if only_beyond_bound else "aging order"
+            msgs.append(f"{what}: job {int(ids[k])} (arrival {int(arrival[k])}, priority {int(prio[k])}) "
+                        f"started at {int(t)} although better-ranked job {int(ids[j])} "
+                        f"(arrival {int(arrival[j])}, priority {int(prio[j])}, starts {int(start[j])}) "
+                        f"was waiting and fits")
+            if len(msgs) >= MAX_MESSAGES_PER_CHECK:
+                return msgs
+    return msgs
+
+
+def check_aging_order(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_cap: int,
+                      alpha_milli: int) -> list[str]:
+    """Aging order (PRD section 10), for the aging policy only: no worse job jumps a fitting better one.
+
+    Exact definition.  Key K = 1000*priority - alpha_milli*arrival; higher K ranks
+    better.  Flag every pair (j, k) with K_j > K_k (strict, ties are not judged)
+    such that arrival_j <= start_k < start_j and job j fits in
+    free(start_k) + the resources of k, where free(t) = capacity minus the jobs
+    running after all starts of tick t.  Sound for the aging policy because its
+    greedy fill looks at waiting jobs in key order and free resources only shrink
+    during a pass, so j was looked at before k with at least that much room.
+    Not applied to reserve (a reservation may keep a fitting better job waiting
+    and a worse job may be backfilled), knapsack or exact.  Works for any
+    alpha_milli including 0 (then it is static priority).
+    """
+    return _overtaken_pairs(jobs, results, cpu_cap, mem_cap, alpha_milli, False)
+
+
+def check_starvation_bound(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_cap: int,
+                           alpha_milli: int) -> list[str]:
+    """Starvation bound (BLUEPRINT 3.3; DECISIONS D69), for the aging policy only.
+
+    For alpha_milli > 0 and a job j, every k with
+    alpha_milli*(arrival_k - arrival_j) > 1000*(b_max - b_j)   (b_max = 9)
+    has K_k < K_j, so k can never outrank j.  This check flags each pair (j, k)
+    meeting that bound with start_k < start_j where j fit at k's start (same
+    "fits" test as check_aging_order).  It does NOT claim that j starts, or any
+    maximum wait: j may be skipped for resources (that is what reservation is for).
+    It only checks that late arrivals are never served ahead of j while j could
+    have run.  alpha_milli == 0: the bound is undefined and the check returns [].
+    """
+    if int(alpha_milli) <= 0:
+        return []
+    return _overtaken_pairs(jobs, results, cpu_cap, mem_cap, alpha_milli, True)
+
+
 def _shadow_and_extra(run_finish: np.ndarray, run_cpu: np.ndarray, run_mem: np.ndarray,
                       free_cpu: int, free_mem: int, h_cpu: int, h_mem: int
                       ) -> tuple[int, int, int] | None:
@@ -466,6 +569,9 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
         threshold = RESERVE_THRESHOLDS[seed % len(RESERVE_THRESHOLDS)]
         if policy in RESERVE_POLICIES:
             extra += ["--threshold", str(threshold)]
+        alpha = AGING_ALPHAS[(seed // 3) % len(AGING_ALPHAS)]
+        if policy == "aging":
+            extra += ["--alpha-milli", str(alpha)]
         try:
             res = run_experiments.run_one(
                 binary, str(jobs_csv), policy, str(folder), extra, context={"seed": seed})
@@ -487,6 +593,9 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
         msgs = check_results(jobs, results, sc["cpu"], sc["mem"])
         if policy in GREEDY_FILL_POLICIES:
             msgs += check_greedy_fill_postcondition(jobs, results, sc["cpu"], sc["mem"])
+        if policy == "aging":
+            msgs += check_aging_order(jobs, results, sc["cpu"], sc["mem"], alpha)
+            msgs += check_starvation_bound(jobs, results, sc["cpu"], sc["mem"], alpha)
         if policy in RESERVE_POLICIES:
             msgs += check_reserve_guarantee(jobs, results, sc["cpu"], sc["mem"], threshold)
     except Exception as err:  # a checker crash must name its seed too
