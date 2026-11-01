@@ -62,6 +62,15 @@
   function byId(id) { return document.getElementById(id); }
   function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
+  /* Words from copy.js, with a plain fallback when copy.js is not loaded (tests of single scripts). */
+  function copyText(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
+  function detailsOn() { return !!(APRM.store && APRM.store.get().details); }
+
   function text(id, value) { var el = byId(id); if (el) { el.textContent = value; } }
 
   function showMessage(id, message) {
@@ -134,12 +143,14 @@
       selected: selected, events: run ? run.events : 0 };
   }
 
-  var METRIC_ROWS = [['avg_wait', 'Average wait'], ['max_wait', 'Longest wait'], ['avg_turnaround', 'Average turnaround'],
-    ['weighted_completion', 'Weighted completion'], ['makespan', 'Makespan'], ['util_cpu', 'CPU utilisation'], ['util_mem', 'Memory utilisation']];
+  var METRIC_KEYS = ['avg_wait', 'max_wait', 'avg_turnaround', 'weighted_completion', 'makespan', 'util_cpu', 'util_mem'];
 
+  /* A metric value as text. The clean view rounds to three decimals; Show details prints the
+   * engine's number unchanged. null means the engine has no value yet. */
   function metricText(v) {
-    if (v === null || v === undefined) { return 'n/a (no finished job yet)'; }
-    return (typeof v === 'number' && Math.floor(v) !== v) ? v.toFixed(3) : String(v);
+    if (v === null || v === undefined) { return copyText('metric.none', 'n/a (no finished job yet)'); }
+    if (typeof v === 'number' && Math.floor(v) !== v && !detailsOn()) { return v.toFixed(3); }
+    return String(v);
   }
 
   function drawMetrics() {
@@ -152,17 +163,56 @@
       return;
     }
     if (empty) { empty.hidden = true; }
-    for (var i = 0; i < METRIC_ROWS.length; i++) {
+    for (var i = 0; i < METRIC_KEYS.length; i++) {
       var li = document.createElement('li');
-      li.textContent = METRIC_ROWS[i][1] + ': ' + metricText(run.metrics[METRIC_ROWS[i][0]]);
+      li.textContent = copyText('metric.' + METRIC_KEYS[i], METRIC_KEYS[i]) + ': ' + metricText(run.metrics[METRIC_KEYS[i]]);
       list.appendChild(li);
+    }
+    var byPri = run.metrics.avg_wait_by_priority;
+    if (Array.isArray(byPri)) {
+      var row = document.createElement('li');
+      var parts = [];
+      for (var q = 0; q < byPri.length; q++) { if (byPri[q] !== null && byPri[q] !== undefined) { parts.push(q + ': ' + metricText(byPri[q])); } }
+      row.textContent = copyText('metric.by_priority', 'Average wait by priority') + ' (' + parts.join(', ') + ')';
+      if (parts.length > 0) { list.appendChild(row); }
     }
   }
 
+  /* The machine in numbers, straight from the state JSON: used = capacity minus free. */
+  function drawResources() {
+    var st = run ? run.state : null;
+    var setMeter = function (fillId, textId, key, unitKey) {
+      var fill = byId(fillId), label = byId(textId);
+      if (!label) { return; }
+      if (!st) { label.textContent = copyText('run.res.none', ''); if (fill && fill.style) { fill.style.width = '0%'; } return; }
+      var cap = st.cap[key], free = st.free[key], used = cap - free;
+      label.textContent = copyText(unitKey, used + ' of ' + cap + ', ' + free + ' free', { used: used, cap: cap, free: free });
+      if (fill && fill.style) { fill.style.width = (cap > 0 ? Math.round(used * 1000 / cap) / 10 : 0) + '%'; }
+    };
+    setMeter('res-cpu-fill', 'res-cpu-text', 'cpu', 'run.res.cpu.text');
+    setMeter('res-mem-fill', 'res-mem-text', 'mem', 'run.res.mem.text');
+  }
+
+  /* The saved spot for the long-waiting job, as the engine reports it (id and shadow time). */
+  function drawReservation() {
+    var card = byId('reserve-card');
+    if (!card) { return; }
+    var r = run && run.state ? run.state.reservation : null;
+    if (!r) { card.textContent = ''; card.hidden = true; return; }
+    card.textContent = copyText('run.reserve', 'Job ' + r.id + ' is reserved.', { id: r.id, t: r.shadow_time });
+    card.hidden = false;
+  }
+
+  /* One line with the exact settings, always visible even when "More settings" is closed. */
+  function drawSettingsLine() {
+    var s = APRM.store.get().settings;
+    text('run-settings-summary', copyText('run.settings', 'Settings: alpha = ' + s.alphaMilli, { alpha: s.alphaMilli, t: s.threshold, eps: s.eps }));
+  }
+
   function clockText() {
-    if (!run) { return 'No run yet. Press Run.'; }
-    return 'Time ' + run.state.now + ', event ' + run.events + ', ' + run.state.done + ' of ' + run.state.total +
-      ' jobs done. ' + status.charAt(0).toUpperCase() + status.slice(1) + '.';
+    if (!run) { return copyText('run.clock.none', 'No run yet. Press Run.'); }
+    var vars = { now: run.state.now, events: run.events, done: run.state.done, total: run.state.total };
+    return copyText(detailsOn() ? 'run.clock.details' : 'run.clock', 'Time: tick ' + vars.now, vars);
   }
 
   function highlightJobList() {
@@ -178,7 +228,7 @@
   /* Redraw every view from the remembered engine answers. O(shown rows + jobs). */
   function render() {
     text('run-clock', clockText());
-    text('run-status', status);
+    text('run-status', copyText('status.' + status, status));
     var canvasEl = byId('run-canvas');
     var empty = byId('canvas-empty');
     if (canvasEl) {
@@ -186,11 +236,14 @@
       canvasEl.hidden = !painted;
       if (empty) {
         empty.hidden = run !== null && painted;
-        empty.textContent = run !== null && !painted ? clockText() : 'Nothing to show yet. Add jobs, then press Run.';
+        empty.textContent = run !== null && !painted ? clockText() : copyText('run.canvas.empty', 'Nothing to show yet. Add jobs, then press Run.');
       }
     }
     APRM.whylog.render(run ? run.entries : [], selected);
     drawMetrics();
+    drawResources();
+    drawReservation();
+    drawSettingsLine();
     highlightJobList();
     updateButtons();
     if (status !== 'playing') { refreshAddForm(); }
@@ -198,8 +251,10 @@
 
   function updateButtons() {
     var play = byId('run-play');
-    if (play) { play.textContent = status === 'playing' ? 'Pause' : 'Play'; }
+    if (play) { play.textContent = status === 'playing' ? copyText('run.pause', 'Pause') : copyText('run.play', 'Play'); }
     var live = run !== null;
+    var startBtn = byId('run-start');
+    if (startBtn) { startBtn.textContent = live ? copyText('run.restart', 'Start over') : copyText('run.start', 'Run'); }
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
     set('run-play', !live || status === 'jumping');
     set('run-step', !live || status === 'playing' || status === 'jumping');
@@ -494,7 +549,7 @@
       for (var i = 0; i < POLICY_NAMES.length; i++) {
         var opt = document.createElement('option');
         opt.setAttribute('value', POLICY_NAMES[i]);
-        opt.textContent = POLICY_NAMES[i];
+        opt.textContent = copyText('policy.' + POLICY_NAMES[i], POLICY_NAMES[i]);
         sel.appendChild(opt);
       }
     }
@@ -532,6 +587,7 @@
       if (changed === 'mode' && s.mode !== 'run') { pause(); }
       if (changed === 'settings' || changed === 'policies' || changed === 'mode') { syncInputs(s); }
       if (changed === 'jobs' && run === null) { render(); }
+      if (changed === 'details' || changed === 'settings') { render(); }
     });
     syncInputs(APRM.store.get());
     setSpeed(APRM.store.get().settings.speed || 1);

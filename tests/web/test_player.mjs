@@ -421,7 +421,31 @@ test('metrics are shown from the engine, null as n/a', () => {
   p.A.player.start(); p.A.player.setSpeed(6); p.A.player.play(); p.sched.runFrame();
   const texts = p.doc.byId['metrics-list'].children.map((c) => c.textContent);
   assert.ok(texts.includes('Average wait: 1.500'));
-  assert.ok(texts.includes('CPU utilisation: n/a (no finished job yet)'));
+  assert.ok(texts.includes('CPU busy (utilization): no value yet (no job has finished)'));
+  // Show details prints the engine's number unchanged instead of rounding to three decimals
+  p.A.store.setDetails(true);
+  const exact = p.doc.byId['metrics-list'].children.map((c) => c.textContent);
+  assert.ok(exact.includes('Average wait: ' + String(p.A.player.snapshot().metrics.avg_wait)), exact.join('|'));
+});
+
+test('run page: the resource strip and the settings line show the engine numbers', () => {
+  const p = ready();
+  p.A.player.start();
+  const st = p.A.player.snapshot().state;
+  const want = (key, used) => key === 'cpu'
+    ? used + ' of ' + st.cap.cpu + ' cores busy, ' + st.free.cpu + ' free'
+    : used + ' of ' + st.cap.mem + ' MB in use, ' + st.free.mem + ' MB free';
+  assert.equal(p.doc.byId['res-cpu-text'].textContent, want('cpu', st.cap.cpu - st.free.cpu));
+  assert.equal(p.doc.byId['res-mem-text'].textContent, want('mem', st.cap.mem - st.free.mem));
+  const s = p.A.store.get().settings;
+  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'Settings: \u03b1 = ' + s.alphaMilli + ', T = ' + s.threshold + ', \u03b5 = ' + s.eps);
+});
+
+test('run page: the policy list uses plain names with the technical term beside them', () => {
+  const p = ready();
+  const names = p.doc.byId['run-policy'].children.map((o) => o.textContent);
+  assert.equal(names.length, 6);
+  assert.ok(names.includes('Shortest job first (SJF)') && names.includes('First come, first served (FCFS)'));
 });
 
 test('leaving Run mode pauses; the panel is shown only in Run mode', () => {

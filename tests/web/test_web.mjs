@@ -342,7 +342,7 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.equal(doc.byId['engine-status'].textContent, 'Starting the engine…');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'loading');
   assert.equal(doc.byId['engine-error'].hidden, true);
-  assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, load a preset, or generate a random set.');
+  assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, or start with an example.');
   assert.equal(doc.byId['jobs-empty'].hidden, false);
   release(); await tick(); await tick();
   assert.equal(doc.byId['engine-status'].textContent, 'Engine ready');
@@ -443,6 +443,35 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     throwsEngine(() => w.step(2 ** 32 + h), -1, 'handle');
     assert.equal(w.destroy(h), 0);
     throwsEngine(() => w.step(h), -1);
+  });
+
+  test('real engine: Run page numbers equal the engine JSON for the six presets', async () => {
+    const createAprm = require(vendor);
+    for (const name of ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case']) {
+      const page = loadPage({ createAprm });
+      await tick(); await tick();
+      const A = page.APRM;
+      A.presets.load(name);
+      A.store.setMode('run');
+      assert.equal(A.player.start(), true, name);
+      for (let n = 0; n < 40; n++) {
+        const snap = A.player.snapshot();
+        const st = snap.state;
+        assert.equal(page.doc.byId['res-cpu-text'].textContent,
+          (st.cap.cpu - st.free.cpu) + ' of ' + st.cap.cpu + ' cores busy, ' + st.free.cpu + ' free', name + ' cpu at step ' + n);
+        assert.equal(page.doc.byId['res-mem-text'].textContent,
+          (st.cap.mem - st.free.mem) + ' of ' + st.cap.mem + ' MB in use, ' + st.free.mem + ' MB free', name + ' mem at step ' + n);
+        if (!A.player.stepOnce()) break;
+      }
+      A.player.jumpToEnd();
+      while (A.player.snapshot().status === 'jumping') await new Promise((r) => setTimeout(r, 5));
+      const snap = A.player.snapshot();
+      assert.equal(snap.state.done, snap.state.total, name + ' finished');
+      A.store.setDetails(true);
+      const rows = page.doc.byId['metrics-list'].children.map((c) => c.textContent);
+      assert.ok(rows.includes('Average wait: ' + String(snap.metrics.avg_wait)), name + ': exact average wait');
+      assert.ok(rows.includes('Time until everything finished (makespan): ' + String(snap.metrics.makespan)), name + ': exact makespan');
+    }
   });
 } else {
   console.log('note: web/vendor/aprm.js not built (run `make wasm`); real-engine test skipped');

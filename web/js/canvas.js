@@ -24,19 +24,56 @@
   var ROW_H = 16;
   var WAIT_ROWS = 8;
   var RUN_ROWS = 6;
-  var PALETTE_SIZE = 8;
-  var PALETTE_VARS = ['--job-0', '--job-1', '--job-2', '--job-3', '--job-4', '--job-5', '--job-6', '--job-7'];
-  var FALLBACK_PALETTE = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6', '#ec4899', '#84cc16'];
-  var FALLBACK_COLOURS = { text: '#1c2330', muted: '#5b6577', border: '#d5dae3', accent: '#1f5fbf', panel: '#ffffff', mark: '#c0392b' };
+  var PALETTE_SIZE = 10;
+  var PALETTE_VARS = ['--job-0', '--job-1', '--job-2', '--job-3', '--job-4', '--job-5', '--job-6', '--job-7', '--job-8', '--job-9'];
+  var FALLBACK_PALETTE = ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'];
+  var FALLBACK_COLOURS = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', accent: '#0B5E6B', panel: '#FFFFFF', mark: '#B42318', font: 'system-ui, sans-serif' };
 
   /* Palette index of a job: only a colour choice, never a decision. */
   function paletteIndex(id) { return ((id % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE; }
+
+  /* Relative luminance of a #RRGGBB colour, or -1 when the text is not that form. */
+  function luminance(hex) {
+    var m = /^#([0-9a-fA-F]{6})$/.exec(String(hex).trim());
+    if (!m) { return -1; }
+    var c = [0, 2, 4].map(function (i) {
+      var v = parseInt(m[1].substr(i, 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
+
+  /* Whichever of two inks reads better on a background colour (higher contrast). Falls back to `a`. */
+  function betterInk(bg, a, b) {
+    var lb = luminance(bg), la = luminance(a), lc = luminance(b);
+    if (lb < 0 || la < 0 || lc < 0) { return a; }
+    var ca = (Math.max(lb, la) + 0.05) / (Math.min(lb, la) + 0.05);
+    var cb = (Math.max(lb, lc) + 0.05) / (Math.min(lb, lc) + 0.05);
+    return ca >= cb ? a : b;
+  }
+
+  /* Hatch pattern for job `id`: 0 none, 1 slanted lines, 2 vertical lines. Skipped when the
+   * 2D context cannot clip (tests). O(width / 4). */
+  function drawHatch(ctx, id, x, y, w, h, ink) {
+    var kind = ((id % 3) + 3) % 3;
+    if (kind === 0 || w < 6 || h < 4) { return; }
+    if (typeof ctx.save !== 'function' || typeof ctx.clip !== 'function') { return; }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.strokeStyle = ink; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (var gx = x - (kind === 1 ? h : 0); gx < x + w; gx += 4) {
+      if (kind === 1) { ctx.moveTo(gx, y + h); ctx.lineTo(gx + h, y); } else { ctx.moveTo(gx + 0.5, y); ctx.lineTo(gx + 0.5, y + h); }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
 
   /* Colours from the CSS variables (light and dark values live in style.css);
    * fall back to fixed values when no computed style is available. O(1). */
   function colours(el) {
     var out = { text: FALLBACK_COLOURS.text, muted: FALLBACK_COLOURS.muted, border: FALLBACK_COLOURS.border,
-      accent: FALLBACK_COLOURS.accent, panel: FALLBACK_COLOURS.panel, mark: FALLBACK_COLOURS.mark,
+      accent: FALLBACK_COLOURS.accent, panel: FALLBACK_COLOURS.panel, mark: FALLBACK_COLOURS.mark, font: FALLBACK_COLOURS.font,
       jobs: FALLBACK_PALETTE.slice() };
     if (typeof getComputedStyle !== 'function' || !el) { return out; }
     try {
@@ -46,6 +83,7 @@
       out.border = pick('--border', out.border); out.accent = pick('--accent', out.accent);
       out.panel = pick('--panel', out.panel); out.mark = pick('--mark', out.mark);
       for (var i = 0; i < PALETTE_SIZE; i++) { out.jobs[i] = pick(PALETTE_VARS[i], out.jobs[i]); }
+      if (cs.fontFamily) { out.font = cs.fontFamily; }
     } catch (e) { /* keep the fallbacks */ }
     return out;
   }
@@ -153,7 +191,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     var col = colours(el);
     ctx.clearRect(0, 0, cssW, HEIGHT);
-    ctx.font = '13px system-ui, sans-serif';
+    ctx.font = '13px ' + col.font;
     ctx.textBaseline = 'alphabetic';
     var lay = layout(view, cssW, HEIGHT);
     el.__layout = lay;
@@ -167,6 +205,14 @@
       ctx.fillStyle = colour || col.text;
       ctx.fillText(s, x, y, maxW);
     };
+    /* A job block: its colour, one of three hatch patterns (id mod 3, so colour is not the only
+     * signal) and, when it is big enough, its number. Drawing only; no decisions. */
+    var block = function (id, x, y, w, h) {
+      ctx.fillStyle = jobCol(id);
+      ctx.fillRect(x, y, w, h);
+      drawHatch(ctx, id, x, y, w, h, col.panel);
+      if (w >= 18 && h >= 12) { text(String(id), x + 3, y + h - 4, w - 4, betterInk(jobCol(id), col.panel, col.text)); }
+    };
 
     text('Time ' + st.now + '   events ' + view.events + '   done ' + st.done + ' of ' + st.total, MARGIN, lay.clockY, lay.w - 2 * MARGIN);
 
@@ -179,8 +225,7 @@
       ctx.fillRect(bx.x, bx.y, bx.w, bx.h);
       for (var b = 0; b < bx.blocks.length; b++) {
         var blk = bx.blocks[b];
-        ctx.fillStyle = jobCol(blk.id);
-        ctx.fillRect(blk.x, blk.y, blk.w, blk.h);
+        block(blk.id, blk.x, blk.y, blk.w, blk.h);
         if (sel === blk.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 2; ctx.strokeRect(blk.x, blk.y, blk.w, blk.h); }
         regions.push({ x: blk.x, y: blk.y, w: blk.w, h: blk.h, id: blk.id });
       }
@@ -240,8 +285,7 @@
       }
       if (started) {
         var end = bb.finish !== undefined ? bb.finish : st.now;
-        ctx.fillStyle = jobCol(jb.id);
-        ctx.fillRect(sx(bb.start), ry, Math.max(1, sx(end) - sx(bb.start)), bh);
+        block(jb.id, sx(bb.start), ry, Math.max(1, sx(end) - sx(bb.start)), bh);
       }
       if (sel === jb.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 1; ctx.strokeRect(g.x, ry, g.w, Math.max(1, g.rowH)); }
       if (g.rowH >= 12) { text(String(jb.id), MARGIN + LABEL_W - 24, ry + 10, 22, col.muted); }
@@ -261,6 +305,8 @@
     WAIT_ROWS: WAIT_ROWS,
     RUN_ROWS: RUN_ROWS,
     paletteIndex: paletteIndex,
+    PALETTE_SIZE: PALETTE_SIZE,
+    drawHatch: drawHatch,
     layout: layout,
     hit: hit,
     draw: draw

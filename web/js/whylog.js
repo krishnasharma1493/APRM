@@ -30,6 +30,13 @@
   /* One line: "t=12: Job 7 skipped: needs 3 cores, only 1 core free." */
   function lineText(e) { return 't=' + e.t + ': ' + e.msg; }
 
+  /* Words from copy.js, with a fallback when copy.js is not loaded. */
+  function words(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
   function clear(el) { while (el.firstChild) { el.removeChild(el.firstChild); } }
 
   /* Redraw the list. entries: engine log entries; selected: job id or null.
@@ -42,7 +49,7 @@
     var sig = entries.length + ':' + (selected === null || selected === undefined ? '-' : selected);
     var shown = visible(entries, selected);
     if (filter) {
-      filter.textContent = (selected === null || selected === undefined) ? '' : 'Showing only job ' + selected + '.';
+      filter.textContent = (selected === null || selected === undefined) ? '' : words('run.why.only', 'Showing only job ' + selected + '.', { id: selected });
       filter.hidden = (selected === null || selected === undefined);
     }
     var clearBtn = document.getElementById('whylog-clear');
@@ -50,8 +57,8 @@
     if (empty) {
       empty.hidden = shown.length > 0;
       empty.textContent = entries.length === 0
-        ? 'The reasons for each decision appear here once a run starts.'
-        : 'No log lines for job ' + selected + ' yet.';
+        ? words('run.why.empty', 'The reasons for each decision appear here once a run starts.')
+        : words('run.why.none', 'No log lines for job ' + selected + ' yet.', { id: selected });
     }
     if (!list || sig === lastSig) { return shown.length; }
     lastSig = sig;
@@ -61,6 +68,10 @@
       li.textContent = lineText(shown[i]);
       li.setAttribute('class', 'why-' + String(shown[i].kind).toLowerCase() + (shown[i].job === selected ? ' why-selected' : ''));
       li.setAttribute('data-job', String(shown[i].job));
+      /* The plain label and the raw kind are attributes shown by CSS, so the line itself stays
+       * one text node with the engine's sentence unchanged. */
+      li.setAttribute('data-kind-label', words('kind.' + shown[i].kind, String(shown[i].kind)));
+      li.setAttribute('data-kind', String(shown[i].kind));
       list.appendChild(li);
     }
     return shown.length;
