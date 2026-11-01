@@ -253,6 +253,29 @@ def build_e3_figure(rows: pd.DataFrame, note: str = ""):
     return fig
 
 
+def build_e5_figure(rows: pd.DataFrame, note: str = ""):
+    """Build the E5 figure: maximum wait vs share of big-memory jobs."""
+    # Make a new empty figure with one set of axes.
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+    # One line (with error bars and band) for each policy: aging and reserve.
+    for policy in list(rows["policy"].unique()):
+        draw_policy_line(ax, rows, policy, "max_wait")
+
+    # Put a tick at every share that is in the file (0, 10, 20, 30, 40).
+    ax.set_xticks(sorted(rows["x_value"].unique()))
+
+    # Title and axis labels, with units.
+    ax.set_title("E5: Maximum wait vs share of big-memory jobs" + note)
+    ax.set_xlabel("Big-memory jobs (%)")
+    ax.set_ylabel("Maximum wait (ticks)")
+
+    # Legend with the policy names.
+    ax.legend(title="Policy")
+    fig.tight_layout()
+    return fig
+
+
 def plot_e1_avg_wait(summary_dir: str, out_dir: str) -> str:
     """Draw E1 (average wait vs load); save PNG and PDF; return the PNG path."""
     # Read the E1 summary (only file this figure needs).
@@ -306,6 +329,19 @@ def plot_e3_wait_by_priority(summary_dir: str, out_dir: str) -> str:
     return save_figure(fig, "e3_wait_by_priority", out_dir)[0]
 
 
+def plot_e5_max_wait(summary_dir: str, out_dir: str) -> str:
+    """Draw E5 (maximum wait vs big-memory share); save PNG and PDF; return PNG path."""
+    # Read the E5 summary.
+    rows = read_summary(summary_dir, "e5_summary.csv")
+
+    # Apply the shared style, then build the figure.
+    apply_style()
+    fig = build_e5_figure(rows, sample_note(summary_dir))
+
+    # Save and return the PNG path.
+    return save_figure(fig, "e5_max_wait", out_dir)[0]
+
+
 def run_all(summary_dir: str, out_dir: str) -> list:
     """Draw every figure from summary_dir into out_dir; return the PNG paths."""
     # The list of figure functions, in report order.
@@ -314,6 +350,7 @@ def run_all(summary_dir: str, out_dir: str) -> list:
         plot_e2_max_wait,
         plot_e2_wait_cdf,
         plot_e3_wait_by_priority,
+        plot_e5_max_wait,
     ]
 
     # Call each one and collect the PNG paths.

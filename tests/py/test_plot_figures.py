@@ -250,6 +250,7 @@ FIGURES = [
     (pf.plot_e2_max_wait, "e2_max_wait", "e2_summary.csv", "E2:"),
     (pf.plot_e2_wait_cdf, "e2_wait_cdf", "e2_wait_cdf.csv", "E2:"),
     (pf.plot_e3_wait_by_priority, "e3_wait_by_priority", "e3_summary.csv", "E3:"),
+    (pf.plot_e5_max_wait, "e5_max_wait", "e5_summary.csv", "E5:"),
 ]
 
 
@@ -501,3 +502,108 @@ def test_cdf_is_a_step_curve_with_post(monkeypatch, tmp_path) -> None:
     for line in fig.axes[0].get_lines():
         assert line.get_drawstyle() == "steps-post"
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# A-04: E5, maximum wait vs share of big-memory jobs (aging vs reserve).
+# ---------------------------------------------------------------------------
+
+
+def test_e5_files_are_written(tmp_path: Path) -> None:
+    """e5-files: the function writes e5_max_wait.png and .pdf, both non-empty."""
+    png = Path(pf.plot_e5_max_wait(SAMPLE_DIR, str(tmp_path)))
+    assert png.name == "e5_max_wait.png"
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    pdf = tmp_path / "e5_max_wait.pdf"
+    assert pdf.is_file() and pdf.stat().st_size > 0
+    assert plt.get_fignums() == []
+
+
+def test_e5_exact_title_and_labels(monkeypatch, tmp_path) -> None:
+    """E5 has the agreed title, axis labels with units, and a legend."""
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    assert ax.get_title().startswith("E5: Maximum wait vs share of big-memory jobs")
+    assert "(SAMPLE DATA)" in ax.get_title()
+    assert ax.get_xlabel() == "Big-memory jobs (%)"
+    assert ax.get_ylabel() == "Maximum wait (ticks)"
+    assert ax.get_legend() is not None
+
+
+def test_e5_two_lines_aging_and_reserve(monkeypatch, tmp_path) -> None:
+    """two-lines: exactly aging and reserve, y equals max_wait_mean, x equals x_value."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e5_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    drawn = policy_lines(fig.axes[0])
+    assert sorted(drawn) == ["aging", "reserve"]
+    for policy, (xs, ys) in _expected_lines(rows, "max_wait").items():
+        assert list(drawn[policy].get_xdata()) == xs == [0, 10, 20, 30, 40]
+        assert list(drawn[policy].get_ydata()) == ys
+
+
+def test_e5_error_bar_ends_equal_ci_columns(monkeypatch, tmp_path) -> None:
+    """Each error bar runs from max_wait_ci_low to max_wait_ci_high."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e5_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    assert len(ax.containers) == 2
+    for container in ax.containers:
+        mine = rows[rows["policy"] == container.get_label()].sort_values("x_value")
+        segs = container.lines[2][0].get_segments()
+        assert [seg[0][1] for seg in segs] == list(mine["max_wait_ci_low"])
+        assert [seg[1][1] for seg in segs] == list(mine["max_wait_ci_high"])
+
+
+def test_e5_band_equals_ci(monkeypatch, tmp_path) -> None:
+    """The shaded band of each policy runs from ci_low to ci_high."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e5_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    bands = [c for c in fig.axes[0].collections if c.get_alpha() is not None]
+    assert len(bands) == 2
+    for band, policy in zip(bands, rows["policy"].unique()):
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        verts = band.get_paths()[0].vertices
+        n = len(mine)
+        assert list(verts[1:n + 1, 1]) == list(mine["max_wait_ci_low"])
+        assert sorted(verts[n + 2:2 * n + 2, 1]) == sorted(mine["max_wait_ci_high"])
+
+
+def test_e5_look_per_policy_is_literal(monkeypatch, tmp_path) -> None:
+    """Aging and reserve use the literal colour, dash style and marker."""
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    for policy, line in policy_lines(fig.axes[0]).items():
+        colour, _style, marker = EXPECTED_LOOK[policy]
+        assert line.get_color() == colour
+        assert line.get_marker() == marker
+    # Aging dotted, reserve long dashes: the two lines must differ in style too.
+    drawn = policy_lines(fig.axes[0])
+    assert drawn["aging"].get_linestyle() == ":"
+    assert drawn["reserve"].get_linestyle() != drawn["aging"].get_linestyle()
+
+
+def test_e5_x_ticks_are_the_csv_shares(monkeypatch, tmp_path) -> None:
+    """The x ticks are exactly the shares found in the file."""
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, SAMPLE_DIR, str(tmp_path))
+    assert list(fig.axes[0].get_xticks()) == [0, 10, 20, 30, 40]
+
+
+def test_e5_real_data_has_no_sample_note(monkeypatch, tmp_path) -> None:
+    """A folder not called sample_summaries gives a title without SAMPLE DATA."""
+    d = tmp_path / "summaries"
+    d.mkdir()
+    (d / "e5_summary.csv").write_bytes(Path(SAMPLE_DIR, "e5_summary.csv").read_bytes())
+    fig = _catch_figure(monkeypatch, pf.plot_e5_max_wait, str(d), str(tmp_path / "o"))
+    assert "SAMPLE" not in fig.axes[0].get_title()
+
+
+def test_e5_missing_file_error(tmp_path: Path) -> None:
+    """Without e5_summary.csv the function raises a clear FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match="e5_summary.csv"):
+        pf.plot_e5_max_wait(str(tmp_path), str(tmp_path / "out"))
+
+
+def test_run_all_includes_e5(tmp_path: Path) -> None:
+    """run_all draws E5 as its last figure."""
+    names = [Path(p).name for p in pf.run_all(SAMPLE_DIR, str(tmp_path))]
+    assert names[-1] == "e5_max_wait.png"
+    assert (tmp_path / "e5_max_wait.pdf").is_file()
