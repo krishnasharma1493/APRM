@@ -408,3 +408,105 @@ def test_e1_null_in_one_seed_raises_not_drops(tmp_path) -> None:
     write_run(root, "E1", "light", "fcfs", 3, [])         # seed 3: no finished job, avg_wait null
     with pytest.raises(ValueError, match="avg_wait"):
         sm.summarize_e1(root, TEST_T)
+
+
+# ---- E5 (K-28) --------------------------------------------------------------
+def e5_tree(tmp_path: Path, seeds=(1, 2, 3)) -> Path:
+    """E5 tree: shares 10 and 0 (written out of order), aging and reserve.
+
+    Aging seed k: waits (0, 4k) -> max_wait 4k, avg_wait 2k.
+    Reserve seed k: waits (0, 2k) -> max_wait 2k, avg_wait k.
+    """
+    root = tmp_path / "raw"
+    for k in seeds:
+        for share in ("10", "0"):
+            write_run(root, "E5", share, "reserve", k, job_set(0, 2 * k))
+            write_run(root, "E5", share, "aging", k, job_set(0, 4 * k))
+    return root
+
+
+def test_e5_columns_match_sample_exactly(tmp_path) -> None:
+    table = sm.summarize_e5(e5_tree(tmp_path), TEST_T)
+    assert list(table.columns) == sm.SUMMARY_COLUMNS["e5_summary.csv"]
+    assert list(table.columns) == header(SAMPLES / "e5_summary.csv")
+    out = tmp_path / "out"
+    written = sm.summarize(["E5"], e5_tree(tmp_path / "x"), out, TEST_T)
+    assert [p.name for p in written] == ["e5_summary.csv"]
+    assert header(out / "e5_summary.csv") == header(SAMPLES / "e5_summary.csv")
+    check_ci_order(out / "e5_summary.csv")
+
+
+def test_e5_hand_computed_and_row_order(tmp_path) -> None:
+    table = sm.summarize_e5(e5_tree(tmp_path), TEST_T)
+    # config order: shares ascending (0 before 10), aging before reserve
+    assert [(r.setting, r.policy) for r in table.itertuples()] == [
+        ("big_mem_pct=0", "aging"), ("big_mem_pct=0", "reserve"),
+        ("big_mem_pct=10", "aging"), ("big_mem_pct=10", "reserve")]
+    assert list(table.x_value) == [0, 0, 10, 10]
+    assert set(table.experiment) == {"E5"} and set(table.n_seeds) == {3}
+    aging, reserve = table.iloc[0], table.iloc[1]
+    half = 4.303 / math.sqrt(3)
+    # aging max_wait values 4, 8, 12: mean 8, s = 4; avg_wait 2, 4, 6: mean 4, s = 2
+    assert aging.max_wait_mean == 8.0
+    assert aging.max_wait_ci_high - 8.0 == pytest.approx(4 * half, abs=1e-6)
+    assert aging.max_wait_ci_low == pytest.approx(8.0 - 4 * half, abs=1e-6)
+    assert aging.avg_wait_mean == 4.0
+    assert aging.avg_wait_ci_high - 4.0 == pytest.approx(2 * half, abs=1e-6)
+    # reserve max_wait 2, 4, 6: mean 4, s = 2
+    assert reserve.max_wait_mean == 4.0
+    assert reserve.max_wait_ci_high - 4.0 == pytest.approx(2 * half, abs=1e-6)
+
+
+def test_e5_needs_30_seeds_and_uses_t_2045(tmp_path) -> None:
+    assert sm.t_value(30) == 2.045
+    with pytest.raises(ValueError, match="no Student-t value"):
+        sm.summarize_e5(e5_tree(tmp_path))           # 3 seeds, production table
+    root = tmp_path / "full"
+    for k in range(1, 31):
+        write_run(root, "E5", "0", "aging", k, job_set(0, k))
+    table = sm.summarize_e5(root)                    # 30 seeds, built-in t = 2.045
+    r = table.iloc[0]
+    assert r.n_seeds == 30 and r.max_wait_mean == 15.5
+    s = math.sqrt(sum((k - 15.5) ** 2 for k in range(1, 31)) / 29)
+    assert r.max_wait_ci_high - 15.5 == pytest.approx(2.045 * s / math.sqrt(30), abs=1e-6)
+
+
+def test_e5_null_metric_raises_not_drops(tmp_path) -> None:
+    root = e5_tree(tmp_path)
+    import shutil
+    shutil.rmtree(root / "E5" / "0" / "aging" / "3")
+    write_run(root, "E5", "0", "aging", 3, [])        # no finished job: avg_wait null (D62)
+    with pytest.raises(ValueError, match="avg_wait"):
+        sm.summarize_e5(root, TEST_T)
+
+
+def test_e5_missing_policy_leaves_no_row(tmp_path) -> None:
+    root = tmp_path / "raw"
+    for k in (1, 2, 3):
+        write_run(root, "E5", "20", "aging", k, job_set(0, k))
+    table = sm.summarize_e5(root, TEST_T)
+    assert list(table.policy) == ["aging"] and list(table.setting) == ["big_mem_pct=20"]
+
+
+def test_e5_policies_and_settings_in_config() -> None:
+    assert config.EXPERIMENT_POLICIES["E5"] == ["aging", "reserve"]
+    assert config.summary_label("E5", "40") == "big_mem_pct=40"
+    assert config.SEEDS == list(range(1, 31))
+
+
+@needs_cli
+def test_e5_end_to_end_tiny_grid(tmp_path) -> None:
+    """Two seeds, shares 0 and 40, aging vs reserve through build/aprm, then summarise."""
+    raw, out = tmp_path / "raw", tmp_path / "out"
+    rx.execute_grid("E5", True, out=str(raw), settings=["0", "40"])
+    sm.summarize(["E5"], raw, out, {2: 12.706})
+    e5 = rows(out / "e5_summary.csv")
+    assert [(r["setting"], r["policy"]) for r in e5] == [
+        ("big_mem_pct=0", "aging"), ("big_mem_pct=0", "reserve"),
+        ("big_mem_pct=40", "aging"), ("big_mem_pct=40", "reserve")]
+    assert [r["x_value"] for r in e5] == ["0", "0", "40", "40"]
+    assert all(r["n_seeds"] == "2" and r["experiment"] == "E5" for r in e5)
+    assert header(out / "e5_summary.csv") == header(SAMPLES / "e5_summary.csv")
+    check_ci_order(out / "e5_summary.csv")
+    # no big-memory jobs: reservation never triggers, both policies are identical
+    assert e5[0]["max_wait_mean"] == e5[1]["max_wait_mean"]
