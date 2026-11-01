@@ -23,3 +23,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-15 | Autonomous run: experiment runner; independent AI review | PR #70 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-16 | Autonomous run: invariant property checker; independent AI review with differential and mutation testing | PR #71 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-23 | Autonomous run: website shell (index.html, wasm.js, store.js, app.js), Node tests with fake DOM; independent AI review with mutation testing; file:// checked in headless Chrome | PR #72 | to confirm |
+| 2026-11-01 | Ahaana (owner) | A-01 | Written by Claude Code at Krishna's request: tools/plot_figures.py hello figure, tests, docs/AHAANA_GUIDE.md; independent AI review found a crashing exercise answer and a wrong confidence-interval explanation, both fixed | PR #74 | awaiting Ahaana's reading |
