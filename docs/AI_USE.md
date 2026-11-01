@@ -56,3 +56,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-49 | PR 7: dead CSS removed, keyboard-only demo path check in day and night, findings closed, DESIGN.md recorded from the shipped site | K-49 PR 7, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-36 | Shareable links rebased onto the redesign: Share box in More ways to add jobs, copy keys, fallback for a link naming an unbuilt scheduler | PR #98 | to confirm |
 | 2026-11-02 | Krishna | K-49 follow-up | Run page: a scheduler the engine does not have yet cannot be chosen (same flag as Compare); test added | K-49 follow-up PR, issue #112 | to confirm |
+| 2026-11-02 | Krishna | K-50 | Run ends a stale run when the jobs or machine change; regression test | K-50 fix PR, issue #121 | to confirm |
