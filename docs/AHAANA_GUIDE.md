@@ -487,3 +487,95 @@ reservation saves, and the gap grows as big jobs become more common.
    Undo it afterwards.
 
 </details>
+
+---
+
+## A-05: one command for every figure
+
+### The idea in one sentence
+
+One command redraws every figure from the summary files, so the pictures in
+the report can never be older than the data. If Krishna re-runs the
+experiments, you re-run one command.
+
+### What a smoke test is
+
+A smoke test does not check every detail. It only checks "does it run and
+does it produce something?" (The name comes from electronics: switch it on and
+see whether smoke comes out.) Ours runs the whole script on the sample data
+and checks that all ten files (five PNG, five PDF) exist.
+
+### The code, line by line where it matters
+
+- **`FIGURES`** is a list of pairs: (figure function, the summary file it
+  needs). It is the only place that says which figures exist. To add a figure
+  later, add one line here.
+- **`run_all(summary_dir, out_dir)`** walks `FIGURES`. For each pair it checks
+  `os.path.isfile(...)` for the summary file. If the file is missing it prints
+  `Skipping <function>: <file> not found in <folder>` and moves on. Otherwise
+  it draws the figure. We *test for the file* instead of using `try/except`
+  on purpose: a `try/except` would also hide real mistakes (a wrong column
+  name, a broken plot), and a hidden mistake gives a wrong report.
+- **`main(input_dir, output_dir)`** first checks that the input folder exists
+  (a typo in the folder name must not look like "no data"), calls `run_all`,
+  and returns the list of every PNG and PDF written.
+- **`read_options`** reads `--input` and `--output`. `--out` still works as
+  another name for `--output` (`add_argument("--output", "--out", ...)`).
+- **`cli`** calls `main`, prints each file path, and chooses the exit status:
+  0 = at least one figure drawn; 1 = nothing could be drawn; 2 = the input
+  folder does not exist. An unknown option (for example `--bogus`) is stopped
+  by argparse, also with status 2.
+
+### How to run
+
+```sh
+# Sample data (fake numbers, titles say SAMPLE DATA)
+python tools/plot_figures.py --input data/sample_summaries --output /tmp/figs
+
+# Real data, into the report folder
+python tools/plot_figures.py --input results/summaries --output docs/report/figures
+```
+
+Without options the script reads the sample data and writes to
+`docs/report/figures`. The tests always write into a temporary folder, never
+into `docs/report/figures`.
+
+### How to read the printed messages
+
+- A line with a file path ending in `.png` or `.pdf`: that file was written.
+- `Skipping plot_e5_max_wait: e5_summary.csv not found in <folder>`: that
+  summary file is not there yet, so that one figure was not drawn. The other
+  figures are fine. Ask Krishna whether the file is still to come.
+- `error: input folder not found: ...`: you mistyped `--input`. Nothing was
+  written.
+- `error: no figures were drawn ...`: the folder exists but holds none of the
+  summary files. Check that you pointed at the right folder.
+
+### Figures that are still missing
+
+The sample folder already has `e4_summary.csv`, `e6_summary.csv` and
+`e6_ratios.csv`, but this script draws only E1, E2, E3 and E5. The E4 and E6
+figures will be added later through issue K-35. Until then, "all figures"
+means those five (ten files), and you should not worry that E4 and E6 are not
+in the output.
+
+### Exercises
+
+1. **Skip.** Copy the sample folder, delete `e5_summary.csv` from the copy and
+   run the script on the copy. What is printed and how many files appear?
+2. **Typo.** Run it with `--input results/sumaries` (a typo). What happens, and
+   what is the exit status (`echo $?` right after)?
+3. **Empty.** Run it on an empty folder. Is that a success?
+
+<details>
+<summary>Answers (try first!)</summary>
+
+1. One line `Skipping plot_e5_max_wait: e5_summary.csv not found in <folder>`
+   and 8 files (E1, E2 max wait, E2 CDF and E3, each PNG and PDF); the exit
+   status is 0. (I ran this.)
+2. `error: input folder not found: results/sumaries`, no files written, exit
+   status 2. (I ran this.)
+3. No: five "Skipping" lines, then `error: no figures were drawn ...`, exit
+   status 1, and the output folder is not even created. (I ran this.)
+
+</details>
