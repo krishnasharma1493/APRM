@@ -125,7 +125,9 @@
           return;
         }
         if (err) { err.textContent = ''; err.hidden = true; }
-        APRM.store.setJobs(generate(s, APRM.store.get().machine));
+        var made = generate(s, APRM.store.get().machine);
+        APRM.store.setJobs(made);
+        if (APRM.app && typeof APRM.app.toast === 'function' && APRM.copy) { APRM.app.toast(APRM.copy.fill('toast.generated', { n: made.length })); }
       });
     }
   }

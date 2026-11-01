@@ -45,7 +45,12 @@ test('every defined key is used somewhere (no dead copy)', () => {
   const sources = [readFileSync(join(web, 'index.html'), 'utf8')];
   for (const f of readdirSync(join(web, 'js'))) if (f.endsWith('.js') && f !== 'copy.js') sources.push(readFileSync(join(web, 'js', f), 'utf8'));
   const all = sources.join('\n');
-  for (const k of keys) assert.ok(all.includes('"' + k + '"') || all.includes("'" + k + "'"), 'unused copy key: ' + k);
+  const presets = readFileSync(join(web, 'js', 'presets_data.js'), 'utf8');
+  const dynamic = (k) => {                       // preset.<name>.title|hint is built as 'preset.' + name + '.title'
+    const m = k.match(/^preset\.([a-z_]+)\.(title|hint)$/);
+    return !!m && all.includes("'preset.'") && presets.includes('"name": "' + m[1] + '"');
+  };
+  for (const k of keys) assert.ok(all.includes('"' + k + '"') || all.includes("'" + k + "'") || dynamic(k), 'unused copy key: ' + k);
 });
 
 let failed = 0;

@@ -339,6 +339,8 @@
       tr.appendChild(delCell);
       body.appendChild(tr);
     }
+    var machineLine = byId('machine-summary');
+    if (machineLine && APRM.copy) { machineLine.textContent = APRM.copy.fill('build.machine.summary', { cpu: st.machine.cpu, mem: st.machine.mem }); }
     var summary = byId('table-summary');
     if (summary) {
       summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + ' (limit ' + MAX_JOBS_WEB + ')' +
@@ -380,6 +382,8 @@
       if (inp) { setClass(inp, 'cell-error', !!bad[FIELDS[n]]); }
     }
     setMsg(byId('add-error'), msgs.join(' '));
+    var lead = byId('add-error-lead');
+    if (lead) { lead.hidden = msgs.length === 0; }
     if (msgs.length > 0) { return false; }
     var jobs = st.jobs;
     jobs.push(job);
@@ -465,6 +469,7 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       say('Exported ' + st.jobs.length + ' jobs to jobs.csv.', true);
+      if (APRM.app && typeof APRM.app.toast === 'function' && APRM.copy) { APRM.app.toast(APRM.copy.get('toast.exported')); }
     } catch (e) {
       say('The download could not start: ' + (e && e.message ? e.message : String(e)), false);
     }

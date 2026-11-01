@@ -452,13 +452,17 @@ test('presets-load: every one of the six loads capacities, settings and jobs, as
   const { A, el } = page();
   const names = ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case'];
   assert.deepEqual(plain(A.presets.all().map((p) => p.name).sort()), [...names].sort());
-  const select = el('preset-select');
-  assert.equal(select.children.length, 6);
+  const tiles = el('preset-tiles');
+  assert.equal(tiles.children.length, 6);
+  const tileOf = (name) => tiles.children.find((t) => t.getAttribute('data-preset') === name);
   for (const name of names) {
     const p = A.presets.find(name);
-    select.value = name; select.fire('change');
-    assert.equal(el('preset-desc').textContent, p.description);
-    el('preset-load').click();
+    const tile = tileOf(name);
+    assert.ok(tile, 'a tile for ' + name);
+    assert.equal(tile.children[0].textContent, A.copy.get('preset.' + name + '.title'), 'plain title');
+    assert.equal(tile.children[2].textContent, p.description, 'full technical description kept (shown with Show details)');
+    tile.click();
+    assert.equal(tile.getAttribute('aria-pressed'), 'true');
     const st = A.store.get();
     assert.equal(st.machine.cpu, p.cpu_cap, name);
     assert.equal(st.machine.mem, p.mem_cap, name);
@@ -478,10 +482,34 @@ test('presets-load: every one of the six loads capacities, settings and jobs, as
   assert.equal(A.presets.find('tiny_case').jobs[0].duration, before);
 });
 
+test('build: empty state, machine summary and the add-job lead-in', () => {
+  const { A, el } = page();
+  assert.equal(el('table-empty').hidden, false);
+  assert.match(html, /id="table-empty"[^>]*data-copy="build\.empty"/);
+  assert.equal(el('machine-summary').textContent, 'Machine: 16 cores and 32768 MB of memory.');
+  el('add-id').value = '1'; el('add-priority').value = '99';
+  el('add-submit').click();
+  assert.equal(el('add-error-lead').hidden, false);
+  assert.match(html, /id="add-error-lead"[^>]*data-copy="job\.add\.lead"/);
+  assert.match(el('add-error').textContent, /priority must be 0 to 9\./);
+  el('add-priority').value = '5'; el('add-submit').click();
+  assert.equal(el('add-error-lead').hidden, true);
+});
+
+test('build: every tile also reaches the toast with the plain title; generator and export toast too', () => {
+  const { A, el } = page();
+  const seen = [];
+  A.app = { toast: (t) => seen.push(t) };
+  el('preset-tiles').children[0].click();
+  el('gen-run').click();
+  assert.equal(seen[0], 'Loaded \u201cThe big job trap\u201d.');
+  assert.match(seen[1], /^Replaced your jobs with \d+ random ones\.$/);
+});
+
 test('presets-load through app.js: the picker is filled when the page starts', async () => {
   const { A, el } = page({ app: true });
-  assert.equal(el('preset-select').children.length, 6);
-  el('preset-load').click();
+  assert.equal(el('preset-tiles').children.length, 6);
+  el('preset-tiles').children[0].click();
   assert.ok(A.store.get().jobs.length > 0);
   A.store.setMode('run');
   assert.equal(el('build-panel').hidden, true);

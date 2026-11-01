@@ -31,62 +31,25 @@
   <noscript><p class="error-box" data-copy="noscript">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
 
   <section id="build-panel" class="panel build-panel" aria-label="Build">
-    <h2>Build</h2>
-    <div class="build-grid">
-      <fieldset class="build-box">
-        <legend>Machine</legend>
-        <label for="cpu-input">CPU cores</label>
-        <input id="cpu-input" type="text" inputmode="numeric" value="16">
-        <p id="cpu-error" class="field-error" role="alert" hidden></p>
-        <label for="mem-input">Memory (MB)</label>
-        <input id="mem-input" type="text" inputmode="numeric" value="32768">
-        <p id="mem-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
+    <h2 data-copy="build.heading">Let&rsquo;s schedule some jobs</h2>
+    <p class="intro" data-copy="build.intro"></p>
 
-      <fieldset class="build-box">
-        <legend>Preset</legend>
-        <label for="preset-select">Choose a preset</label>
-        <select id="preset-select"></select>
-        <button type="button" id="preset-load">Load preset</button>
-        <p id="preset-desc" class="empty" hidden></p>
-      </fieldset>
+    <h3 data-copy="build.examples">Try an example</h3>
+    <div id="preset-tiles" class="tiles"></div>
+    <p id="preset-desc" class="empty" hidden></p>
 
-      <fieldset class="build-box">
-        <legend>Generate random jobs</legend>
-        <label for="gen-seed">Seed</label>
-        <input id="gen-seed" type="text" inputmode="numeric" value="42">
-        <button type="button" id="gen-newseed">New seed</button>
-        <label for="gen-count">Jobs: <output id="gen-count-out">12</output></label>
-        <input id="gen-count" type="range" min="1" max="200" value="12">
-        <label for="gen-arrival">Latest arrival (ticks): <output id="gen-arrival-out">30</output></label>
-        <input id="gen-arrival" type="range" min="0" max="200" value="30">
-        <label for="gen-duration">Longest duration (ticks): <output id="gen-duration-out">10</output></label>
-        <input id="gen-duration" type="range" min="1" max="100" value="10">
-        <label for="gen-cpu">Largest CPU (% of machine): <output id="gen-cpu-out">50</output></label>
-        <input id="gen-cpu" type="range" min="1" max="100" value="50">
-        <label for="gen-mem">Largest memory (% of machine): <output id="gen-mem-out">50</output></label>
-        <input id="gen-mem" type="range" min="1" max="100" value="50">
-        <button type="button" id="gen-run">Generate (replaces the table)</button>
-        <p id="gen-error" class="field-error" role="alert" hidden></p>
-      </fieldset>
-
-      <fieldset class="build-box">
-        <legend>CSV</legend>
-        <label for="csv-file">Import jobs.csv (up to 1 MB, 5000 jobs)</label>
-        <input id="csv-file" type="file" accept=".csv,text/csv">
-        <button type="button" id="csv-export">Export jobs.csv</button>
-        <p id="csv-status" role="status" hidden></p>
-        <ul id="csv-errors" class="error-list" hidden></ul>
-      </fieldset>
-    </div>
-
-    <h3>Job table</h3>
+    <h3 data-copy="build.jobs">Your jobs</h3>
+    <p id="machine-summary" class="hint"></p>
     <p id="table-summary" class="empty"></p>
-    <p id="table-empty" class="empty">The table is empty. Add a job below, load a preset, generate a set or import a CSV.</p>
+    <p id="table-empty" class="empty" data-copy="build.empty">No jobs yet. Add one, or start with an example.</p>
     <div class="table-wrap">
       <table class="job-table">
         <thead>
-          <tr><th>id</th><th>arrival</th><th>duration</th><th>cpu</th><th>mem (MB)</th><th>priority</th><th>problem</th><th></th></tr>
+          <tr>
+            <th data-copy="col.id"></th><th data-copy="col.arrival"></th><th data-copy="col.duration"></th>
+            <th data-copy="col.cpu"></th><th data-copy="col.mem"></th><th data-copy="col.priority"></th>
+            <th data-copy="col.problem"></th><th></th>
+          </tr>
         </thead>
         <tbody id="job-body"></tbody>
         <tfoot>
@@ -97,12 +60,58 @@
             <td><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
             <td><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
             <td><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
-            <td colspan="2"><button type="button" id="add-submit">Add job</button></td>
+            <td colspan="2"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
           </tr>
         </tfoot>
       </table>
     </div>
+    <p id="add-error-lead" class="field-error lead" hidden data-copy="job.add.lead">Can&rsquo;t add this job.</p>
     <p id="add-error" class="field-error" role="alert" hidden></p>
+
+    <details class="disclosure" id="more-ways">
+      <summary data-copy="build.more">More ways to add jobs</summary>
+      <div class="build-grid">
+        <fieldset class="build-box">
+          <legend data-copy="machine.title">Your machine</legend>
+          <label for="cpu-input" data-copy="machine.cpu">Processor cores (CPU)</label>
+          <input id="cpu-input" type="text" inputmode="numeric" value="16">
+          <p id="cpu-error" class="field-error" role="alert" hidden></p>
+          <label for="mem-input" data-copy="machine.mem">Memory (MB)</label>
+          <input id="mem-input" type="text" inputmode="numeric" value="32768">
+          <p class="hint" data-copy="machine.mem.hint"></p>
+          <p id="mem-error" class="field-error" role="alert" hidden></p>
+        </fieldset>
+
+        <fieldset class="build-box">
+          <legend data-copy="random.title">Make random jobs</legend>
+          <label for="gen-seed" data-copy="random.seed"></label>
+          <input id="gen-seed" type="text" inputmode="numeric" value="42">
+          <button type="button" class="btn" id="gen-newseed" data-copy="random.newseed">New seed</button>
+          <label for="gen-count"><span data-copy="random.count"></span>: <output id="gen-count-out">12</output></label>
+          <input id="gen-count" type="range" min="1" max="200" value="12">
+          <label for="gen-arrival"><span data-copy="random.arrival"></span>: <output id="gen-arrival-out">30</output></label>
+          <input id="gen-arrival" type="range" min="0" max="200" value="30">
+          <p class="hint" data-copy="random.tick.hint"></p>
+          <label for="gen-duration"><span data-copy="random.duration"></span>: <output id="gen-duration-out">10</output></label>
+          <input id="gen-duration" type="range" min="1" max="100" value="10">
+          <label for="gen-cpu"><span data-copy="random.cpu"></span>: <output id="gen-cpu-out">50</output></label>
+          <input id="gen-cpu" type="range" min="1" max="100" value="50">
+          <label for="gen-mem"><span data-copy="random.mem"></span>: <output id="gen-mem-out">50</output></label>
+          <input id="gen-mem" type="range" min="1" max="100" value="50">
+          <button type="button" class="btn" id="gen-run" data-copy="random.make">Make jobs (replaces your list)</button>
+          <p id="gen-error" class="field-error" role="alert" hidden></p>
+        </fieldset>
+
+        <fieldset class="build-box">
+          <legend data-copy="csv.title">Import or export jobs</legend>
+          <label for="csv-file" data-copy="csv.import"></label>
+          <input id="csv-file" type="file" accept=".csv,text/csv">
+          <button type="button" class="btn" id="csv-export" data-copy="csv.export">Export jobs.csv</button>
+          <p id="csv-status" role="status" hidden></p>
+          <ul id="csv-errors" class="error-list" hidden></ul>
+        </fieldset>
+      </div>
+    </details>
     <p class="next-row"><button type="button" class="btn btn-primary" data-next="run" data-copy="next.build">Next: run your jobs</button></p>
   </section>
 
@@ -211,6 +220,8 @@
     <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
     <ul id="metrics-list" class="metrics-list"></ul>
   </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules.
        No external script here: compare.js injects the pinned, integrity-checked Chart.js the first
