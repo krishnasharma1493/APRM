@@ -1,0 +1,72 @@
+/* Colours are CSS variables with light and dark values; dark follows the system. */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --text: #1c2330;
+  --muted: #5b6577;
+  --border: #d5dae3;
+  --accent: #1f5fbf;
+  --accent-text: #ffffff;
+  --error-bg: #fdecec;
+  --error-text: #8a1c1c;
+  --error-border: #e5a3a3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161d;
+    --panel: #1b212b;
+    --text: #e6eaf1;
+    --muted: #9aa5b8;
+    --border: #323b4a;
+    --accent: #6aa3f5;
+    --accent-text: #0c1018;
+    --error-bg: #3a1c1c;
+    --error-text: #ffc9c9;
+    --error-border: #7a3a3a;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+h1 { font-size: 1.25rem; margin: 0; }
+h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem;
+  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.modes { display: flex; gap: 0.25rem; }
+.modes button {
+  font: inherit; padding: 0.35rem 0.9rem; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px;
+}
+.modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.modes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { margin: 0 0 0 auto; color: var(--muted); }
+
+main {
+  display: grid; gap: 1rem; padding: 1rem;
+  grid-template-columns: minmax(14rem, 1fr) minmax(0, 2.5fr) minmax(14rem, 1fr);
+}
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; }
+.panel-bottom { margin: 0 1rem 1rem; }
+.empty { color: var(--muted); margin: 0.25rem 0; }
+.job-list { padding-left: 1.2rem; margin: 0.25rem 0; }
+
+.error-box {
+  margin: 1rem; padding: 0.75rem 1rem; border-radius: 8px;
+  background: var(--error-bg); color: var(--error-text); border: 1px solid var(--error-border);
+}
+.error-box[hidden] { display: none; }
+.error-box a { color: inherit; }
+main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
+
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APRM Scheduler</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>APRM scheduler</h1>
+    <div class="modes" role="group" aria-label="Mode">
+      <button type="button" data-mode-button="build" aria-pressed="true">Build</button>
+      <button type="button" data-mode-button="run" aria-pressed="false">Run</button>
+      <button type="button" data-mode-button="compare" aria-pressed="false">Compare</button>
+    </div>
+    <p id="engine-status" class="status" role="status" aria-live="polite">Loading engine&hellip;</p>
+  </header>
+
+  <div id="engine-error" class="error-box" role="alert" hidden></div>
+
+  <noscript><p class="error-box">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
+
+  <main id="app-main" data-engine="loading" data-mode="build">
+    <aside class="panel panel-left" aria-label="Machine and jobs">
+      <h2>Machine</h2>
+      <p id="machine-text">CPU 16 cores, memory 32768 MB</p>
+      <h2>Jobs</h2>
+      <p id="jobs-empty" class="empty">No jobs yet. Add one, load a preset, or generate a random set.</p>
+      <ul id="job-list" class="job-list"></ul>
+    </aside>
+
+    <section class="panel panel-centre" aria-label="Timeline">
+      <h2>Timeline</h2>
+      <p id="canvas-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
+    </section>
+
+    <aside class="panel panel-right" aria-label="Why log">
+      <h2>Why</h2>
+      <p id="whylog-empty" class="empty">The reasons for each decision appear here once a run starts.</p>
+    </aside>
+  </main>
+
+  <footer class="panel panel-bottom" aria-label="Metrics">
+    <h2>Metrics</h2>
+    <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
+  </footer>
+
+  <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules, no network calls.
+       Still to be added by later issues, in this order, before app.js:
+       presets_data.js, presets.js, editor.js, generator.js, canvas.js, whylog.js,
+       player.js, compare.js, share.js -->
+  <script src="vendor/aprm.js"></script>
+  <script src="js/wasm.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
