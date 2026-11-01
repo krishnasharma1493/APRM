@@ -86,6 +86,7 @@ Defaults are 16 cores, 32768 MB, alpha_milli 100, T 50. Each new case has a one-
 | sjf_finish_arrival | sjf, priority | 16 | 32768 | 100 | 50 |
 | memory_hog | aging, reserve | 16 | 32768 | 100 | **10** |
 | reserve_backfill | reserve, aging | 16 | 32768 | 100 | **10** |
+| reserve_outrank (K-26) | reserve, aging | **10** | **100** | **0** | **0** |
 | capacity_reject | none (console case) | 16 | 32768 | 100 | 50 |
 
 That is 10 new schedule cases plus the capacity-rejection case. Tick marks used below: "t=N" is an event tick; "free a / b" is free cores / free MB after the step. In cases where every job asks for all 16 cores ("serial" cases) memory (1000 MB each) never matters and only one job runs at a time.
@@ -296,7 +297,7 @@ No output file and no expected CSV (D54, part 5). Files: `capacity_reject.csv`, 
 - Rules used everywhere: finishes, then arrivals, then selection (BLUEPRINT §2 rule 5); ties by earlier arrival then lower id; greedy fill as stated at the top of this file.
 - Reservation rules used (BLUEPRINT §3.5): the reservation is created at an event tick when the best waiting job does not fit and now - arrival >= T; it is checked only at event ticks (time jumps between events). While it exists, other jobs start only through the backfill rule. The shadow time and extra room count every running job that finishes at or before the shadow time as released.
 - **LOUD: `memory_hog.reserve` depends on the trigger being "at least T"** (now - arrival >= T). At t=11 the hog has waited exactly 10 = T. Under a strict "> T" the reservation would not exist at t=11, job 4 would start 11 to 21, and the hog would start at 21 or later, so other rows would differ too. The case deliberately catches an off-by-one in the trigger. `reserve_backfill.reserve` is robust to it: with "> T" the reservation is created one event later (t=12) and every row is the same.
-- **O-14 (open, assigned to K-26)** is whether a reservation is moved or cancelled when a newcomer outranks the reserved job. The cases `memory_hog` and `reserve_backfill` were designed so that this never happens (the reserved job always has the highest key); their expected files are the same whichever way O-14 is decided. This is the only dependence of K-17 on reservation semantics, and no case here settles O-14. They do assume the proposal's reading that the shadow time, once reached, starts the reserved job (nothing else about it changes).
+- **O-14 (decided in K-26 as D68: a reservation is never moved or cancelled)**. The cases `memory_hog` and `reserve_backfill` were designed so that a newcomer never outranks the reserved job; their expected files are the same whichever way O-14 is decided. The K-26 case `reserve_outrank` (below) is the one that exercises it. All reserve cases assume that the shadow time, once reached, starts the reserved job first.
 
 ## Cases added in K-19 (hand-worked before the policy code)
 
@@ -335,6 +336,28 @@ Default alpha_milli 100 (one priority level is worth 10 ticks of arrival).
 - Job 3 runs 30 to 32, job 4 32 to 34, job 6 34 to 36, job 5 36 to 38, job 2 38 to 40 (wait 37).
 - With the default alpha_milli 100 the keys would be 2900 (job 2) against 1500 (job 5), and job 2 would run before job 5. So the case fails if alpha is not honoured.
 
+## Cases added in K-26 (hand-worked before the policy code)
+
+The reserve expected files of `memory_hog`, `reserve_backfill` and `big_job_trap` were derived by hand in K-17 (above) and are now run by `tests/cases/run_golden.sh` and the WebAssembly golden loop: they pass unchanged. One new case, worked on paper first (D44). Status of the paper check by Ahaana: **awaiting Ahaana's paper check**.
+
+### reserve_outrank (shows: O-14, a newcomer that outranks the reserved job does not cancel or move the reservation; the reserved job still starts first at its shadow time)
+
+Run settings: 10 cores, 100 MB, `--alpha-milli 0` (aging becomes static priority, so the keys are 1000 x priority), `--threshold 0` (a job that does not fit is reserved at once).
+
+| id | arrival | duration | cpu | mem | priority |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0 | 20 | 2 | 60 | 0 |
+| 2 | 1 | 5 | 2 | 70 | 5 |
+| 3 | 2 | 30 | 1 | 35 | 9 |
+
+Reserve (`.reserve.expected.csv`):
+- t=0: job 1 starts (free 8 / 40). t=1: job 2 arrives, needs 70 MB > 40: it does not fit and has waited 0 >= T = 0: reservation. Running: job 1 (finishes 20). After it, free is 10 / 100, so job 2 fits: shadow time 20. Extra room: 10 - 2 = 8 cores, 100 - 70 = 30 MB.
+- t=2: job 3 arrives with priority 9, so it outranks job 2 (key 9000 against 5000). It fits now (35 <= 40 MB) but finishes at 2 + 30 = 32 > 20 and 35 MB > 30 MB extra: not backfilled, it waits. The reservation stays (job 2, shadow 20).
+- t=20: job 1 finishes, free 10 / 100. The reserved job starts first although job 3 has the better key: job 2 runs 20 to 25 (wait 19). Free is now 8 / 30. Job 3 needs 35 MB: it does not fit.
+- t=25: job 2 finishes. Job 3 starts 25 to 55 (wait 23).
+
+Aging only (`.aging.expected.csv`), same input: t=2: job 3 (key 9000) is tried first, fits (35 <= 40) and starts 2 to 32 (wait 0). t=20: job 1 finishes; free memory is 100 - 35 = 65 < 70: job 2 waits. t=32: job 3 finishes; job 2 starts 32 to 37 (wait 31). The reservation turns a 31-tick wait into 19 and delays the high-priority job 3 from 2 to 25, which is the price of the guarantee.
+
 ## Status of the paper check by Ahaana (every case)
 
 All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation without it). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
@@ -358,3 +381,4 @@ All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation
 | capacity_reject | console (exit 3, stderr) | awaiting Ahaana's paper check |
 | aging_overtake | aging, priority | awaiting Ahaana's paper check |
 | aging_alpha0 | aging, priority | awaiting Ahaana's paper check |
+| reserve_outrank | reserve, aging | awaiting Ahaana's paper check |

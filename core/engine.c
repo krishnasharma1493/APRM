@@ -15,6 +15,7 @@
 #include "config.h"
 #include "eventlog.h"
 #include "policy.h"
+#include "reserve.h"
 
 /* ---- error storage ---- */
 
@@ -163,6 +164,7 @@ static void sim_clear_scalars(Sim *s)
     s->n_finished = 0;
     s->fin_len = 0;
     memset(&s->err, 0, sizeof s->err);
+    memset(&s->resv, 0, sizeof s->resv);  /* no reservation */
 }
 
 int sim_create(const SimConfig *cfg, Sim **out)
@@ -198,6 +200,7 @@ void sim_destroy(Sim *s)
     free(s->ids.slot);
     free(s->fin);
     free(s->skip);
+    free(s->rscratch);
     eventlog_free(&s->log);
     free(s);
 }
@@ -328,6 +331,45 @@ static int reserve_skip(Sim *s, size_t need)
     return APRM_OK;
 }
 
+/* Same for the shadow-time scratch array (running jobs as RunSlot). */
+static int reserve_rscratch(Sim *s, size_t need)
+{
+    RunSlot *grown;
+    size_t ncap;
+    if (need <= s->rscratch_cap) return APRM_OK;
+    ncap = grown_cap(s->rscratch_cap, need, sizeof *grown);
+    if (ncap == 0) return APRM_OUT_OF_MEMORY;
+    grown = realloc(s->rscratch, ncap * sizeof *grown);
+    if (!grown) return APRM_OUT_OF_MEMORY;
+    s->rscratch = grown;
+    s->rscratch_cap = ncap;
+    return APRM_OK;
+}
+
+/* Start the job in we now: log START (and, for a backfill, BACKFILL with the
+ * finish time and the shadow time), take its resources and push it into the
+ * running heap. Everything it needs was reserved at the top of sim_step, so
+ * only a bug can make the pushes fail. backfill != 0 logs the extra line.
+ * O(log n). The Sim owns the running entry. */
+static int start_job(Sim *s, const WaitEntry *we, int backfill)
+{
+    RunEntry re;
+    int rc;
+    int64_t t = s->now;
+    eventlog_push(&s->log, t, LOG_START, we->job.id, we->job.cpu, we->job.mem,
+                  s->free_cpu, s->free_mem);  /* free before it starts; reserved above */
+    if (backfill)
+        eventlog_push(&s->log, t, LOG_BACKFILL, we->job.id, t + we->job.duration,
+                      s->resv.shadow_time, 0, 0);  /* reserved above; t + duration guarded above */
+    re.job = we->job;
+    re.start = t;
+    re.finish = t + we->job.duration;  /* cannot overflow: guarded above */
+    s->free_cpu -= we->job.cpu;
+    s->free_mem -= we->job.mem;
+    rc = heap_push(&s->running, &re);  /* cannot fail: reserved above */
+    return rc;
+}
+
 /* Time of the next event into *t: the earlier of the first pending arrival
  * and the first running finish. If only waiting jobs remain (cannot happen
  * after a selection step, since a job fits an empty machine) the next event
@@ -351,6 +393,7 @@ int sim_step(Sim *s)
 {
     int64_t t, w_max, r_max;
     size_t skipped = 0, i;
+    int is_res, trigger_open = 1;
     int rc;
     Job jb;
     RunEntry re;
@@ -363,6 +406,7 @@ int sim_step(Sim *s)
         return APRM_INVALID_ARGUMENT;
     }
     if (!next_event(s, &t)) return 0;
+    is_res = s->cfg.policy == POL_AGING_RESERVE;
 
     /* Reserve every buffer this step can need, so that nothing below can
      * fail halfway (a step is all-or-nothing). Bounds are the live counts,
@@ -383,9 +427,12 @@ int sim_step(Sim *s)
     if (heap_reserve(&s->waiting, (size_t)w_max) != APRM_OK ||
         heap_reserve(&s->running, (size_t)r_max) != APRM_OK ||
         reserve_skip(s, (size_t)w_max) != APRM_OK ||
+        (is_res && reserve_rscratch(s, (size_t)r_max) != APRM_OK) ||
         reserve_fin(s, s->fin_len + heap_size(&s->running)) != APRM_OK ||
         /* log entries: <= one per finish, arrival and examined waiting job (D60) */
-        eventlog_reserve(&s->log, heap_size(&s->running) + heap_size(&s->pending) + (size_t)w_max) != APRM_OK) {
+        /* the reserve policy may add a second line per job (SKIP + RESERVE, START + BACKFILL) */
+        eventlog_reserve(&s->log, heap_size(&s->running) + heap_size(&s->pending)
+                                  + (size_t)w_max * (is_res ? 2 : 1)) != APRM_OK) {
         fail(&s->err, APRM_OUT_OF_MEMORY, "", "Out of memory.");
         return APRM_OUT_OF_MEMORY;
     }
@@ -425,20 +472,65 @@ int sim_step(Sim *s)
         if (rc != APRM_OK) return rc;
     }
 
+    /* 3a. The shadow time has come: the reserved job starts first (BLUEPRINT
+     * 3.5 step 5), even if a newcomer outranks it (O-14: a reservation is never
+     * moved or cancelled). It is somewhere in the waiting heap: pop the jobs
+     * ahead of it into the skip list, start it, push the others back. Then the
+     * reservation is cleared. O(k log n) for the k jobs ahead of it, once per
+     * reservation. At the shadow tick it always fits (shadow time is the finish
+     * of a running job and every backfill obeyed the rule); if it somehow did
+     * not, it is left waiting and the reservation is dropped rather than
+     * looping, and the debug checker would have flagged the earlier step. */
+    if (is_res && s->resv.active && t >= s->resv.shadow_time) {
+        int found = 0;
+        while (heap_size(&s->waiting) > 0) {
+            heap_pop(&s->waiting, &we);
+            if (we.job.id == s->resv.id) { found = 1; break; }
+            s->skip[skipped++] = we;
+        }
+        if (found && we.job.cpu <= s->free_cpu && we.job.mem <= s->free_mem) {
+            rc = start_job(s, &we, 0);
+            if (rc != APRM_OK) return rc;
+        } else if (found) {
+            rc = heap_push(&s->waiting, &we);  /* cannot fail: reserved above */
+            if (rc != APRM_OK) return rc;
+        }
+        for (i = 0; i < skipped; i++) {
+            rc = heap_push(&s->waiting, &s->skip[i]);
+            if (rc != APRM_OK) return rc;
+        }
+        skipped = 0;
+        memset(&s->resv, 0, sizeof s->resv);
+    }
+
     /* 3. Greedy fill (BLUEPRINT 3.4). A job that does not fit is parked in
      * the skip list and pushed back only after the loop, so it is never
-     * popped twice in one step. One START or SKIP log entry per job popped. */
+     * popped twice in one step. One START or SKIP log entry per job popped
+     * (D60). With the reserve policy (BLUEPRINT 3.5):
+     *  - the first job that does not fit (the best one still waiting, since
+     *    every better one started) becomes the reserved job h if no
+     *    reservation exists and it has waited at least T: shadow time and
+     *    extra room are computed, one RESERVE line is logged;
+     *  - while a reservation exists, any other job that fits now starts only
+     *    if reserve_backfill allows it (START then BACKFILL lines); a fitting
+     *    job that is refused stays waiting with no log line (its reason is
+     *    the reservation, already on the log); h itself is passed over. */
     while (heap_size(&s->waiting) > 0 && s->free_cpu > 0 && s->free_mem > 0) {
+        int fits;
         heap_pop(&s->waiting, &we);
-        if (we.job.cpu <= s->free_cpu && we.job.mem <= s->free_mem) {
-            eventlog_push(&s->log, t, LOG_START, we.job.id, we.job.cpu, we.job.mem,
-                          s->free_cpu, s->free_mem);  /* free before it starts; reserved above */
-            re.job = we.job;
-            re.start = t;
-            re.finish = t + we.job.duration;  /* cannot overflow: guarded above */
-            s->free_cpu -= we.job.cpu;
-            s->free_mem -= we.job.mem;
-            rc = heap_push(&s->running, &re);  /* cannot fail: reserved above */
+        if (is_res && s->resv.active && we.job.id == s->resv.id) {
+            s->skip[skipped++] = we;  /* h waits for its shadow time */
+            continue;
+        }
+        fits = we.job.cpu <= s->free_cpu && we.job.mem <= s->free_mem;
+        if (fits) {
+            int backfill = is_res && s->resv.active;
+            if (backfill && !reserve_backfill(&s->resv, s->now, s->free_cpu, s->free_mem,
+                                              &we.job, NULL)) {
+                s->skip[skipped++] = we;
+                continue;
+            }
+            rc = start_job(s, &we, backfill);
             if (rc != APRM_OK) return rc;
         } else {
             /* Log a SKIP only the first time, and again only when the set of
@@ -449,6 +541,24 @@ int sim_step(Sim *s)
                               s->free_cpu, s->free_mem);  /* reserved above */
                 we.skipmask = mask;
             }
+            if (is_res && !s->resv.active && trigger_open && t - we.job.arrival >= s->cfg.reserve_threshold) {
+                /* Trigger: shadow time over the running jobs, O(r log r). */
+                const RunEntry *run = (const RunEntry *)s->running.data;
+                size_t r, nrun = heap_size(&s->running);
+                for (r = 0; r < nrun; r++) {
+                    s->rscratch[r].finish = run[r].finish;
+                    s->rscratch[r].cpu = run[r].job.cpu;
+                    s->rscratch[r].mem = run[r].job.mem;
+                }
+                rc = reserve_compute(s->rscratch, nrun, s->free_cpu, s->free_mem,
+                                     we.job.id, we.job.cpu, we.job.mem, &s->resv);
+                /* Cannot fail: the job does not fit now but fits the empty machine
+                 * (sim_add_job checked), and the walk ends with every job released. */
+                if (rc != APRM_OK) return rc;
+                eventlog_push(&s->log, t, LOG_RESERVE, we.job.id, s->resv.shadow_time,
+                              0, 0, 0);  /* reserved above */
+            }
+            trigger_open = 0;  /* only the first job that does not fit is a candidate */
             s->skip[skipped++] = we;
         }
     }
@@ -543,9 +653,20 @@ int sim_check_invariants(const Sim *s, const char **why)
         if (w->job.cpu > s->cfg.cpu_cap || w->job.mem > s->cfg.mem_cap)
             BAD("waiting job can never fit the machine");
         if (w->job.arrival > s->now) BAD("waiting job has not arrived yet");
-        /* Greedy-fill post-condition: nothing left waiting could start now. */
-        if (w->job.cpu <= s->free_cpu && w->job.mem <= s->free_mem)
-            BAD("a waiting job fits but was not started");
+        /* Greedy-fill post-condition: nothing left waiting could start now.
+         * With a reservation the only jobs that may fit and wait are the
+         * reserved job (before its shadow time) and jobs the backfill rule
+         * refuses (tested on a copy, so the extra room is not consumed). */
+        if (w->job.cpu <= s->free_cpu && w->job.mem <= s->free_mem) {
+            Reservation tmp = s->resv;
+            if (!s->resv.active)
+                BAD("a waiting job fits but was not started");
+            if (w->job.id != s->resv.id &&
+                reserve_backfill(&tmp, s->now, s->free_cpu, s->free_mem, &w->job, NULL))
+                BAD("a waiting job may backfill but was not started");
+            if (w->job.id == s->resv.id)
+                BAD("the reserved job fits before its shadow time");
+        }
     }
     for (i = 0; i < heap_size(&s->pending); i++) {
         p = (const Job *)(s->pending.data + i * s->pending.elem_size);
@@ -555,8 +676,34 @@ int sim_check_invariants(const Sim *s, const char **why)
     if ((int64_t)(heap_size(&s->pending) + heap_size(&s->waiting) + heap_size(&s->running)
                   + s->fin_len) != s->n_total)
         BAD("pending + waiting + running + finished != total jobs");
-    /* "At most one reservation, and it is in the waiting heap": there is no
-     * reservation until K-26, so there is nothing to check yet. */
+    /* "At most one reservation, and the reserved job is in the waiting heap".
+     * One reservation is one struct in the Sim, so "at most one" holds by
+     * construction; what can go wrong is checked here: only the reserve policy
+     * has one, the job is waiting, its shadow time is in the future, and the
+     * guarantee holds: the extra room equals capacity minus what the running
+     * jobs that end after the shadow time use, minus the reserved job's demand,
+     * and is not negative (so the job fits at the shadow time). */
+    if (s->resv.active) {
+        int found = 0;
+        int64_t late_cpu = 0, late_mem = 0, h_cpu = 0, h_mem = 0;
+        if (s->cfg.policy != POL_AGING_RESERVE) BAD("a reservation exists under a policy that has none");
+        n = heap_size(&s->waiting);
+        for (i = 0; i < n; i++) {
+            w = (const WaitEntry *)(s->waiting.data + i * s->waiting.elem_size);
+            if (w->job.id == s->resv.id) { found = 1; h_cpu = w->job.cpu; h_mem = w->job.mem; }
+        }
+        if (!found) BAD("the reserved job is not in the waiting heap");
+        if (s->resv.shadow_time <= s->now) BAD("the shadow time is not in the future");
+        n = heap_size(&s->running);
+        for (i = 0; i < n; i++) {
+            r = (const RunEntry *)(s->running.data + i * s->running.elem_size);
+            if (r->finish > s->resv.shadow_time) { late_cpu += r->job.cpu; late_mem += r->job.mem; }
+        }
+        if (s->resv.extra_cpu < 0 || s->resv.extra_mem < 0) BAD("the extra room is negative");
+        if (s->resv.extra_cpu != s->cfg.cpu_cap - late_cpu - h_cpu ||
+            s->resv.extra_mem != s->cfg.mem_cap - late_mem - h_mem)
+            BAD("the extra room does not match the guarantee for the reserved job");
+    }
 #undef BAD
     return 0;
 }

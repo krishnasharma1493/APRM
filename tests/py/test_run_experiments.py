@@ -398,6 +398,6 @@ def test_cli_failure(tmp_path):
 @needs_cli
 def test_real_unimplemented_policy(tmp_path):
     recs = rx.execute_grid("E1", True, binary=str(REAL), out=str(tmp_path / "raw"),
-                           policies=["fcfs", "reserve"], settings=["light"])  # reserve: K-26
+                           policies=["fcfs", "knapsack"], settings=["light"])  # knapsack: K-34
     st = [r["status"] for r in recs]
     assert st.count("ok") == 2 and set(st) <= {"ok", "not_implemented"}

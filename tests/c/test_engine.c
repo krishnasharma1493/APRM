@@ -418,7 +418,7 @@ static void test_step_null_and_policy(void)
     Job j = job_ok(1);
     CHECK(sim_step(NULL) == APRM_INVALID_ARGUMENT);
     CHECK(sim_run_until(NULL, 5) == APRM_INVALID_ARGUMENT);
-    c.policy = POL_AGING_RESERVE;  /* not built yet (K-26): refused, Sim untouched */
+    c.policy = POL_KNAPSACK;  /* not built yet (K-34): refused, Sim untouched */
     s = make(c);
     CHECK(sim_add_job(s, &j) == APRM_OK);
     CHECK(sim_step(s) == APRM_INVALID_ARGUMENT);

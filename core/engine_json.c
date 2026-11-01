@@ -194,9 +194,15 @@ int sim_state_json(const Sim *s, JsonBuf *out)
     }
     json_arr_end(out);
 
-    /* K-26 fills this in ({"id", "shadow_time"}) when a reservation is active. */
     json_key(out, "reservation");
-    json_null(out);
+    if (s->resv.active) {
+        json_obj_begin(out);
+        json_key(out, "id");          json_i64(out, s->resv.id);
+        json_key(out, "shadow_time"); json_i64(out, s->resv.shadow_time);
+        json_obj_end(out);
+    } else {
+        json_null(out);
+    }
 
     json_obj_end(out);
     json_ok_end(out);

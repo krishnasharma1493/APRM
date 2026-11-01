@@ -45,9 +45,15 @@ RESULT_COLUMNS = run_experiments.RESULT_COLUMNS
 INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
 # Policies for which the greedy-fill post-condition is checked.  The check is
 # valid for every policy that uses the shared greedy fill (fcfs, priority, sjf,
-# aging) but never for reserve or knapsack.  K-19 widens this to
-# ("fcfs", "priority", "sjf", "aging") once those policies run.
+# aging) but never for reserve or knapsack.  K-19 widened this to
+# ("fcfs", "priority", "sjf", "aging").  reserve does NOT fill greedily on
+# purpose (the backfill rule keeps a fitting job waiting when it would delay
+# the reserved job), so it gets its own check, check_reserve_guarantee (K-26).
 GREEDY_FILL_POLICIES = ("fcfs", "priority", "sjf", "aging")
+RESERVE_POLICIES = ("reserve",)
+# Reservation thresholds T tried by the random runs (chosen by seed): 0 reserves
+# at once, 5 and 50 (the default) need the best job to have waited.
+RESERVE_THRESHOLDS = (0, 5, 50)
 MAX_MESSAGES_PER_CHECK = 5        # keep reports short: first few offenders only
 
 
@@ -280,6 +286,99 @@ def check_greedy_fill_postcondition(jobs: pd.DataFrame, results: pd.DataFrame,
     return msgs
 
 
+def _shadow_and_extra(run_finish: np.ndarray, run_cpu: np.ndarray, run_mem: np.ndarray,
+                      free_cpu: int, free_mem: int, h_cpu: int, h_mem: int
+                      ) -> tuple[int, int, int] | None:
+    """Shadow time and extra room of a job that does not fit now (a check, not scheduling).
+
+    Same rule as BLUEPRINT 3.5: walk the running jobs by finish time, giving
+    back every job that ends at one tick together, until the job fits.  Returns
+    (shadow, extra_cpu, extra_mem), or None if it never fits.  Time O(r log r).
+    """
+    order = np.argsort(run_finish, kind="stable")
+    cpu, mem = int(free_cpu), int(free_mem)
+    i, n = 0, len(order)
+    while i < n:
+        f = int(run_finish[order[i]])
+        while i < n and int(run_finish[order[i]]) == f:
+            cpu += int(run_cpu[order[i]])
+            mem += int(run_mem[order[i]])
+            i += 1
+        if h_cpu <= cpu and h_mem <= mem:
+            return f, cpu - h_cpu, mem - h_mem
+    return None
+
+
+def check_reserve_guarantee(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int,
+                            mem_cap: int, threshold: int) -> list[str]:
+    """Check the reserve policy's backfill guarantee from the outside (K-26).
+
+    The reserve policy does not fill greedily: a job that fits may be kept
+    waiting, but only for one reason, a reservation.  At every event tick t (an
+    arrival, a start or a finish), after all starts of that tick, let
+    running(t) = jobs with start <= t < finish and waiting(t) = jobs with
+    arrival <= t < start.  A waiting job k that fits in the free resources and
+    still waits must be explained by some other waiting job h (the reserved
+    one) such that ALL of these hold:
+
+      * h does not fit at t and has waited at least `threshold` ticks;
+      * h's real start is no later than its shadow time computed from running(t)
+        (the earliest-start guarantee: no backfill delayed it);
+      * k could not have been backfilled: it ends after the shadow time
+        (t + duration > shadow) AND it does not fit the extra room
+        (extra = capacity minus the running jobs that end after the shadow time
+        minus h's demand: k needs more cores or more memory than that).
+
+    Each condition is necessary for a correct engine, so a violation is a real
+    bug.  The check is one-sided: it cannot prove the engine reserved the right
+    job (the C tests and the debug invariants do that), it catches a fitting job
+    held back without a reason, a refused backfill that was allowed, and a
+    reserved job that started after its shadow time.  Python only recomputes the
+    shadow time to check; it never decides who runs.  Time O(ticks with a
+    waiting job that fits x (n + candidates x r log r)).
+    """
+    jn = _joined(jobs, results)
+    if jn is None or not len(jn):
+        return []
+    start, finish = jn["start"].to_numpy(), jn["finish"].to_numpy()
+    cpu, mem = jn["cpu_in"].to_numpy(), jn["mem_in"].to_numpy()
+    arrival, dur = jn["arrival_in"].to_numpy(), jn["duration_in"].to_numpy()
+    ids = jn["id"].to_numpy()
+    real = finish > start  # a span of length 0 never runs
+
+    msgs: list[str] = []
+    for t in np.unique(np.concatenate([arrival, start, finish])):
+        running = real & (start <= t) & (t < finish)
+        free_cpu = cpu_cap - int(cpu[running].sum())
+        free_mem = mem_cap - int(mem[running].sum())
+        waiting = (arrival <= t) & (t < start)
+        fits = waiting & (cpu <= free_cpu) & (mem <= free_mem)
+        if not fits.any():
+            continue
+        # Candidates for the reserved job, with their shadow time and extra room.
+        cands = []
+        for h in np.nonzero(waiting & ~fits & (t - arrival >= threshold))[0]:
+            se = _shadow_and_extra(finish[running], cpu[running], mem[running],
+                                   free_cpu, free_mem, int(cpu[h]), int(mem[h]))
+            if se is None or start[h] > se[0]:
+                continue                          # no guarantee for this h: cannot explain anything
+            shadow = se[0]
+            late = running & (finish > shadow)    # still running at the shadow time
+            extra_cpu = cpu_cap - int(cpu[late].sum()) - int(cpu[h])
+            extra_mem = mem_cap - int(mem[late].sum()) - int(mem[h])
+            cands.append((shadow, extra_cpu, extra_mem))
+        for k in np.nonzero(fits)[0]:
+            explained = any(t + int(dur[k]) > sh and (int(cpu[k]) > ec or int(mem[k]) > em)
+                            for sh, ec, em in cands)
+            if not explained:
+                msgs.append(f"reserve: job {int(ids[k])} fits at time {int(t)} but waits "
+                            f"(arrival {int(arrival[k])}, start {int(start[k])}) and no reserved job "
+                            f"with an on-time guarantee explains it")
+                if len(msgs) >= MAX_MESSAGES_PER_CHECK:
+                    return msgs
+    return msgs
+
+
 # ---------------------------------------------------------------------------
 # Random runs
 # ---------------------------------------------------------------------------
@@ -363,11 +462,13 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
         folder.mkdir(parents=True, exist_ok=True)
         jobs_csv = folder / "jobs.csv"
         gen_workload.write_jobs_csv(sc["jobs"], str(jobs_csv), {"seed": seed, "label": sc["label"]})
+        extra = ["--cpu", str(sc["cpu"]), "--mem", str(sc["mem"])]
+        threshold = RESERVE_THRESHOLDS[seed % len(RESERVE_THRESHOLDS)]
+        if policy in RESERVE_POLICIES:
+            extra += ["--threshold", str(threshold)]
         try:
             res = run_experiments.run_one(
-                binary, str(jobs_csv), policy, str(folder),
-                ["--cpu", str(sc["cpu"]), "--mem", str(sc["mem"])],
-                context={"seed": seed})
+                binary, str(jobs_csv), policy, str(folder), extra, context={"seed": seed})
         except run_experiments.PolicyNotImplemented:
             rec["status"] = "not_implemented"
             return rec
@@ -386,6 +487,8 @@ def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = Non
         msgs = check_results(jobs, results, sc["cpu"], sc["mem"])
         if policy in GREEDY_FILL_POLICIES:
             msgs += check_greedy_fill_postcondition(jobs, results, sc["cpu"], sc["mem"])
+        if policy in RESERVE_POLICIES:
+            msgs += check_reserve_guarantee(jobs, results, sc["cpu"], sc["mem"], threshold)
     except Exception as err:  # a checker crash must name its seed too
         msgs = [f"checker crashed: {type(err).__name__}: {str(err)[:200]}"]
     if msgs:
