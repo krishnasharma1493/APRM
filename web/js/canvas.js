@@ -222,7 +222,15 @@
     /* the time axis, and the teal "now" rail across both lanes */
     var first = lay.lanes[0], last = lay.lanes[1];
     for (var v = 0; v <= lay.tmax; v += lay.step) { text(String(v), Math.min(lay.sx(v), cssW - 30), lay.axisY, 40, col.muted); }
-    if (view.hideNow) { return true; }                 /* a finished board in Compare has no "now" */
+    if (view.hideNow) {                                /* a finished board has no "now": mark where it ended */
+      if (typeof view.endMark === 'number') {
+        var endX = lay.sx(view.endMark);
+        ctx.strokeStyle = col.accent; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(endX, first.y); ctx.lineTo(endX, last.y + last.h); ctx.stroke();
+        text('finished ' + view.endMark, Math.max(lay.lanes[0].x, Math.min(endX - 62, cssW - 80)), first.y - 3, 80, col.accent);
+      }
+      return true;
+    }
     ctx.strokeStyle = col.accent; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(lay.nowX, first.y); ctx.lineTo(lay.nowX, last.y + last.h); ctx.stroke();
     text('now ' + view.state.now, Math.min(lay.nowX + 4, cssW - 60), first.y - 3, 70, col.accent);

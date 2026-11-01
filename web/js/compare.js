@@ -432,6 +432,7 @@
       for (var k = 0; k < METRIC_COLUMNS.length; k++) {
         var v = col.metrics[METRIC_COLUMNS[k][0]];
         var td = cell('td', metricText(v), (v === null || v === undefined) ? 'na' : '');
+        td.setAttribute('data-label', words('metric.' + METRIC_COLUMNS[k][0], METRIC_COLUMNS[k][1]));
         if (isBest(METRIC_COLUMNS[k][0], v)) {
           td.setAttribute('data-best', words('compare.best', 'Best'));
           td.setAttribute('class', (td.getAttribute('class') ? td.getAttribute('class') + ' ' : '') + 'best');
@@ -457,11 +458,11 @@
 
   /* One finished board, in the same form as the Run page: the engine's start and finish times, on the
    * time scale shared by every board, so the pictures can be compared by eye. Returns false with no canvas. */
-  function drawTimeline(canvas, jobs, rows, tmax) {
+  function drawTimeline(canvas, jobs, rows, tmax, finished) {
     var bars = {};
     for (var i = 0; i < rows.length; i++) { bars[rows[i].id] = { start: rows[i].start, finish: rows[i].finish }; }
     var st = { now: tmax, cap: model.cap, free: model.cap, waiting: [], running: [], reservation: null, done: rows.length, total: jobs.length };
-    return APRM.canvas.draw(canvas, { state: st, jobs: jobs, bars: bars, selected: null, events: 0, hideNow: true, tmax: tmax }, BOARD_HEIGHT);
+    return APRM.canvas.draw(canvas, { state: st, jobs: jobs, bars: bars, selected: null, events: 0, hideNow: true, endMark: finished, tmax: tmax }, BOARD_HEIGHT);
   }
 
   function drawTimelines() {
@@ -482,10 +483,10 @@
       fig.appendChild(cap);
       fig.appendChild(cv);
       box.appendChild(fig);
-      boards.push({ cv: cv, rows: col.rows });
+      boards.push({ cv: cv, rows: col.rows, finished: col.metrics.makespan });
     }
     /* Draw after every board is in the page: each one's width depends on how many share the row. */
-    for (var b = 0; b < boards.length; b++) { drawTimeline(boards[b].cv, model.jobs, boards[b].rows, model.tmax); }
+    for (var b = 0; b < boards.length; b++) { drawTimeline(boards[b].cv, model.jobs, boards[b].rows, model.tmax, boards[b].finished); }
   }
 
   /* Bar charts, only if Chart.js loaded. Any failure falls back to the table. */
@@ -508,7 +509,7 @@
     }
     var col = themeColours();
     try {
-      var labels = model.columns.map(function (c) { return labelOf(c.policy); });
+      var labels = model.columns.map(function (c) { return labelOf(c.policy).split(' ('); });   /* two short lines, never slanted */
       for (var m = 0; m < CHART_METRICS.length; m++) {
         var key = CHART_METRICS[m];
         var title = '';
@@ -528,7 +529,7 @@
             animation: false, responsive: true, maintainAspectRatio: false, color: col.text,
             plugins: { legend: { display: false }, title: { display: true, text: title + ' (ticks)', color: col.text } },
             scales: {
-              x: { ticks: { color: col.muted }, grid: { color: col.border } },
+              x: { ticks: { color: col.muted, maxRotation: 0, minRotation: 0, autoSkip: false }, grid: { color: col.border } },
               y: { beginAtZero: true, ticks: { color: col.muted }, grid: { color: col.border } }
             }
           }

@@ -401,6 +401,9 @@ test('timelines: one canvas per policy, drawn with the same time scale', () => {
   assert.equal(p.A.compare.snapshot().tmax, 9);
   for (const cv of canvases) assert.equal(cv.__layout.tmax, 9, 'every board uses the shared time scale');
   assert.ok(!canvases[0].ctx.calls.some((c) => c.op === 'fillText' && String(c.a[0]).startsWith('now ')), 'a finished board has no now rail');
+  assert.ok(canvases[0].ctx.calls.some((c) => c.op === 'fillText' && c.a[0] === 'finished 9'), 'it marks where it ended');
+  const cells = p.el('compare-body').children[0].children;
+  assert.equal(cells[1].getAttribute('data-label'), 'Average wait', 'every number keeps its name on a phone');
 });
 
 test('charts: with Chart.js present, one bar chart per key metric; old charts destroyed on re-run', () => {

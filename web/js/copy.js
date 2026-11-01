@@ -185,7 +185,7 @@
     'compare.key': 'Each card is one job with its number stamped on it. Width is how long it ran, height is its share of CPU or memory. Time runs left to right, in ticks, on the same scale for every board.',
     'compare.timeline.cap': '{name} (everything finished at tick {t})',
     'compare.timeline.aria': 'Timeline of every job under {name}',
-    'compare.charts': 'Charts',
+    'compare.charts': 'Charts of the same numbers',
     'compare.chart.loading': 'Charts are still loading. The table above has the numbers; the charts appear when they arrive.',
     'compare.chart.failed': 'Charts could not load, so here are the numbers instead.',
     'compare.chart.error': 'Charts could not be drawn ({why}). The table above has the same numbers.',
