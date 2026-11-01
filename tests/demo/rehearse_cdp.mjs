@@ -99,7 +99,7 @@ try {
   await send('Page.navigate', { url: pathToFileURL(page).href });
 
   // --- Start-up
-  check('engine ready', await waitFor(`document.getElementById('engine-status').textContent === 'Engine ready'`),
+  check('engine ready', await waitFor(`(document.getElementById('engine-status') || {}).textContent === 'Engine ready'`),
     await ev(`document.getElementById('engine-status').textContent`));
   await ev(H + ' true');
   check('page is served from file://', (await ev('location.protocol')) === 'file:');
