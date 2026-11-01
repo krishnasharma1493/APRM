@@ -528,7 +528,7 @@
     var idEl = byId('add-id');
     if (idEl && idEl.value === '') { idEl.value = '1'; }
     APRM.store.subscribe(function (st, changed) {
-      if (changed === 'jobs' || changed === 'machine' || changed === 'mode') {
+      if (changed === 'jobs' || changed === 'machine' || changed === 'mode' || changed === 'details') {
         if (changed === 'jobs' && st.jobs.length === 0) { drafts = {}; }
         renderTable(st);
       }

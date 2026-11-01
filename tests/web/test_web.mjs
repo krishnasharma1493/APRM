@@ -185,6 +185,11 @@ function loadPage({ createAprm, only } = {}) {
   return { ctx, doc, APRM: ctx.APRM, added };
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
+// The real engine compiles asynchronously and can take several ticks on a busy machine.
+async function engineReady(page) {
+  for (let i = 0; i < 500 && page.APRM.store.get().engine.status === 'loading'; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(page.APRM.store.get().engine.status, 'ready');
+}
 
 test('scripts define nothing global except window.APRM', () => {
   const { added } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
@@ -480,7 +485,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     const createAprm = require(vendor);
     for (const name of ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case']) {
       const page = loadPage({ createAprm });
-      await tick(); await tick();
+      await engineReady(page);
       const A = page.APRM;
       A.presets.load(name);
       A.store.setMode('run');
@@ -508,7 +513,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
   test('real engine: Compare table, verdict and exact line equal the engine for tiny_case', async () => {
     const createAprm = require(vendor);
     const page = loadPage({ createAprm });
-    await tick(); await tick();
+    await engineReady(page);
     const A = page.APRM;
     A.presets.load('tiny_case');
     A.store.setMode('compare');
