@@ -252,7 +252,7 @@ There are no secrets and no environment variables to protect. Configuration live
 | Job id | — | 0 to 2,147,483,647 | Unique within a simulation |
 | α (aging rate), stored as `alpha_milli` | 100 (α = 0.1) | 0 to 10,000 (α = 0 to 10) | Integer thousandths of a priority level per tick. 0 turns aging into static priority |
 | Reservation threshold T | 50 ticks | 0 to 1,000,000 | 0 reserves immediately |
-| Knapsack ε | 0.1 | 0.01 to 1 | Smaller = more accurate, slower |
+| Knapsack ε, stored as `knapsack_eps_milli` | 100 (ε = 0.1) | 10 to 1,000 (ε = 0.01 to 1) | Integer thousandths (D72). Smaller = more accurate, slower. The DP table is capped at 2^26 cells and 65,536 candidates per window; above the cap the scale is coarsened (D72) |
 | Exact solver job limit | 9 | Fixed constant, not configurable | Above this the solver returns `TOO_LARGE` |
 | Max jobs, console program | 1,000,000 | | `SimConfig.max_jobs`, set by `cli/main.c` |
 | Max jobs, website | 5,000 | | `SimConfig.max_jobs`, set by `wasm/api.c`; keeps the canvas responsive |
@@ -343,7 +343,7 @@ This list is the reference for every invariant check in the project (C debug che
 
 ## 5. Engine API contract
 
-**Frozen at Gate 2 (2026-11-01).** The step API, the CSV formats and the summary CSV formats in this section no longer move. To change anything here: ask first, update this section first, then the code, then tell Ahaana (§13). **One exception, open on purpose:** the representation of `knapsack_eps` (DECISIONS O-2) is the only open item; K-34 may change it through the same process (PRD first, code, tell Ahaana). DECISIONS O-15 (E4 groups: high = priority 7 to 9, low = 0 to 2, D57) and O-16 (E6: 50 instances per job count, D58) are confirmation-only items: their values are already fixed in the text of this section. The freeze was done on Krishna's authorisation. **Not met at the freeze:** Ahaana's approval of the CSV and summary formats and her paper check of the golden cases are awaited, and the issue's "identical versions" criterion is UNMET (Python patch 3.13.7 on the laptop vs 3.13.17 in CI, GNU Make 3.81 vs 4.3, pip 25.2 vs 26.2.2, and Ahaana's laptop versions are not recorded yet; see docs/TOOLCHAIN.md).
+**Frozen at Gate 2 (2026-11-01).** The step API, the CSV formats and the summary CSV formats in this section no longer move. To change anything here: ask first, update this section first, then the code, then tell Ahaana (§13). **One exception, now settled (D72, K-34):** the representation of the knapsack epsilon. `SimConfig.knapsack_eps` (a double) became the integer `knapsack_eps_milli` (epsilon × 1000, 10 to 1000, default 100), and the last argument of `aprm_create` became `eps_milli`; the console `--eps 0.1` is unchanged for the user and is converted to thousandths with integer arithmetic. DECISIONS O-15 (E4 groups: high = priority 7 to 9, low = 0 to 2, D57) and O-16 (E6: 50 instances per job count, D58) are confirmation-only items: their values are already fixed in the text of this section. The freeze was done on Krishna's authorisation. **Not met at the freeze:** Ahaana's approval of the CSV and summary formats and her paper check of the golden cases are awaited, and the issue's "identical versions" criterion is UNMET (Python patch 3.13.7 on the laptop vs 3.13.17 in CI, GNU Make 3.81 vs 4.3, pip 25.2 vs 26.2.2, and Ahaana's laptop versions are not recorded yet; see docs/TOOLCHAIN.md).
 
 This section is the contract between the C core, the website and Python. Agree on it before Gate 2, change it here first, then in code, then tell the other member.
 
@@ -366,7 +366,7 @@ typedef struct {
     PolicyKind policy;
     int64_t alpha_milli;        /* aging rate α × 1000, 0..10000 */
     int64_t reserve_threshold;  /* T, ticks */
-    double  knapsack_eps;       /* representation open: DECISIONS O-2 */
+    int64_t knapsack_eps_milli; /* ε × 1000, 10..1000 (D72) */
     int64_t max_jobs;           /* CLI 1,000,000; website 5,000 */
 } SimConfig;
 
@@ -403,7 +403,7 @@ Flat functions, so JavaScript never builds C structs. Each returns a status, or 
 
 | Export | Purpose |
 | --- | --- |
-| `aprm_create(cpu, mem, policy, alpha_milli, T, eps)` | Returns a handle (≥ 1) or a negative error. `api.c` sets `max_jobs` to the website limit (5,000) |
+| `aprm_create(cpu, mem, policy, alpha_milli, T, eps_milli)` | Returns a handle (≥ 1) or a negative error. `api.c` sets `max_jobs` to the website limit (5,000) |
 | `aprm_add_job(h, id, arrival, duration, cpu, mem, priority)` | Adds one job; returns a status |
 | `aprm_step(h)` / `aprm_run_until(h, t)` | Advance the simulation |
 | `aprm_state(h)` / `aprm_log(h, since)` / `aprm_results(h)` / `aprm_metrics(h)` | JSON strings |
@@ -553,7 +553,7 @@ The C core takes input from anyone using the website, so it is treated as untrus
 
 - [x] Times are 64-bit; `start + duration` and resource sums are checked for overflow before use.
 - [x] The aging key is the integer 1000·priority − alpha_milli·arrival (int64, overflow-checked), compared with a tie-break on arrival and id. No floating point is used in any scheduling decision.
-- [ ] Knapsack scaling guards against division by zero, against integer overflow in volumes, and against a table larger than a fixed limit (values: `DECISIONS.md` O-2).
+- [x] Knapsack scaling guards against division by zero, against integer overflow in volumes, and against a table larger than a fixed limit (values: `DECISIONS.md` D72).
 
 ### Correctness guards
 
