@@ -45,3 +45,35 @@ def test_no_figures_left_open(tmp_path: Path) -> None:
 
     pf.plot_e1_avg_wait(SAMPLE_DIR, str(tmp_path))
     assert plt.get_fignums() == []
+
+
+def _sample_figure():
+    """Build the E1 figure from the sample file and return (fig, rows)."""
+    rows = pf.read_summary(SAMPLE_DIR, "e1_summary.csv")
+    return pf.build_e1_figure(rows), rows
+
+
+def test_title_and_axis_labels() -> None:
+    """Title and both axis labels (with units) are the agreed text."""
+    import matplotlib.pyplot as plt
+
+    fig, _ = _sample_figure()
+    ax = fig.axes[0]
+    assert ax.get_title() == "E1: Average wait vs load (SAMPLE DATA)"
+    assert ax.get_xlabel() == "Arrival rate (jobs per tick)"
+    assert ax.get_ylabel() == "Average wait (ticks)"
+    plt.close(fig)
+
+
+def test_plotted_y_equals_avg_wait_mean_and_six_lines() -> None:
+    """Each line plots the CSV column avg_wait_mean, one line per policy."""
+    import matplotlib.pyplot as plt
+
+    fig, rows = _sample_figure()
+    lines = fig.axes[0].get_lines()
+    assert len(lines) == rows["policy"].nunique() == 6
+    for line in lines:
+        mine = rows[rows["policy"] == line.get_label()].sort_values("x_value")
+        assert list(line.get_xdata()) == list(mine["x_value"])
+        assert list(line.get_ydata()) == list(mine["avg_wait_mean"])
+    plt.close(fig)

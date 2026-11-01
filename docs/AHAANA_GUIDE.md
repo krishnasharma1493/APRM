@@ -77,7 +77,10 @@ screen. It has to come before `import matplotlib.pyplot`.
    between the low and high confidence bounds, in the same colour as the line
    but very transparent (`alpha=0.2` means 20% solid).
 
-**`plot_e1_avg_wait(summary_dir, out_dir)`** builds the whole figure.
+**`build_e1_figure(rows)`** builds the picture (no files involved, which also
+makes it easy to test). **`plot_e1_avg_wait(summary_dir, out_dir)`** reads the
+file with `read_summary`, calls `build_e1_figure`, and saves the result. The
+steps, in order:
 1. Read the file with `read_summary`.
 2. `plt.subplots(figsize=(7, 4.5))` makes an empty picture (`fig`) and one set
    of axes (`ax`). `figsize` is width and height in inches.
@@ -107,10 +110,13 @@ the sample folder, and prints the path.
   averaged over all jobs and over 30 runs. Higher = worse.
 - **Each coloured line** is one scheduler; the legend says which. A line
   that is lower than the others waits less, so it is better at that load.
-- **The pale band around a line** is the 95% confidence interval. It says: if
-  we repeated the experiment, the true average would fall inside this band 95
-  times out of 100. A wide band means the result is uncertain. If two bands
-  overlap a lot, we cannot say one scheduler is truly better than the other.
+- **The pale band around a line** is the 95% confidence interval. The true
+  average is one fixed number; the band is what moves from experiment to
+  experiment. If we repeated the whole experiment many times, about 95 in 100
+  bands built this way would contain the true average. In plain words: we are
+  95% confident the true average is inside the band. A wide band means the
+  result is uncertain. As a rule of thumb, if two bands overlap a lot, we
+  cannot say that one scheduler is clearly better than the other.
 - **"SAMPLE DATA" in the title** means the numbers are invented, only to test
   the drawing code. The pattern (all lines rising, fcfs lowest) means nothing
   about real schedulers. The real figure will come from Krishna's real
@@ -129,19 +135,19 @@ This first version uses fake sample data. My script only reads and draws.
 <details>
 <summary>Answers (try first!)</summary>
 
-1. In `draw_policy_line`, add `color="black"` to `ax.plot(...)` only for fcfs:
+1. In `draw_policy_line`, choose the colour before the plot call and pass it in:
 
    ```python
-   if policy == "fcfs":
-       lines = ax.plot(mine["x_value"], mine["avg_wait_mean"], marker="o",
-                       label=policy, color="black")
+   colour = "black" if policy == "fcfs" else None
+   lines = ax.plot(mine["x_value"], mine["avg_wait_mean"], marker="o",
+                   label=policy, color=colour)
    ```
 
-   (The simpler way is to pass a `color` argument to `ax.plot` for every
-   policy, but then all lines would share one colour.) Run the script again and
-   open the picture. Undo the change afterwards.
+   `None` means "let matplotlib pick the next colour", so the other five lines
+   keep their usual colours. Run the script again and open the picture. Undo
+   the change afterwards.
 
-2. In `plot_e1_avg_wait`, change the text inside `ax.set_title("...")`. Keep
+2. In `build_e1_figure`, change the text inside `ax.set_title("...")`. Keep
    "(SAMPLE DATA)" while the data is fake.
 
 3. The CSV has the columns `avg_turnaround_mean`, `avg_turnaround_ci_low` and

@@ -57,11 +57,8 @@ def draw_policy_line(ax, rows: pd.DataFrame, policy: str) -> None:
     )
 
 
-def plot_e1_avg_wait(summary_dir: str, out_dir: str) -> str:
-    """Draw E1: average wait vs load, one line per policy. Returns the PNG path."""
-    # Read the E1 summary (only file this figure needs).
-    rows = read_summary(summary_dir, "e1_summary.csv")
-
+def build_e1_figure(rows: pd.DataFrame):
+    """Build the E1 figure (average wait vs load) from the table and return it."""
     # Make a new empty figure with one set of axes.
     fig, ax = plt.subplots(figsize=(7, 4.5))
 
@@ -80,11 +77,21 @@ def plot_e1_avg_wait(summary_dir: str, out_dir: str) -> str:
     # Legend with the policy names, and a light grid for reading values.
     ax.legend(title="Policy")
     ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
+def plot_e1_avg_wait(summary_dir: str, out_dir: str) -> str:
+    """Draw E1: average wait vs load, one line per policy. Returns the PNG path."""
+    # Read the E1 summary (only file this figure needs).
+    rows = read_summary(summary_dir, "e1_summary.csv")
+
+    # Build the figure.
+    fig = build_e1_figure(rows)
 
     # Make sure the output folder exists, then save the picture there.
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "e1_avg_wait.png")
-    fig.tight_layout()
     fig.savefig(out_path, dpi=150)
 
     # Close the figure so pictures do not pile up in memory.
