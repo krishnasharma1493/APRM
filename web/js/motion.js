@@ -51,5 +51,19 @@
     return function cancel() { dead = true; if (typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(id); } };
   }
 
-  APRM.motion = { reduced: reduced, springStep: springStep, animateValue: animateValue };
+  /* Move an element with a spring. props: {y: pixels to start from (ends at 0), opacity: start
+   * value (ends at 1)}. Only transform and opacity change. Under reduced motion the end state
+   * is applied at once. Returns a cancel function. */
+  function spring(el, props, opts) {
+    var p = props || {};
+    var startY = typeof p.y === 'number' ? p.y : 0;
+    var startO = typeof p.opacity === 'number' ? p.opacity : 1;
+    function apply(t) {
+      el.style.transform = 'translateY(' + (startY * (1 - t)) + 'px)';
+      el.style.opacity = String(startO + (1 - startO) * t);
+    }
+    return animateValue(0, 1, opts, apply, function () { el.style.transform = ''; el.style.opacity = ''; });
+  }
+
+  APRM.motion = { reduced: reduced, springStep: springStep, animateValue: animateValue, spring: spring };
 })();

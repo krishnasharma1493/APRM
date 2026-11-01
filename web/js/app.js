@@ -85,6 +85,7 @@
     for (var i = 0; i < modeButtons.length; i++) {
       var on = modeButtons[i].getAttribute('data-mode-button') === st.mode;
       modeButtons[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+      modeButtons[i].setAttribute('aria-current', on ? 'step' : 'false');
     }
 
     byId('machine-text').textContent = 'CPU ' + st.machine.cpu + ' cores, memory ' + st.machine.mem + ' MB';
@@ -139,9 +140,21 @@
     var buttons = document.querySelectorAll('[data-mode-button]');
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].addEventListener('click', function (ev) {
-        APRM.store.setMode(ev.currentTarget.getAttribute('data-mode-button'));
+        var to = ev.currentTarget.getAttribute('data-mode-button');
+        APRM.store.setMode(to);
+        focusStep(to);
       });
     }
+  }
+
+  /* After a step change, move focus to that step's heading so Space and the arrow keys
+   * work at once (they are ignored while a button has focus). Skipped when focus() is missing. */
+  function focusStep(mode) {
+    var panel = byId(mode + '-panel');
+    var h = panel && panel.querySelector ? panel.querySelector('h2') : (mode === 'run' ? byId('run-panel') : null);
+    if (!h || typeof h.focus !== 'function') { return; }
+    h.setAttribute('tabindex', '-1');
+    h.focus();
   }
 
   /* Next and Back buttons move to another step. */
@@ -149,8 +162,10 @@
     var buttons = document.querySelectorAll('[data-next]');
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].addEventListener('click', function (ev) {
-        APRM.store.setMode(ev.currentTarget.getAttribute('data-next'));
+        var to = ev.currentTarget.getAttribute('data-next');
+        APRM.store.setMode(to);
         if (typeof window.scrollTo === 'function') { window.scrollTo(0, 0); }
+        focusStep(to);
       });
     }
   }
