@@ -537,29 +537,29 @@ The C core takes input from anyone using the website, so it is treated as untrus
 
 ### Input validation
 
-- [ ] Every API entry point checks pointers, handles and every field against the ranges in §3 before touching state.
-- [ ] A rejected job leaves the simulation unchanged (validate first, then modify).
-- [ ] The CSV reader rejects missing headers, extra columns, non-numbers, overflow and lines longer than a fixed limit, reporting line and column.
+- [x] Every API entry point checks pointers, handles and every field against the ranges in §3 before touching state.
+- [x] A rejected job leaves the simulation unchanged (validate first, then modify).
+- [x] The CSV reader rejects missing headers, extra columns, non-numbers, overflow and lines longer than a fixed limit, reporting line and column.
 
 ### Memory safety
 
-- [ ] Every `malloc`/`realloc` result is checked; failure returns `OUT_OF_MEMORY` and leaves state valid.
-- [ ] No unbounded string functions: `snprintf` only, never `sprintf`, `strcpy` or `strcat`.
-- [ ] The JSON writer escapes every string and grows its buffer safely.
-- [ ] `sim_destroy` frees everything; `make sanitize` runs all tests with zero AddressSanitizer reports and zero leaks.
-- [ ] Ownership of every returned pointer is documented in the header.
+- [x] Every `malloc`/`realloc` result is checked; failure returns `OUT_OF_MEMORY` and leaves state valid.
+- [x] No unbounded string functions: `snprintf` only, never `sprintf`, `strcpy` or `strcat`.
+- [x] The JSON writer escapes every string and grows its buffer safely.
+- [x] `sim_destroy` frees everything; `make sanitize` runs all tests with zero AddressSanitizer reports and zero leaks.
+- [x] Ownership of every returned pointer is documented in the header.
 
 ### Arithmetic safety
 
-- [ ] Times are 64-bit; `start + duration` and resource sums are checked for overflow before use.
-- [ ] The aging key is the integer 1000·priority − alpha_milli·arrival (int64, overflow-checked), compared with a tie-break on arrival and id. No floating point is used in any scheduling decision.
+- [x] Times are 64-bit; `start + duration` and resource sums are checked for overflow before use.
+- [x] The aging key is the integer 1000·priority − alpha_milli·arrival (int64, overflow-checked), compared with a tie-break on arrival and id. No floating point is used in any scheduling decision.
 - [ ] Knapsack scaling guards against division by zero, against integer overflow in volumes, and against a table larger than a fixed limit (values: `DECISIONS.md` O-2).
 
 ### Correctness guards
 
-- [ ] Every invariant in the §4 list ("Invariants") is checked after every step in debug builds. That list is the reference; do not maintain a second copy here.
-- [ ] No global or static mutable state, so several simulations can run side by side.
-- [ ] Same input and settings give the same output on GCC, Clang and WebAssembly (checked by §10 conformance).
+- [x] Every invariant in the §4 list ("Invariants") is checked after every step in debug builds. That list is the reference; do not maintain a second copy here.
+- [x] No global or static mutable state, so several simulations can run side by side.
+- [x] Same input and settings give the same output on GCC, Clang and WebAssembly (checked by §10 conformance).
 
 ### Deliberately skipped
 
@@ -611,15 +611,15 @@ Left panel: machine settings and job editor. Centre: canvas. Right panel: "why" 
 
 The website has no accounts or stored data, so the risks are bad input from files and links, and the page breaking during the demo.
 
-- [ ] All text from users, files, URLs or the engine is shown with `textContent`, never `innerHTML`.
-- [ ] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
+- [x] All text from users, files, URLs or the engine is shown with `textContent`, never `innerHTML`.
+- [x] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
 - [ ] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
-- [ ] The only external request is Chart.js from a CDN, pinned to an exact version with an integrity hash. If it fails, Compare mode falls back to a table.
-- [ ] No `eval`, no `new Function`, no inline event-handler attributes.
-- [ ] Classic scripts only; each defines nothing globally except properties of `window.APRM`. No `fetch`, so the page works from `file://`.
-- [ ] A failed WebAssembly load shows a clear error state, never a blank page.
-- [ ] Long runs cannot freeze the tab: steps per frame are capped, and "jump to end" runs in slices.
-- [ ] Nothing is stored in the browser beyond optional user preferences (theme, speed), wrapped in `try/catch`.
+- [x] The only external request is Chart.js from a CDN, pinned to an exact version with an integrity hash. If it fails, Compare mode falls back to a table.
+- [x] No `eval`, no `new Function`, no inline event-handler attributes.
+- [x] Classic scripts only; each defines nothing globally except properties of `window.APRM`. No `fetch`, so the page works from `file://`.
+- [x] A failed WebAssembly load shows a clear error state, never a blank page.
+- [x] Long runs cannot freeze the tab: steps per frame are capped, and "jump to end" runs in slices.
+- [x] Nothing is stored in the browser beyond optional user preferences (theme, speed), wrapped in `try/catch`.
 
 ## 9. AI workflow, CI and Git hygiene
 

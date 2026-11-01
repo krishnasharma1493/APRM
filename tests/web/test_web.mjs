@@ -219,6 +219,29 @@ test('wasm: calls before init, and init without createAprm, give a typed error',
   await assert.rejects(d.APRM.wasm.init(), (e) => e.name === 'EngineError' && /sync boom/.test(e.message));
 });
 
+test('wasm: a factory that never settles times out after 30 s with a typed error; a late answer is ignored', async () => {
+  let resolveLate;
+  const never = new Promise((r) => { resolveLate = r; });
+  const a = loadPage({ createAprm: () => never, only: ['js/wasm.js'] });
+  const timers = [];
+  a.ctx.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  a.ctx.clearTimeout = () => {};
+  const pending = a.APRM.wasm.init();
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 30000);
+  timers[0].fn();                                   // 30 s pass
+  await assert.rejects(pending, (e) => e.name === 'EngineError' && e.code === 0 && /took too long to start/.test(e.message));
+  resolveLate(fakeModule());                        // arrives after the timeout
+  await tick();
+  throwsEngine(() => a.APRM.wasm.step(1), 0);       // engine still not loaded: the late module was ignored
+});
+
+test('wasm: the timeout also fires with a real timer function', async () => {
+  const p = loadPage({ createAprm: () => new Promise(() => {}), only: ['js/wasm.js'] });
+  p.ctx.setTimeout = (fn) => { setTimeout(fn, 0); return 1; };
+  await assert.rejects(p.APRM.wasm.init(), /took too long/);
+});
+
 test('wasm: handle checking happens in JavaScript (ToInt32 trap)', async () => {
   const w = await ready();
   const h = w.create(16, 1000, 'fcfs', 100, 50, 0.1);
