@@ -1,29 +1,24 @@
-/* canvas.js: draws the live picture of a run (PRD section 7, K-25).
+/* canvas.js: the planning board (PRD section 7, K-49).
  *
- * Idea: the browser only DRAWS what the engine reported. Every number here
- * (free resources, scores, running jobs, finish times) comes from the state
- * JSON or the event log; nothing is computed that could change which job runs.
+ * Idea: the machine is a board with two lanes, CPU above memory, on one time axis. Each job the engine
+ * has started is a card: as wide as its run, as tall as its share of that resource. Everything shown
+ * comes from the engine's state JSON and log; this file only places cards and never decides anything.
+ * Colours come from the CSS variables, so the board follows light and dark.
  *
- * Layers, top to bottom: clock line, CPU and memory bars (one block per running
- * job, width proportional to its demand), the waiting line in the engine's own
- * order with the live score and a lock on the reserved job, the running list,
- * and the Gantt chart (one row per job, thin line for waiting, bar for running,
- * a vertical marker for "now"). Text is drawn with fillText only (D34).
- *
- * layout() is pure arithmetic and is unit tested; draw() paints that layout.
- * Classic script: attaches APRM.canvas only.
+ * Classic script: attaches APRM.canvas only. Nothing runs at load time.
  */
 (function () {
   'use strict';
 
   var APRM = (window.APRM = window.APRM || {});
 
-  var HEIGHT = 640;              /* css pixels */
-  var MARGIN = 12;
-  var LABEL_W = 56;              /* width of "CPU" / "Mem" labels */
-  var ROW_H = 16;
-  var WAIT_ROWS = 8;
-  var RUN_ROWS = 6;
+  var HATCH_MAX = 300;           /* above this, cards are slivers: hatching costs a clip per card per frame */
+  var HEIGHT = 360;              /* css pixels */
+  var MARGIN = 8;
+  var LABEL_W = 56;              /* width of the "CPU" / "Memory" labels */
+  var TOP = 16;                  /* room for the "now" label */
+  var GAP = 14;                  /* between the lanes */
+  var AXIS_H = 24;               /* room for the time labels */
   var PALETTE_SIZE = 10;
   var PALETTE_VARS = ['--job-0', '--job-1', '--job-2', '--job-3', '--job-4', '--job-5', '--job-6', '--job-7', '--job-8', '--job-9'];
   var FALLBACK_PALETTE = ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'];
@@ -31,26 +26,6 @@
 
   /* Palette index of a job: only a colour choice, never a decision. */
   function paletteIndex(id) { return ((id % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE; }
-
-  /* Relative luminance of a #RRGGBB colour, or -1 when the text is not that form. */
-  function luminance(hex) {
-    var m = /^#([0-9a-fA-F]{6})$/.exec(String(hex).trim());
-    if (!m) { return -1; }
-    var c = [0, 2, 4].map(function (i) {
-      var v = parseInt(m[1].substr(i, 2), 16) / 255;
-      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  }
-
-  /* Whichever of two inks reads better on a background colour (higher contrast). Falls back to `a`. */
-  function betterInk(bg, a, b) {
-    var lb = luminance(bg), la = luminance(a), lc = luminance(b);
-    if (lb < 0 || la < 0 || lc < 0) { return a; }
-    var ca = (Math.max(lb, la) + 0.05) / (Math.min(lb, la) + 0.05);
-    var cb = (Math.max(lb, lc) + 0.05) / (Math.min(lb, lc) + 0.05);
-    return ca >= cb ? a : b;
-  }
 
   /* Hatch pattern for job `id`: 0 none, 1 slanted lines, 2 vertical lines. Skipped when the
    * 2D context cannot clip (tests). O(width / 4). */
@@ -88,81 +63,95 @@
     return out;
   }
 
-  /* Blocks for one resource bar: running jobs left to right, each as wide as
-   * its demand share of the capacity. demandKey is 'cpu' or 'mem'. O(running). */
-  function bar(running, cap, demandKey, x, y, w, h) {
-    var blocks = [];
-    var used = 0;
-    for (var i = 0; i < running.length; i++) {
-      var d = running[i][demandKey];
-      blocks.push({ id: running[i].id, x: x + (used / cap) * w, y: y, w: (d / cap) * w, h: h });
-      used += d;
+  /* Stack jobs in one lane, as planning-board cards. A card sits at the lowest free height for its
+   * whole span of time. Only a drawing choice: the engine already decided when each job runs and
+   * resources are interchangeable, so the height means nothing but "these fit together". A card that
+   * finds no contiguous gap (fragments can occur) is drawn against the top edge. O(n * cards in use). */
+  function stack(cards, cap) {
+    var active = [];
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      active = active.filter(function (o) { return o.end > c.start; });
+      var tries = [0];
+      for (var a = 0; a < active.length; a++) { tries.push(active[a].slot + active[a].size); }
+      tries.sort(function (x, y) { return x - y; });
+      var slot = -1;
+      for (var t = 0; t < tries.length && slot < 0; t++) {
+        var y0 = tries[t], free = y0 + c.size <= cap;
+        for (var k = 0; k < active.length && free; k++) {
+          if (y0 < active[k].slot + active[k].size && active[k].slot < y0 + c.size) { free = false; }
+        }
+        if (free) { slot = y0; }
+      }
+      c.slot = slot >= 0 ? slot : Math.max(0, cap - c.size);
+      active.push(c);
     }
-    return { x: x, y: y, w: w, h: h, blocks: blocks, used: used, cap: cap };
+    return cards;
   }
 
-  /* Jobs in Gantt order: arrival, then id. Presentation order only. O(n log n). */
-  function ganttOrder(jobs) {
-    return jobs.slice().sort(function (a, b) { return a.arrival - b.arrival || a.id - b.id; });
+  /* A tick step that gives labels about `room` pixels apart: 1, 2 or 5 times a power of ten. O(1). */
+  function niceStep(tmax, width, room) {
+    var raw = tmax / Math.max(1, width / room);
+    var mag = Math.pow(10, Math.floor(Math.log(Math.max(raw, 1)) / Math.LN10));
+    var n = raw / mag;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
   }
 
-  /* Where everything goes, for a canvas of w x h css pixels.
-   * view = { state, jobs, bars }. state may be null (nothing drawn then).
-   * Returns plain rectangles; tests check them. O(jobs log jobs + shown rows). */
+  /* One lane's cards as rectangles. key is 'cpu' or 'mem'. Time runs left to right on the shared axis. */
+  function laneCards(view, byId, key, cap, lane, sx, now) {
+    var list = [], i;
+    var ids = Object.keys(view.bars);
+    for (i = 0; i < ids.length; i++) {
+      var b = view.bars[ids[i]], job = byId[ids[i]];
+      if (!job || b.start === undefined) { continue; }
+      list.push({ id: job.id, start: b.start, end: b.finish !== undefined ? b.finish : now, size: job[key] });
+    }
+    list.sort(function (p, q) { return p.start - q.start || p.id - q.id; });
+    stack(list, cap);
+    for (i = 0; i < list.length; i++) {
+      var c = list[i];
+      c.x = sx(c.start);
+      c.w = Math.max(1, sx(c.end) - c.x);
+      c.x = Math.min(c.x, lane.x + lane.w - c.w);          /* a 1-pixel card at the far end stays on the board */
+      c.h = Math.max(1, (c.size / cap) * lane.h);
+      c.y = lane.y + lane.h - ((c.slot + c.size) / cap) * lane.h;
+    }
+    return list;
+  }
+
+  /* Where everything goes, for a canvas of w x h css pixels: the CPU lane over the memory lane over
+   * one time axis. view = { state, jobs, bars }; state may be null (nothing drawn then).
+   * Returns plain rectangles; tests check them. O(jobs log jobs). */
   function layout(view, w, h) {
     var st = view.state;
-    var inner = Math.max(40, w - 2 * MARGIN);
-    var barX = MARGIN + LABEL_W;
-    var barW = Math.max(20, w - barX - MARGIN);
-    var out = { w: w, h: h, bars: null, waiting: [], running: [], gantt: null, regions: [] };
+    var out = { w: w, h: h, lanes: null };
     if (!st) { return out; }
-
-    out.clockY = 20;
-    out.cpuBar = bar(st.running, st.cap.cpu, 'cpu', barX, 34, barW, 18);
-    out.memBar = bar(st.running, st.cap.mem, 'mem', barX, 72, barW, 18);
-    out.bars = [out.cpuBar, out.memBar];
-
-    var y = 114;
-    out.waitingTitleY = y + 12;
-    var nWait = Math.min(st.waiting.length, WAIT_ROWS);
-    for (var i = 0; i < nWait; i++) {
-      out.waiting.push({ id: st.waiting[i].id, index: i, x: MARGIN, y: y + 18 + i * ROW_H, w: inner, h: ROW_H });
-    }
-    out.waitingMore = st.waiting.length - nWait;
-    out.waitingMoreY = y + 18 + nWait * ROW_H + 12;
-    y += 18 + WAIT_ROWS * ROW_H + 16;
-
-    out.runningTitleY = y + 12;
-    var nRun = Math.min(st.running.length, RUN_ROWS);
-    for (var r = 0; r < nRun; r++) {
-      out.running.push({ id: st.running[r].id, index: r, x: MARGIN, y: y + 18 + r * ROW_H, w: inner, h: ROW_H });
-    }
-    out.runningMore = st.running.length - nRun;
-    out.runningMoreY = y + 18 + nRun * ROW_H + 12;
-    y += 18 + RUN_ROWS * ROW_H + 16;
-
-    /* Gantt: the time axis runs 0..tmax; tmax is the latest time the engine
-     * has told us about (now, a planned finish, a logged finish, an arrival). */
-    var order = ganttOrder(view.jobs);
-    var tmax = Math.max(1, st.now);
-    var k;
-    for (k = 0; k < order.length; k++) { if (order[k].arrival > tmax) { tmax = order[k].arrival; } }
+    var tmax = Math.max(1, st.now), k;
+    for (k = 0; k < view.jobs.length; k++) { if (view.jobs[k].arrival > tmax) { tmax = view.jobs[k].arrival; } }
     var ids = Object.keys(view.bars);
     for (k = 0; k < ids.length; k++) {
       var b = view.bars[ids[k]];
       if (b.finish !== undefined && b.finish > tmax) { tmax = b.finish; }
     }
-    var gy = y + 18;
-    var gh = Math.max(20, h - gy - 22);
-    var rowH = order.length > 0 ? gh / order.length : gh;
-    out.gantt = { x: barX, y: gy, w: barW, h: gh, tmax: tmax, rowH: rowH, order: order, titleY: y + 12 };
-    out.nowX = barX + (st.now / tmax) * barW;
-    out.axisY = gy + gh + 14;
+    var x = LABEL_W, gw = Math.max(20, w - x - MARGIN);
+    var laneH = Math.max(40, (h - TOP - AXIS_H - GAP) / 2);
+    var sx = function (t) { return x + (t / tmax) * gw; };
+    var cpu = { key: 'cpu', cap: st.cap.cpu, x: x, y: TOP, w: gw, h: laneH };
+    var mem = { key: 'mem', cap: st.cap.mem, x: x, y: TOP + laneH + GAP, w: gw, h: laneH };
+    var byId = {};
+    for (k = 0; k < view.jobs.length; k++) { byId[view.jobs[k].id] = view.jobs[k]; }
+    cpu.cards = laneCards(view, byId, 'cpu', Math.max(1, st.cap.cpu), cpu, sx, st.now);
+    mem.cards = laneCards(view, byId, 'mem', Math.max(1, st.cap.mem), mem, sx, st.now);
+    out.lanes = [cpu, mem];
+    out.tmax = tmax;
+    out.nowX = sx(st.now);
+    out.step = niceStep(tmax, gw, 80);
+    out.sx = sx;
+    out.axisY = mem.y + mem.h + 16;
     return out;
   }
 
-  /* The job under a point (css pixels), or null. Rows and blocks recorded by
-   * the last draw(). O(regions). */
+  /* The job under a point (css pixels), or null. Cards recorded by the last draw(). O(regions). */
   function hit(el, x, y) {
     var regs = (el && el.__regions) || [];
     for (var i = regs.length - 1; i >= 0; i--) {
@@ -172,138 +161,74 @@
     return null;
   }
 
-  /* Text of a score exactly as the engine gave it (a number from the JSON);
-   * only the number of decimals is fixed for display. */
-  function scoreText(score) {
-    return typeof score === 'number' ? score.toFixed(3) : '';
-  }
-
-  /* Paint the whole picture. el is a <canvas>. view = { state, jobs, bars,
-   * selected, events }. Returns false when the canvas has no 2D context (the
-   * caller then shows the text fallback). O(jobs + shown rows). */
+  /* Draw the board. Returns false when the page has no 2D canvas. O(cards). */
   function draw(el, view) {
     var ctx = el && typeof el.getContext === 'function' ? el.getContext('2d') : null;
     if (!ctx) { return false; }
-    var cssW = Math.max(320, Math.floor(el.clientWidth || 640));
+    var cssW = Math.max(300, Math.floor(el.clientWidth || 640));
     var dpr = (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0) ? window.devicePixelRatio : 1;
     if (el.width !== Math.round(cssW * dpr)) { el.width = Math.round(cssW * dpr); }
     if (el.height !== Math.round(HEIGHT * dpr)) { el.height = Math.round(HEIGHT * dpr); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     var col = colours(el);
     ctx.clearRect(0, 0, cssW, HEIGHT);
-    ctx.font = '13px ' + col.font;
+    ctx.font = '12px ' + col.font;
     ctx.textBaseline = 'alphabetic';
     var lay = layout(view, cssW, HEIGHT);
     el.__layout = lay;
     var regions = [];
     el.__regions = regions;
-    var st = view.state;
-    if (!st) { return true; }
+    if (!view.state) { return true; }
     var sel = view.selected;
-    var jobCol = function (id) { return col.jobs[paletteIndex(id)]; };
-    var text = function (s, x, y, maxW, colour) {
-      ctx.fillStyle = colour || col.text;
-      ctx.fillText(s, x, y, maxW);
-    };
-    /* A job block: its colour, one of three hatch patterns (id mod 3, so colour is not the only
-     * signal) and, when it is big enough, its number. Drawing only; no decisions. */
-    var block = function (id, x, y, w, h) {
-      ctx.fillStyle = jobCol(id);
-      ctx.fillRect(x, y, w, h);
-      drawHatch(ctx, id, x, y, w, h, col.panel);
-      if (w >= 18 && h >= 12) { text(String(id), x + 3, y + h - 4, w - 4, betterInk(jobCol(id), col.panel, col.text)); }
-    };
+    var text = function (s, x, y, maxW, colour) { ctx.fillStyle = colour || col.text; ctx.fillText(s, x, y, maxW); };
 
-    text('Time ' + st.now + '   events ' + view.events + '   done ' + st.done + ' of ' + st.total, MARGIN, lay.clockY, lay.w - 2 * MARGIN);
-
-    /* resource bars */
-    var names = [['CPU', lay.cpuBar, st.free.cpu, ' cores'], ['Mem', lay.memBar, st.free.mem, ' MB']];
-    for (var n = 0; n < names.length; n++) {
-      var bx = names[n][1];
-      text(names[n][0], MARGIN, bx.y + 14, LABEL_W - 4);
-      ctx.fillStyle = col.border;
-      ctx.fillRect(bx.x, bx.y, bx.w, bx.h);
-      for (var b = 0; b < bx.blocks.length; b++) {
-        var blk = bx.blocks[b];
-        block(blk.id, blk.x, blk.y, blk.w, blk.h);
-        if (sel === blk.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 2; ctx.strokeRect(blk.x, blk.y, blk.w, blk.h); }
-        regions.push({ x: blk.x, y: blk.y, w: blk.w, h: blk.h, id: blk.id });
+    for (var n = 0; n < lay.lanes.length; n++) {
+      var lane = lay.lanes[n];
+      /* the printed board: ground, capacity rule, a hairline at every time label */
+      ctx.fillStyle = col.panel;
+      ctx.fillRect(lane.x, lane.y, lane.w, lane.h);
+      ctx.strokeStyle = col.border; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var t = lay.step; t < lay.tmax; t += lay.step) { ctx.moveTo(lay.sx(t) + 0.5, lane.y); ctx.lineTo(lay.sx(t) + 0.5, lane.y + lane.h); }
+      /* the printed slots: one row per core on a small machine, quarters otherwise */
+      var rows = lane.cap <= 32 ? lane.cap : 4;
+      for (var r = 1; r < rows; r++) { var ry = Math.round(lane.y + (r / rows) * lane.h) + 0.5; ctx.moveTo(lane.x, ry); ctx.lineTo(lane.x + lane.w, ry); }
+      ctx.stroke();
+      ctx.strokeRect(lane.x + 0.5, lane.y + 0.5, lane.w - 1, lane.h - 1);
+      text(lane.key === 'cpu' ? 'CPU' : 'Memory', 0, lane.y + 12, LABEL_W - 4, col.text);
+      text(String(lane.cap), 0, lane.y + 27, LABEL_W - 4, col.muted);
+      text('0', 0, lane.y + lane.h, LABEL_W - 4, col.muted);
+      for (var c = 0; c < lane.cards.length; c++) {
+        var card = lane.cards[c];
+        regions.push({ x: card.x, y: card.y, w: card.w, h: card.h, id: card.id, lane: lane.key });
+        if (view.hold && view.hold[card.id]) { continue; }     /* its magnet is still on the way here */
+        ctx.fillStyle = col.jobs[paletteIndex(card.id)];
+        ctx.fillRect(card.x, card.y, card.w, card.h);
+        if (lane.cards.length <= HATCH_MAX) { drawHatch(ctx, card.id, card.x, card.y, card.w, card.h, col.panel); }
+        ctx.strokeStyle = col.panel; ctx.lineWidth = 1;
+        ctx.strokeRect(card.x + 0.5, card.y + 0.5, Math.max(0, card.w - 1), Math.max(0, card.h - 1));
+        if (card.w >= 22 && card.h >= 16) {
+          /* the stamped number: dark or light ink is never in doubt on its own small plate */
+          var label = String(card.id), pw = ctx.measureText ? ((ctx.measureText(label) || {}).width || 8) + 6 : 14;
+          ctx.fillStyle = col.panel;
+          ctx.fillRect(card.x + 3, card.y + 3, Math.min(pw, card.w - 6), 14);
+          text(label, card.x + 6, card.y + 14, card.w - 10, col.text);
+        }
+        if (sel === card.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 2; ctx.strokeRect(card.x, card.y, card.w, card.h); }
       }
-      ctx.strokeStyle = col.muted; ctx.lineWidth = 1;
-      ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
-      text(names[n][2] + names[n][3] + ' free', bx.x + 4, bx.y + bx.h + 11, bx.w, col.muted);
     }
 
-    /* waiting line, in the order the engine reported */
-    text('Waiting (' + st.waiting.length + ')', MARGIN, lay.waitingTitleY, lay.w - 2 * MARGIN, col.muted);
-    if (st.waiting.length === 0) { text('nobody is waiting', MARGIN + 8, lay.waitingTitleY + 18, 200, col.muted); }
-    for (var i = 0; i < lay.waiting.length; i++) {
-      var row = lay.waiting[i];
-      var j = st.waiting[row.index];
-      if (sel === j.id) { ctx.fillStyle = col.border; ctx.fillRect(row.x, row.y, row.w, row.h); }
-      ctx.fillStyle = jobCol(j.id);
-      ctx.fillRect(row.x + 2, row.y + 3, 8, 8);
-      var locked = st.reservation && st.reservation.id === j.id;
-      var line = (locked ? '[lock] ' : '') + 'Job ' + j.id + '  priority ' + j.priority +
-        (typeof j.score === 'number' ? '  score ' + scoreText(j.score) : '') +
-        '  needs ' + j.cpu + ' cores, ' + j.mem + ' MB';
-      text(line, row.x + 16, row.y + 12, row.w - 20);
-      regions.push({ x: row.x, y: row.y, w: row.w, h: row.h, id: j.id });
-    }
-    if (lay.waitingMore > 0) { text('and ' + lay.waitingMore + ' more', MARGIN + 16, lay.waitingMoreY, 200, col.muted); }
-
-    /* running jobs */
-    text('Running (' + st.running.length + ')', MARGIN, lay.runningTitleY, lay.w - 2 * MARGIN, col.muted);
-    if (st.running.length === 0) { text('nothing is running', MARGIN + 8, lay.runningTitleY + 18, 200, col.muted); }
-    for (var q = 0; q < lay.running.length; q++) {
-      var rr = lay.running[q];
-      var rj = st.running[rr.index];
-      if (sel === rj.id) { ctx.fillStyle = col.border; ctx.fillRect(rr.x, rr.y, rr.w, rr.h); }
-      ctx.fillStyle = jobCol(rj.id);
-      ctx.fillRect(rr.x + 2, rr.y + 3, 8, 8);
-      text('Job ' + rj.id + '  started ' + rj.start + ', finishes ' + rj.finish + '  uses ' + rj.cpu + ' cores, ' + rj.mem + ' MB', rr.x + 16, rr.y + 12, rr.w - 20);
-      regions.push({ x: rr.x, y: rr.y, w: rr.w, h: rr.h, id: rj.id });
-    }
-    if (lay.runningMore > 0) { text('and ' + lay.runningMore + ' more', MARGIN + 16, lay.runningMoreY, 200, col.muted); }
-
-    /* Gantt */
-    var g = lay.gantt;
-    text('Timeline (' + g.order.length + ' jobs)', MARGIN, g.titleY, lay.w - 2 * MARGIN, col.muted);
-    ctx.strokeStyle = col.border; ctx.lineWidth = 1;
-    ctx.strokeRect(g.x, g.y, g.w, g.h);
-    var sx = function (t) { return g.x + (t / g.tmax) * g.w; };
-    for (var k = 0; k < g.order.length; k++) {
-      var jb = g.order[k];
-      var ry = g.y + k * g.rowH;
-      var bh = Math.max(1, Math.min(10, g.rowH - 1));
-      var bb = view.bars[jb.id];
-      var started = bb && bb.start !== undefined;
-      var waitEnd = started ? bb.start : st.now;
-      if (jb.arrival <= waitEnd) {
-        ctx.fillStyle = col.muted;
-        ctx.fillRect(sx(jb.arrival), ry + bh / 2, Math.max(0, sx(waitEnd) - sx(jb.arrival)), 1);
-      }
-      if (started) {
-        var end = bb.finish !== undefined ? bb.finish : st.now;
-        block(jb.id, sx(bb.start), ry, Math.max(1, sx(end) - sx(bb.start)), bh);
-      }
-      if (sel === jb.id) { ctx.strokeStyle = col.text; ctx.lineWidth = 1; ctx.strokeRect(g.x, ry, g.w, Math.max(1, g.rowH)); }
-      if (g.rowH >= 12) { text(String(jb.id), MARGIN + LABEL_W - 24, ry + 10, 22, col.muted); }
-      regions.push({ x: g.x, y: ry, w: g.w, h: Math.max(1, g.rowH), id: jb.id });
-    }
-    /* the "now" marker and the time axis */
-    ctx.strokeStyle = col.mark; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(lay.nowX, g.y); ctx.lineTo(lay.nowX, g.y + g.h); ctx.stroke();
-    text('now ' + st.now, Math.min(lay.nowX + 3, g.x + g.w - 50), g.y - 3, 70, col.mark);
-    text('0', g.x, lay.axisY, 40, col.muted);
-    text(String(g.tmax), g.x + g.w - 40, lay.axisY, 40, col.muted);
+    /* the time axis, and the teal "now" rail across both lanes */
+    var first = lay.lanes[0], last = lay.lanes[1];
+    for (var v = 0; v <= lay.tmax; v += lay.step) { text(String(v), Math.min(lay.sx(v), cssW - 30), lay.axisY, 40, col.muted); }
+    ctx.strokeStyle = col.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lay.nowX, first.y); ctx.lineTo(lay.nowX, last.y + last.h); ctx.stroke();
+    text('now ' + view.state.now, Math.min(lay.nowX + 4, cssW - 60), first.y - 3, 70, col.accent);
     return true;
   }
 
   APRM.canvas = {
     HEIGHT: HEIGHT,
-    WAIT_ROWS: WAIT_ROWS,
-    RUN_ROWS: RUN_ROWS,
     paletteIndex: paletteIndex,
     PALETTE_SIZE: PALETTE_SIZE,
     drawHatch: drawHatch,

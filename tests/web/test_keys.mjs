@@ -50,6 +50,25 @@ test('ignored with a modifier key', () => {
   for (const m of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) assert.equal(keys.actionFor(ev({ key: ' ', [m]: true })), null, m);
 });
 
+test('job rows (role=button) keep their own keys; Esc clears the selection on the Run step', () => {
+  const row = { tagName: 'LI', getAttribute: (k) => (k === 'role' ? 'button' : null) };
+  assert.equal(keys.actionFor(ev({ key: ' ', target: row })), null);
+  assert.equal(keys.actionFor(ev({ key: 'Escape' })), 'clear');
+  assert.equal(keys.actionFor(ev({ key: 'Escape', target: row })), 'clear', 'Esc works from a job row');
+  assert.equal(keys.actionFor(ev({ key: 'Escape', target: { tagName: 'INPUT' } })), null, 'not while typing');
+});
+
+test('rovingList: arrows move the one Tab stop, Enter and Space pick the job', () => {
+  const handlers = {}, picks = [];
+  const make = (id) => ({ tabindex: id === 1 ? '0' : '-1', focused: false, getAttribute(k) { return k === 'data-job' ? String(id) : this[k]; }, setAttribute(k, v) { this[k] = v; }, focus() { this.focused = true; } });
+  const a = make(1), b = make(2); a.nextElementSibling = b; b.previousElementSibling = a;
+  keys.rovingList({ addEventListener: (t, fn) => { handlers[t] = fn; } }, (id) => picks.push(id));
+  handlers.keydown(ev({ key: 'ArrowDown', target: a }));
+  assert.equal(a.tabindex, '-1'); assert.equal(b.tabindex, '0'); assert.equal(b.focused, true);
+  handlers.keydown(ev({ key: 'Enter', target: b })); handlers.keydown(ev({ key: ' ', target: a }));
+  assert.deepEqual(picks, [2, 1]);
+});
+
 test('mount attaches one keydown listener and is safe twice', () => {
   keys.mount(); const first = listeners.keydown; keys.mount();
   assert.equal(typeof first, 'function'); assert.equal(listeners.keydown, first);

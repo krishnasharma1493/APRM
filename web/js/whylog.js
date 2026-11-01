@@ -62,18 +62,27 @@
     }
     if (!list || sig === lastSig) { return shown.length; }
     lastSig = sig;
+    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
     clear(list);
     for (var i = 0; i < shown.length; i++) {
       var li = document.createElement('li');
-      li.textContent = lineText(shown[i]);
+      var kind = document.createElement('span');
+      kind.setAttribute('class', 'why-kind kind-' + String(shown[i].kind).toLowerCase());
+      kind.textContent = words('kind.' + shown[i].kind, String(shown[i].kind));
+      li.appendChild(kind);
+      var raw = document.createElement('span');
+      raw.setAttribute('class', 'why-raw detail-only');
+      raw.textContent = String(shown[i].kind);
+      li.appendChild(raw);
+      li.appendChild(document.createTextNode(lineText(shown[i])));
       li.setAttribute('class', 'why-' + String(shown[i].kind).toLowerCase() + (shown[i].job === selected ? ' why-selected' : ''));
       li.setAttribute('data-job', String(shown[i].job));
-      /* The plain label and the raw kind are attributes shown by CSS, so the line itself stays
-       * one text node with the engine's sentence unchanged. */
-      li.setAttribute('data-kind-label', words('kind.' + shown[i].kind, String(shown[i].kind)));
-      li.setAttribute('data-kind', String(shown[i].kind));
+      li.setAttribute('role', 'button');
+      li.setAttribute('tabindex', i === shown.length - 1 ? '0' : '-1');
       list.appendChild(li);
     }
+    if (APRM.keys) { APRM.keys.refocus(list, keep); }
+    if (selected === null || selected === undefined) { list.scrollTop = list.scrollHeight || 0; }   /* newest line in view */
     return shown.length;
   }
 
@@ -90,10 +99,12 @@
     if (list) {
       list.addEventListener('click', function (ev) {
         var t = ev.target;
+        if (t && t.parentNode && typeof t.getAttribute === 'function' && t.getAttribute('data-job') === null) { t = t.parentNode; }
         var id = t && typeof t.getAttribute === 'function' ? t.getAttribute('data-job') : null;
         if (id !== null && id !== '' && APRM.player) { APRM.player.select(Number(id)); }
       });
     }
+    if (list && APRM.keys) { APRM.keys.rovingList(list, function (id) { if (APRM.player) { APRM.player.select(id); } }); }
     var btn = document.getElementById('whylog-clear');
     if (btn) { btn.addEventListener('click', function () { if (APRM.player) { APRM.player.select(null); } }); }
   }

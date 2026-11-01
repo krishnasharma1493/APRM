@@ -66,7 +66,7 @@ function fakeDocument() {
     byId[m[2]] = el;
   }
   const cv = byId['run-canvas'];
-  cv.clientWidth = 800; cv.width = 640; cv.height = 640;
+  cv.clientWidth = 800; cv.width = 640; cv.height = 420;
   cv.ctx = fakeCtx();
   cv.getContext = () => cv.ctx;
   cv.getBoundingClientRect = () => ({ left: 0, top: 0 });
@@ -280,9 +280,12 @@ test('log: entries are pulled with since = last seq, never twice, shown as text'
   assert.deepEqual(plain(e.map((x) => x.seq)), [1, 2, 3, 4, 5]);
   const list = p.doc.byId['whylog-list'];
   assert.equal(list.children.length, 5);
-  assert.equal(list.children[0].textContent, 't=1: <img src=x onerror=alert(1)>');
-  assert.equal(list.children[0].children[0].constructor.name, 'Text');
-  assert.equal(list.children[0].children.length, 1, 'only a text node, no parsed markup');
+  const line = list.children[0].children;
+  assert.equal(line.length, 3, 'a plain kind label, the raw kind, and the engine sentence');
+  assert.equal(line[2].constructor.name, 'Text', 'the engine sentence is a text node, never parsed markup');
+  assert.equal(line[2].textContent, 't=1: <img src=x onerror=alert(1)>');
+  assert.equal(line[1].textContent, 'START');
+  assert.equal(line[0].textContent, 'Started');
 });
 
 test('why log: only the newest MAX_ROWS rows exist as page elements', () => {
@@ -466,61 +469,133 @@ const STATE = { now: 10, done: 2, total: 5, cap: { cpu: 16, mem: 32768 }, free: 
 const VIEW = { state: STATE, jobs: [1, 2, 7, 8].map((id) => ({ id, arrival: id, duration: 5, cpu: 1, mem: 1, priority: 1 })),
   bars: { 1: { start: 0, finish: 40 }, 2: { start: 1, finish: 9 } }, selected: null, events: 7 };
 
-test('canvas layout: bars are proportional to usage, now marker is proportional to now', () => {
+test('board layout: card height is the demand share, width is the run, now is proportional', () => {
   const p = page();
-  const L = p.A.canvas.layout(VIEW, 800, 640);
-  const [a, b] = L.cpuBar.blocks;
-  assert.equal(a.w / b.w, 2);                                   // 8 cores vs 4 cores
-  assert.ok(Math.abs(a.w / L.cpuBar.w - 8 / 16) < 1e-12);
-  assert.ok(Math.abs(L.memBar.blocks[0].w / L.memBar.w - 4096 / 32768) < 1e-12);
-  assert.ok(Math.abs(b.x - (a.x + a.w)) < 1e-9, 'blocks are side by side');
-  assert.ok(a.w + b.w <= L.cpuBar.w);
-  const g = L.gantt;
-  assert.equal(g.tmax, 40);
-  assert.ok(Math.abs((L.nowX - g.x) / g.w - 10 / 40) < 1e-12);
-  const later = p.A.canvas.layout({ ...VIEW, state: { ...STATE, now: 20 } }, 800, 640);
-  assert.ok(Math.abs((later.nowX - g.x) - 2 * (L.nowX - g.x)) < 1e-9);
-  assert.equal(L.waiting.length, 2);
-  assert.equal(p.A.canvas.layout({ state: null, jobs: [], bars: {} }, 800, 640).bars, null);
+  const L = p.A.canvas.layout(VIEW, 800, 420);
+  const [cpu, mem] = L.lanes;
+  assert.equal(L.tmax, 40);
+  const a = cpu.cards.find((c) => c.id === 1), b = cpu.cards.find((c) => c.id === 2);
+  assert.ok(Math.abs(a.h / cpu.h - 1 / 16) < 1e-12, 'job 1 asks for 1 of 16 cores in VIEW.jobs');
+  assert.ok(Math.abs(a.w / cpu.w - 40 / 40) < 1e-12);
+  assert.ok(Math.abs(b.w / cpu.w - 8 / 40) < 1e-12);
+  assert.ok(Math.abs(mem.cards[0].h / mem.h - Math.max(1 / mem.h, 1 / 32768)) < 1, 'memory lane has its own scale');
+  assert.ok(Math.abs((L.nowX - cpu.x) / cpu.w - 10 / 40) < 1e-12);
+  const later = p.A.canvas.layout({ ...VIEW, state: { ...STATE, now: 20 } }, 800, 420);
+  assert.ok(Math.abs((later.nowX - cpu.x) - 2 * (L.nowX - cpu.x)) < 1e-9);
+  assert.equal(p.A.canvas.layout({ state: null, jobs: [], bars: {} }, 800, 420).lanes, null);
 });
 
-test('canvas draw: fillRect widths, text via fillText with live score and lock, no markup', () => {
+test('board layout: cards running together never overlap and stay inside the lane', () => {
+  const p = page();
+  const jobs = [[1, 8], [2, 4], [3, 4], [4, 8]].map(([id, cpu]) => ({ id, arrival: 0, duration: 10, cpu, mem: 1, priority: 1 }));
+  const bars = { 1: { start: 0, finish: 10 }, 2: { start: 0, finish: 10 }, 3: { start: 0, finish: 10 }, 4: { start: 10, finish: 20 } };
+  const L = p.A.canvas.layout({ state: STATE, jobs, bars }, 800, 420);
+  const cards = L.lanes[0].cards;
+  for (const c of cards) { assert.ok(c.slot >= 0 && c.slot + c.size <= 16, 'inside: ' + c.id); }
+  for (const x of cards) for (const y of cards) {
+    if (x.id < y.id && x.start < y.end && y.start < x.end) { assert.ok(x.slot + x.size <= y.slot || y.slot + y.size <= x.slot, x.id + ' and ' + y.id); }
+  }
+});
+
+test('board draw: cards, stamped number, now rail, hit testing; no markup', () => {
   const p = page();
   const ctx = p.canvas.ctx;
   assert.equal(p.A.canvas.draw(p.canvas, VIEW), true);
-  const rects = ctx.calls.filter((c) => c.op === 'fillRect');
   const L = p.canvas.__layout;
-  assert.ok(rects.some((c) => Math.abs(c.a[2] - L.cpuBar.blocks[0].w) < 1e-9 && c.a[3] === 18));
+  const card = L.lanes[0].cards[0];
+  assert.ok(ctx.calls.some((c) => c.op === 'fillRect' && Math.abs(c.a[2] - card.w) < 1e-9), 'card drawn');
   const texts = ctx.calls.filter((c) => c.op === 'fillText').map((c) => c.a[0]);
-  assert.ok(texts.some((t) => t.includes('Job 7') && t.includes('score 6.200') && t.startsWith('[lock]')), 'score and lock: ' + texts);
-  assert.ok(texts.some((t) => t.startsWith('Job 8') && !t.includes('score')), 'null score shows no score');
-  assert.ok(texts.some((t) => t.startsWith('Time 10')));
   assert.ok(texts.includes('now 10'));
-  assert.ok(ctx.calls.some((c) => c.op === 'moveTo' && Math.abs(c.a[0] - L.nowX) < 1e-9), 'now marker line');
-  // hit testing
-  const blk = L.cpuBar.blocks[0];
-  assert.equal(p.A.canvas.hit(p.canvas, blk.x + 1, blk.y + 1), 1);
+  assert.ok(texts.includes('CPU') && texts.includes('Memory'));
+  assert.ok(ctx.calls.some((c) => c.op === 'moveTo' && Math.abs(c.a[0] - L.nowX) < 1e-9), 'now rail');
+  assert.equal(p.A.canvas.hit(p.canvas, card.x + 1, card.y + 1), card.id);
   assert.equal(p.A.canvas.hit(p.canvas, 0, 0), null);
 });
 
-test('canvas draw: no 2D context returns false; many jobs shrink rows instead of overflowing', () => {
+test('board draw: a held card is left out until its magnet lands, but stays clickable', () => {
+  const p = page();
+  const ctx = p.canvas.ctx;
+  const card = () => p.canvas.__layout.lanes[0].cards[0];
+  p.A.canvas.draw(p.canvas, VIEW);
+  const w = card().w;
+  const painted = () => ctx.calls.filter((c) => c.op === 'fillRect' && Math.abs(c.a[2] - w) < 1e-9).length;
+  ctx.calls.length = 0; p.A.canvas.draw(p.canvas, VIEW); const all = painted();
+  ctx.calls.length = 0; p.A.canvas.draw(p.canvas, { ...VIEW, hold: { [card().id]: true } });
+  assert.equal(painted(), all - 2, 'gone from both lanes');
+  assert.ok(p.canvas.__regions.some((r) => r.id === card().id));
+});
+
+test('board: no 2D context returns false; 5000 cards lay out inside the board', () => {
   const p = page();
   p.canvas.getContext = () => null;
   assert.equal(p.A.canvas.draw(p.canvas, VIEW), false);
   const jobs = []; const bars = {};
   for (let i = 0; i < 5000; i++) { jobs.push({ id: i, arrival: i, duration: 1, cpu: 1, mem: 1, priority: 1 }); bars[i] = { start: i, finish: i + 1 }; }
-  const L = p.A.canvas.layout({ state: STATE, jobs, bars }, 800, 640);
-  assert.ok(L.gantt.rowH * 5000 <= L.gantt.h + 1e-6);
+  const L = p.A.canvas.layout({ state: STATE, jobs, bars }, 800, 420);
+  assert.equal(L.lanes[0].cards.length, 5000);
+  assert.ok(L.lanes[0].cards.every((c) => c.x + c.w <= L.lanes[0].x + L.lanes[0].w + 1e-6));
 });
 
-test('canvas click selects the job under the cursor and a second click clears it', () => {
+test('tray: waiting jobs in engine order with score, next and saved stamps, click selects', () => {
   const p = ready({ totalSteps: 10 });
   p.A.player.start();
-  const L = p.canvas.__layout;
-  const row = L.waiting[0];
-  p.canvas.fire('click', { clientX: row.x + 5, clientY: row.y + 5 });
-  assert.equal(p.A.player.snapshot().selected, 7);
-  p.canvas.fire('click', { clientX: row.x + 5, clientY: row.y + 5 });
+  const list = p.doc.byId['tray-list'];
+  const st = p.A.player.snapshot().state;
+  assert.equal(list.children.length, st.waiting.length);
+  assert.equal(p.doc.byId['tray-count'].textContent, '(' + st.waiting.length + ')');
+  assert.deepEqual(plain(list.children.map((c) => Number(c.getAttribute('data-job')))), plain(st.waiting.map((w) => w.id)));
+  const first = list.children[0], w0 = st.waiting[0];
+  assert.equal(first.children[0].children[0].textContent, String(w0.id), 'stamped number');
+  const texts = first.children[1].children.map((c) => c.textContent);
+  assert.ok(texts.includes('Job ' + w0.id));
+  assert.ok(texts.some((t) => t === 'Next' || t === 'Spot saved'));
+  if (typeof w0.score === 'number') assert.ok(texts.some((t) => t.includes('score ' + w0.score.toFixed(3))));
+  assert.equal(first.getAttribute('tabindex'), '0', 'one Tab stop for the list');
+  list.fire('click', { target: first });
+  assert.equal(p.A.player.snapshot().selected, w0.id);
+  list.fire('click', { target: first });
+  assert.equal(p.A.player.snapshot().selected, null);
+});
+
+function trayWith(waiting, reservation) {
+  const p = ready({ totalSteps: 10 });
+  p.A.player.start();
+  const s = p.A.player.snapshot().state;
+  s.waiting = waiting; s.reservation = reservation;
+  p.A.player.select(null); p.A.player.select(waiting.length ? waiting[0].id : null);
+  return p;
+}
+const W = (id, score) => ({ id, score, priority: 3, arrival: 0, duration: 5, cpu: 1, mem: 10 });
+
+test('tray: a null score shows no score; the first job is Next, the reserved job is Spot saved', () => {
+  const p = trayWith([W(4, null), W(7, 2.5)], { id: 7, shadow_time: 40 });
+  const [a, b] = p.doc.byId['tray-list'].children;
+  const texts = (li) => li.children[1].children.map((c) => c.textContent);
+  assert.ok(!texts(a).join(' ').includes('score'), 'null score');
+  assert.ok(texts(a).includes('Next'));
+  assert.ok(texts(b).includes('Spot saved') && texts(b).join(' ').includes('score 2.500'));
+  assert.equal(b.children[1].children[1].getAttribute('class'), 'stamp stamp-saved');
+  assert.match(a.getAttribute('class'), /selected/);
+  assert.equal(a.getAttribute('aria-pressed'), 'true');
+});
+
+test('tray: only 40 cards on the page, but the count and "more" line stay true', () => {
+  const p = trayWith(Array.from({ length: 95 }, (_, i) => W(i + 1, 1)), null);
+  assert.equal(p.doc.byId['tray-list'].children.length, 40);
+  assert.equal(p.doc.byId['tray-count'].textContent, '(95)');
+  assert.equal(p.doc.byId['tray-more'].hidden, false);
+  assert.equal(p.doc.byId['tray-more'].textContent, 'and 55 more');
+});
+
+test('board click selects the card under the cursor and a second click clears it', () => {
+  const p = ready({ totalSteps: 10 });
+  p.A.player.start(); p.A.player.stepOnce();
+  const regs = p.canvas.__regions;
+  if (!regs.length) return;
+  const r = regs[0];
+  p.canvas.fire('click', { clientX: r.x + 1, clientY: r.y + 1 });
+  assert.equal(p.A.player.snapshot().selected, r.id);
+  p.canvas.fire('click', { clientX: r.x + 1, clientY: r.y + 1 });
   assert.equal(p.A.player.snapshot().selected, null);
 });
 

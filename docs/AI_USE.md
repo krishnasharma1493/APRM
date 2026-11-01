@@ -51,3 +51,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-49 | PR 2: planning-board direction contract (Impeccable seed f916d9cf, chosen by Krishna), PRODUCT.md jobs and viva questions, ranked findings | K-49 PR 2, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-49 | PR 3: `make web` single-file offline build (web/build.mjs), Chart.js 4.5.1 bundled from npm with lockfile, CI build and offline rehearsal, docs (D77, D78) | K-49 PR 3, issue #112 | to confirm |
 | 2026-11-02 | Krishna | K-49 | PR 4: Build page and top bar in the planning-board world (no nested cards, tile racks from real job data, phone job cards, compact top bar, one page CSS layer) | K-49 PR 4, issue #112 | to confirm |
+| 2026-11-02 | Krishna | K-49 | PR 5: Run page as the planning board (lanes, cards, now rail, waiting tray, card flight, why-log labels); tests rewritten for the board | K-49 PR 5, issue #112 | to confirm |

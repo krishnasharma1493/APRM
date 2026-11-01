@@ -61,6 +61,9 @@ try {
   await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.getElementById('add-submit').scrollIntoView({ block: 'center' }); true`);
   await sleep(300);
   check('375px: Add job is the top element at its own position', await ev(`(function(){ const b = document.getElementById('add-submit'); const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; })()`));
+  await ev(`document.querySelector('[data-mode-button="run"]').click(); true`);
+  const fit = await ev(`(function(){ const s = document.getElementById('run-policy'); const cs = getComputedStyle(s); const c = document.createElement('canvas').getContext('2d'); c.font = cs.fontSize + ' ' + cs.fontFamily; let m = 0; for (const o of s.options) m = Math.max(m, c.measureText(o.textContent).width); return { text: m, room: s.clientWidth - 28 }; })()`);
+  check('375px: the longest scheduler name fits its select', fit.text <= fit.room, JSON.stringify(fit));
   for (const w of [1366, 375]) {
     await load(w);
     const gap = await ev(`document.documentElement.clientWidth - document.getElementById('theme-toggle').getBoundingClientRect().right`);
@@ -123,6 +126,15 @@ try {
   check('dark system, nothing saved: starts at night with the Day mode button', (await ev(`document.documentElement.getAttribute('data-theme')`)) === 'dark' && (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Day mode');
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   await load(1280);
+
+  // 3d. keyboard on job rows: Enter filters, focus stays on the list, Esc shows all again
+  await load(1280);
+  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); for (let i = 0; i < 8; i++) APRM.player.stepOnce(); document.querySelector('#tray-list li').focus(); true`);
+  await key('Enter', 'Enter', 13);
+  check('Enter on a tray row selects that job', (await ev(`APRM.player.snapshot().selected`)) !== null);
+  check('focus stays on a tray row after the pick', await ev(`document.activeElement.parentNode === document.getElementById('tray-list')`));
+  await key('Escape', 'Escape', 27);
+  check('Esc on a tray row clears the selection', (await ev(`APRM.player.snapshot().selected`)) === null);
 
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });

@@ -587,8 +587,8 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 | `presets_data.js` | The six presets as a JavaScript data object (capacities + jobs), generated from `data/presets/` by Krishna's tooling and committed |
 | `presets.js` | Reads presets from `presets_data.js` (no `fetch`) and loads one into the store |
 | `generator.js` | Random job sets from slider settings with a visible seed; produces input only |
-| `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step` and pulls state and new log entries after each step |
-| `canvas.js` | Draws resource bars, waiting line with live scores, running jobs, Gantt timeline, "now" marker |
+| `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step`, pulls state and new log entries after each step; draws the waiting tray and moves a magnet to the board when a job starts |
+| `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
 | `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |
 | `motion.js` | Small critically damped spring helper; only `transform` and `opacity`; applies the end state at once under reduced motion |
