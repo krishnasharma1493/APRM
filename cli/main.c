@@ -23,11 +23,13 @@
  */
 #define _POSIX_C_SOURCE 200809L   /* stat, st_dev, st_ino */
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "config.h"
 #include "csv.h"
@@ -323,10 +325,15 @@ static int write_temp(const char *path, const char *data, size_t len)
 {
     char tmp[1100], msg[1300];
     FILE *f;
-    int ok;
+    int ok, fd;
     if (snprintf(tmp, sizeof tmp, "%s.tmp", path) >= (int)sizeof tmp)
         return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", "output file name is too long.", 0);
-    f = fopen(tmp, "wb");
+    /* A stale "<path>.tmp" (or a symlink with that name) is removed first, then the
+     * file is created with O_EXCL so we never write through an existing file or link. */
+    remove(tmp);
+    fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    f = fd < 0 ? NULL : fdopen(fd, "wb");
+    if (f == NULL && fd >= 0) { close(fd); remove(tmp); }
     if (f == NULL) {
         snprintf(msg, sizeof msg, "cannot write '%.200s': %s.", tmp, strerror(errno));
         return fail_line(EXIT_INTERNAL, "INTERNAL_ERROR", msg, 0);

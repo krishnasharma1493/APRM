@@ -184,5 +184,10 @@ rc=$?
 if [ $rc = 0 ] && [ ! -s "$T/stderr" ] && grep -q "^usage: aprm --in" "$T/stdout" && grep -q "exit codes" "$T/stdout" &&
    [ "$(wc -l <"$T/stdout" | tr -d ' ')" = 4 ] && cmp -s "$T/stdout" "$T/stdout2"; then echo "ok    --help"; ok; else bad "--help"; fi
 
+# A stale or hostile "<out>.tmp" (here a symlink to a precious file) is replaced, never written through.
+echo precious > "$T/precious.txt"; rm -f "$T/sl.csv" "$T/sl.csv.tmp"; ln -s "$T/precious.txt" "$T/sl.csv.tmp"
+"$BIN" --in $GOOD --out "$T/sl.csv" 2>/dev/null
+if [ $? = 0 ] && [ "$(cat "$T/precious.txt")" = "precious" ] && [ -f "$T/sl.csv" ] && [ ! -e "$T/sl.csv.tmp" ] && head -1 "$T/sl.csv" | grep -q '^id,arrival'; then echo "ok    stale <out>.tmp symlink is not written through"; ok; else bad "wrote through a <out>.tmp symlink"; fi
+
 echo "cli: $pass passed, $fail failed"
 [ $fail -eq 0 ]
