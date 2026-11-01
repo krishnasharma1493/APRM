@@ -97,6 +97,54 @@
     <p id="add-error" class="field-error" role="alert" hidden></p>
   </section>
 
+  <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
+    <h2>Run</h2>
+    <div class="run-grid">
+      <fieldset class="build-box">
+        <legend>Scheduler</legend>
+        <label for="run-policy">Policy</label>
+        <select id="run-policy"></select>
+        <label for="run-alpha">Aging rate alpha_milli (0 to 10000)</label>
+        <input id="run-alpha" type="text" inputmode="numeric" value="100">
+        <label for="run-threshold">Reservation threshold T (ticks)</label>
+        <input id="run-threshold" type="text" inputmode="numeric" value="50">
+        <label for="run-eps">Knapsack epsilon</label>
+        <input id="run-eps" type="text" inputmode="decimal" value="0.1">
+        <button type="button" id="run-start">Run (start over)</button>
+      </fieldset>
+
+      <fieldset class="build-box">
+        <legend>Player</legend>
+        <div class="player-buttons">
+          <button type="button" id="run-play" disabled>Play</button>
+          <button type="button" id="run-step" disabled>Step</button>
+          <button type="button" id="run-jump" disabled>Jump to end</button>
+          <button type="button" id="run-reset" disabled>Reset</button>
+        </div>
+        <label for="run-speed">Events per frame: <output id="run-speed-out">1</output></label>
+        <input id="run-speed" type="range" min="1" max="200" value="1">
+        <p id="run-status" class="status" role="status">idle</p>
+        <p id="run-clock" class="empty" role="status">No run yet. Press Run.</p>
+        <p id="run-error" class="field-error" role="alert" hidden></p>
+      </fieldset>
+
+      <fieldset class="build-box">
+        <legend>Add a job at the current time</legend>
+        <div class="add-grid">
+          <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
+          <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
+          <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
+          <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
+          <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
+          <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
+        </div>
+        <button type="button" id="ra-submit" disabled>Add job (pauses first)</button>
+        <p id="ra-note" class="empty">Arrival defaults to the next tick. An arrival equal to the current time is allowed, but the job is then considered after jobs that already started at this time.</p>
+        <p id="ra-error" class="field-error" role="alert" hidden></p>
+      </fieldset>
+    </div>
+  </section>
+
   <main id="app-main" data-engine="loading" data-mode="build">
     <aside class="panel panel-left" aria-label="Machine and jobs">
       <h2>Machine</h2>
@@ -109,22 +157,27 @@
     <section class="panel panel-centre" aria-label="Timeline">
       <h2>Timeline</h2>
       <p id="canvas-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
+      <canvas id="run-canvas" class="run-canvas" width="640" height="640" aria-label="Live picture of the run: resource bars, waiting line, running jobs and timeline" hidden></canvas>
     </section>
 
     <aside class="panel panel-right" aria-label="Why log">
       <h2>Why</h2>
       <p id="whylog-empty" class="empty">The reasons for each decision appear here once a run starts.</p>
+      <p id="whylog-filter" class="empty" hidden></p>
+      <button type="button" id="whylog-clear" hidden>Show all jobs</button>
+      <ol id="whylog-list" class="why-list"></ol>
     </aside>
   </main>
 
   <footer class="panel panel-bottom" aria-label="Metrics">
     <h2>Metrics</h2>
     <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
+    <ul id="metrics-list" class="metrics-list"></ul>
   </footer>
 
   <!-- Classic scripts in a fixed order (PRD section 7, D31): no ES modules, no network calls.
        Still to be added by later issues, in this order, before app.js:
-       canvas.js, whylog.js, player.js, compare.js, share.js -->
+       compare.js, share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
   <script src="js/store.js"></script>
@@ -132,6 +185,9 @@
   <script src="js/presets.js"></script>
   <script src="js/editor.js"></script>
   <script src="js/generator.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/whylog.js"></script>
+  <script src="js/player.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

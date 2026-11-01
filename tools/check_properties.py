@@ -373,7 +373,7 @@ def check_aging_order(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, m
 
 def check_starvation_bound(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_cap: int,
                            alpha_milli: int) -> list[str]:
-    """Starvation bound (BLUEPRINT 3.3; DECISIONS D69), for the aging policy only.
+    """Starvation bound (BLUEPRINT 3.3; DECISIONS D70), for the aging policy only.
 
     For alpha_milli > 0 and a job j, every k with
     alpha_milli*(arrival_k - arrival_j) > 1000*(b_max - b_j)   (b_max = 9)
