@@ -78,3 +78,6 @@ Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (mis
 ## Decisions made during autonomous run
 
 - 2026-11-01: K-18 not done by the run: its acceptance needs two humans (Ahaana's paper check and format approval, Krishna's sign-off). Labelled needs-krishna. Chain K-19..K-22, K-24+ stays blocked; only K-23 was eligible.
+- 2026-11-01: K-18 freeze: O-2 (knapsack_eps representation) is still open and belongs to K-34. Chose to freeze PRD §5 with an explicit exception for `knapsack_eps` (changes only through the PRD §13 process) instead of settling O-2 early. Ahaana's paper check and format approval stay marked 'awaiting Ahaana'.
+- 2026-11-01: PR #74 (A-01) is reviewed, fixed and CI-green but NOT merged: the merge was refused (a/* PRs wait for Ahaana's or Krishna's review under CLAUDE.md). Needs Krishna: `gh pr merge 74 --squash --delete-branch`. Continuing with K-xx work; later A-xx PRs will be built and left open the same way.
+- 2026-11-01: PR #75 (K-18) reviewed (fixes applied), CI green, NOT merged: it edits PRD §5 (frozen marker), which CLAUDE.md reserves for Krishna. Needs Krishna: `gh pr merge 75 --squash --delete-branch`. K-19 is stacked on k/K-18-freeze (base changes to main when #75 merges; re-merge main into the branch first if GitHub closes the PR).
