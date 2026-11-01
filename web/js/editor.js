@@ -296,6 +296,17 @@
       APRM.store.setJobs(jobs);
     });
     td.appendChild(input);
+    if (field === 'id') {
+      /* The job's magnet: same colour and hatch as on the Run board, with its number stamped on it. */
+      td.setAttribute('class', (td.getAttribute('class') || '') + ' id-cell');
+      var magnet = document.createElement('span');
+      magnet.setAttribute('class', 'magnet magnet-' + (((value % 10) + 10) % 10) + ' hatch-' + (((value % 3) + 3) % 3));
+      magnet.setAttribute('aria-hidden', 'true');
+      var stamp = document.createElement('b');
+      stamp.textContent = String(value);
+      magnet.appendChild(stamp);
+      td.appendChild(magnet);
+    }
     return td;
   }
 
@@ -346,7 +357,7 @@
     if (machineLine && APRM.copy) { machineLine.textContent = APRM.copy.fill('build.machine.summary', { cpu: st.machine.cpu, mem: st.machine.mem }); }
     var summary = byId('table-summary');
     if (summary) {
-      summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + ' (limit ' + MAX_JOBS_WEB + ')' +
+      summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + (APRM.store.get().details && APRM.copy ? APRM.copy.fill('build.count.limit', { n: MAX_JOBS_WEB }) : '') +
         (problems.length > 0 ? '; ' + problems.length + ' problem' + (problems.length === 1 ? '' : 's') + ' marked in red' : '');
       summary.hidden = st.jobs.length === 0;
     }

@@ -33,6 +33,7 @@ p { margin: var(--s-1) 0; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 .btn-quiet { background: transparent; border-color: transparent; color: var(--accent); }
+.btn-small { padding: var(--s-1) var(--s-3); min-height: 2rem; }
 
 /* Segmented control (the three steps) */
 .segmented { display: inline-flex; padding: 2px; gap: 2px; background: var(--canvas); border: 1px solid var(--border); border-radius: var(--r-2); }
@@ -76,7 +77,7 @@ td.num-cell, th.num-cell { text-align: right; }
 
 /* Toast (aria-live region content) */
 .toast {
-  position: fixed; left: 50%; bottom: var(--s-6); transform: translateX(-50%);
+  position: fixed; left: 50%; top: 4.25rem; transform: translateX(-50%);
   background: var(--text); color: var(--canvas); padding: var(--s-2) var(--s-4);
   border-radius: var(--r-2); box-shadow: var(--shadow); max-width: min(90vw, 28rem); z-index: 30;
 }
@@ -112,14 +113,17 @@ details.disclosure[open] > summary::before { transform: rotate(90deg); }
 html[data-details="off"] .detail-only { display: none; }
 .intro { max-width: 46rem; color: var(--muted); }
 
-/* Example tiles */
-.tiles { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
-.tile { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1); text-align: left; padding: var(--s-3) var(--s-4); height: 100%; }
-.tile:hover { border-color: var(--muted); }
+/* Example trays: one ruled rack, the cells divided by hairlines, not a wall of separate cards */
+.tiles { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-2); overflow: hidden; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tile { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-1); text-align: left; padding: var(--s-3) var(--s-4); height: 100%; border: 0; border-radius: 0; background: var(--surface); }
+.tile:hover { background: var(--canvas); }
+.tile:focus-visible { outline-offset: -3px; }
+@media (max-width: 60rem) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 36rem) { .tiles { grid-template-columns: minmax(0, 1fr); } }
 .tile-title { font-weight: 600; }
 .tile-hint { color: var(--muted); font-size: var(--fs-caption); line-height: var(--lh-caption); }
 .tile-detail { color: var(--muted); font-size: var(--fs-caption); border-top: 1px solid var(--border); padding-top: var(--s-1); margin-top: var(--s-1); }
-.tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.tile[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
 .field-error.lead { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600; }
 .field-error.lead + .field-error { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 
@@ -171,3 +175,19 @@ html { scrollbar-color: var(--chart-gray) transparent; caret-color: var(--accent
   .res-row > .num { grid-column: 1 / -1; }
   .dock input[type="range"] { width: 100%; }
 }
+
+/* Job magnets: colour, hatch and a stamped number, so colour is never the only signal. */
+.magnet { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; height: 1.625rem; padding: 0 3px; border-radius: 3px; }
+.magnet b { background: var(--surface); color: var(--text); font-size: var(--fs-caption); line-height: 1.25; font-weight: 650; padding: 0 3px; border-radius: 2px; }
+.magnet-0 { background-color: var(--job-0); }
+.magnet-1 { background-color: var(--job-1); }
+.magnet-2 { background-color: var(--job-2); }
+.magnet-3 { background-color: var(--job-3); }
+.magnet-4 { background-color: var(--job-4); }
+.magnet-5 { background-color: var(--job-5); }
+.magnet-6 { background-color: var(--job-6); }
+.magnet-7 { background-color: var(--job-7); }
+.magnet-8 { background-color: var(--job-8); }
+.magnet-9 { background-color: var(--job-9); }
+.hatch-1 { background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--hatch) 3px 4px); }
+.hatch-2 { background-image: repeating-linear-gradient(90deg, transparent 0 3px, var(--hatch) 3px 4px); }

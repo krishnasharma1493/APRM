@@ -48,17 +48,27 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .error-list { margin: var(--s-1) 0; padding-left: 1.2rem; max-height: 12rem; overflow: auto; color: var(--red); }
 
 /* The job table is the rack: a ruled sheet on wide screens, one card per job on a phone. */
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2); }
+.table-wrap { overflow: auto; max-height: 24rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2); }
 .job-table { border-collapse: collapse; width: 100%; }
 .job-table th, .job-table td { padding: var(--s-1) var(--s-2); text-align: left; border-bottom: 1px solid var(--border); }
 .job-table tbody tr:last-child td, .job-table tfoot td { border-bottom: 0; }
 .job-table input { min-width: 4rem; }
-.job-table .row-msg { color: var(--red); font-size: var(--fs-caption); }
+.job-table .row-msg { font-size: var(--fs-caption); width: 1%; }
+.job-table .row-msg:not(:empty) { color: var(--red); background: var(--error-bg); width: auto; min-width: 10rem; }
+.job-table .id-cell { position: relative; }
+.job-table .id-cell input { padding-right: 3.25rem; }
+.job-table .id-cell .magnet { position: absolute; right: calc(var(--s-2) + 5px); top: 50%; transform: translateY(-50%); pointer-events: none; }
+.job-table .new-head td { font-weight: 600; font-size: var(--fs-caption); color: var(--muted); padding-top: var(--s-3); border-top: 1px dashed var(--chart-gray); }
+.job-table .new-row td { background: var(--canvas); }
+.job-table tfoot { position: sticky; bottom: 0; background: var(--surface); }
 @media (max-width: 45rem) {
   .job-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .job-table tbody tr, .job-table tfoot tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); padding: var(--s-3); border-bottom: 1px solid var(--border); }
+  .job-table tbody tr, .job-table tfoot tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--border); }
   .job-table tfoot tr { border-bottom: 0; }
+  .job-table tfoot { position: static; }
+  .job-table .new-head td { grid-column: 1 / -1; }
   .job-table td { display: block; padding: 0; border: 0; }
+  .job-table .id-cell .magnet { right: 5px; top: auto; bottom: 5px; transform: none; }
   .job-table td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: var(--fs-caption); margin-bottom: 2px; }
   .job-table td.row-msg:empty { display: none; }
   .job-table td.row-msg, .job-table td.row-actions { grid-column: 1 / -1; }
@@ -84,4 +94,11 @@ main[data-engine="error"] { opacity: 0.5; pointer-events: none; }
 .compare-chart { position: relative; height: 240px; }
 .compare-chart canvas { max-width: 100%; }
 
+.jobs-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); align-items: baseline; margin-bottom: var(--s-2); }
+.jobs-meta p { margin: 0; }
+#table-summary { font-weight: 600; }
+#machine-summary { color: var(--muted); }
 .next-row { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-4); margin: var(--s-6) 0 0; }
+
+/* Build keeps its one primary action in reach however long the job list is. */
+.build-panel .next-row { position: sticky; bottom: 0; z-index: 5; padding: var(--s-2) 0; background: var(--canvas); }

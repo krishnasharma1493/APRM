@@ -62,12 +62,12 @@
     for (var i = 0; i < shown.length; i++) { maxD = Math.max(maxD, shown[i].duration); }
     for (var k = 0; k < shown.length; k++) {
       var m = document.createElement('span');
+      m.setAttribute('class', 'magnet-' + (((shown[k].id % 10) + 10) % 10) + ' hatch-' + (((shown[k].id % 3) + 3) % 3));
       var w = Math.round(3 + 21 * shown[k].duration / maxD);
       var h = Math.max(18, Math.round(100 * shown[k].cpu / p.cpu_cap));
       if (m.style) {
         m.style.width = w + 'px';
         m.style.height = h + '%';
-        m.style.background = 'var(--job-' + (shown[k].id % 10) + ')';
       }
       rack.appendChild(m);
     }

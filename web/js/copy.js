@@ -65,6 +65,8 @@
     'col.priority': 'Priority (higher runs first)',
     'col.problem': 'Problem',
     'job.add': 'Add job',
+    'job.new': 'New job',
+    'build.count.limit': ' (limit {n})',
     'job.add.lead': 'Can’t add this job.',
     'toast.loaded': 'Loaded “{name}”.',
     'toast.generated': 'Replaced your jobs with {n} random ones.',
