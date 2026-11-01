@@ -405,6 +405,36 @@ test('file input: size check happens before reading; a file is read as bytes and
   assert.deepEqual(plain(el('csv-errors').children.map((c) => c.textContent)), ['Line 3, column id: not a number.']);
 });
 
+test('hostile 1 MB files: stored errors are capped, every bad row is still counted and announced', () => {
+  const { A, el, ctx } = page();
+  ctx.FileReader = class { readAsArrayBuffer(f) { this.result = f.bytes; setTimeout(() => this.onload(), 0); } };
+  const cases = [['newlines', '\n', 1048576 - H.length], ['x lines', 'x\n', (1048576 - H.length) >> 1]];
+  for (const [name, unit, reps] of cases) {
+    const text = H + unit.repeat(reps);
+    const t0 = Date.now();
+    const res = A.editor.importText(text, text.length);
+    assert.ok(Date.now() - t0 < 3000, name + ': bounded time');
+    assert.equal(res.errorCount, reps, name + ': all bad rows counted');
+    assert.equal(res.errors.length, 1000, name + ': stored errors capped');
+    assert.equal(res.ok, false);
+    assert.match(res.message, new RegExp(reps + ' bad rows were not imported'));
+    A.store.setJobs([]);
+  }
+  const text = H + 'x\n'.repeat(5000);
+  const res = A.editor.importText(text, text.length);
+  const doc = el('csv-errors');
+  // show it through the file path
+  const input = el('csv-file');
+  input.files = [{ size: text.length, bytes: Buffer.from(text, 'latin1') }];
+  return new Promise((done) => { input.fire('change'); setTimeout(() => {
+    const kids = doc.children.map((c) => c.textContent);
+    assert.equal(kids.length, 201);
+    assert.equal(kids[200], '... and 4800 more bad rows not shown.');
+    assert.equal(res.errorCount, 5000);
+    done();
+  }, 10); });
+});
+
 test('export button: refuses an empty table and out-of-range jobs, else offers jobs.csv', () => {
   const { A, el } = page();
   el('csv-export').click();

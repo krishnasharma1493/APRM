@@ -26,6 +26,7 @@
   var MAX_FILE_BYTES = 1048576;       /* 1 MB upload limit (PRD section 8) */
   var MAX_JOBS_WEB = 5000;            /* PRD section 3: website job limit */
   var MAX_SAFE = 9007199254740991;    /* exact integers in a JavaScript number */
+  var MAX_ERRORS_STORED = 1000;       /* error objects kept in memory; errorCount still counts every bad row */
   var MAX_ERRORS_SHOWN = 200;         /* list length on screen; the rest is counted aloud */
   var INT64_MAX = 9223372036854775807n;
 
@@ -144,12 +145,14 @@
   function parseCsv(text, maxJobs) {
     var jobs = [];
     var errors = [];
+    var errorCount = 0;
     function bad(line, code, column, what) {
-      errors.push({ line: line, code: code, column: column, message: csvMessage(line, column, what) });
+      errorCount++;
+      if (errors.length < MAX_ERRORS_STORED) errors.push({ line: line, code: code, column: column, message: csvMessage(line, column, what) });
     }
     if (text.length === 0) {
       bad(1, 'PARSE_ERROR', '', 'missing header, expected ' + HEADER + '.');
-      return { jobs: jobs, errors: errors, fatal: true };
+      return { jobs: jobs, errors: errors, errorCount: errorCount, fatal: true };
     }
     var pos = 0;
     function nextLine() {          /* one "\r" right before "\n" is stripped, as in C */
@@ -163,8 +166,8 @@
       return line;
     }
     var head = nextLine();
-    if (head.length > MAX_LINE) { bad(1, 'PARSE_ERROR', '', 'line too long.'); return { jobs: jobs, errors: errors, fatal: true }; }
-    if (head !== HEADER) { bad(1, 'PARSE_ERROR', '', 'header must be ' + HEADER + '.'); return { jobs: jobs, errors: errors, fatal: true }; }
+    if (head.length > MAX_LINE) { bad(1, 'PARSE_ERROR', '', 'line too long.'); return { jobs: jobs, errors: errors, errorCount: errorCount, fatal: true }; }
+    if (head !== HEADER) { bad(1, 'PARSE_ERROR', '', 'header must be ' + HEADER + '.'); return { jobs: jobs, errors: errors, errorCount: errorCount, fatal: true }; }
     var lineNo = 1;
     while (pos < text.length) {
       lineNo++;
@@ -175,7 +178,7 @@
       var r = parseRow(line);
       if (r.error) { bad(lineNo, r.error.code, r.error.column, r.error.what); } else { jobs.push(r.job); }
     }
-    return { jobs: jobs, errors: errors, fatal: false };
+    return { jobs: jobs, errors: errors, errorCount: errorCount, fatal: false };
   }
 
   /* jobs.csv text in the PRD section 5 format: header, then one line per job,
@@ -212,14 +215,14 @@
     var r = parseCsv(text, MAX_JOBS_WEB);
     if (r.fatal) {
       return { ok: false, tooBig: false, imported: 0, errors: r.errors,
-        message: 'The file could not be read. Nothing was imported.' };
+        errorCount: r.errorCount, message: 'The file could not be read. Nothing was imported.' };
     }
     APRM.store.setJobs(r.jobs);
     var msg = 'Imported ' + r.jobs.length + ' job' + (r.jobs.length === 1 ? '' : 's') + '.';
-    if (r.errors.length > 0) {
-      msg += ' ' + r.errors.length + ' bad row' + (r.errors.length === 1 ? ' was' : 's were') + ' not imported (listed below).';
+    if (r.errorCount > 0) {
+      msg += ' ' + r.errorCount + ' bad row' + (r.errorCount === 1 ? ' was' : 's were') + ' not imported (listed below).';
     }
-    return { ok: r.errors.length === 0, tooBig: false, imported: r.jobs.length, errors: r.errors, message: msg };
+    return { ok: r.errorCount === 0, tooBig: false, imported: r.jobs.length, errors: r.errors, errorCount: r.errorCount, message: msg };
   }
 
   /* ---------- the view ---------- */
@@ -404,18 +407,19 @@
     var list = byId('csv-errors');
     if (!list) { return; }
     clear(list);
+    var total = typeof res.errorCount === 'number' ? res.errorCount : res.errors.length;
     var shown = Math.min(res.errors.length, MAX_ERRORS_SHOWN);
     for (var i = 0; i < shown; i++) {
       var li = document.createElement('li');
       li.textContent = res.errors[i].message;
       list.appendChild(li);
     }
-    if (res.errors.length > shown) {
+    if (total > shown) {
       var more = document.createElement('li');
-      more.textContent = '... and ' + (res.errors.length - shown) + ' more bad rows not shown.';
+      more.textContent = '... and ' + (total - shown) + ' more bad rows not shown.';
       list.appendChild(more);
     }
-    list.hidden = res.errors.length === 0;
+    list.hidden = total === 0;
   }
 
   function onFileChosen(input) {
