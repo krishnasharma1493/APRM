@@ -41,7 +41,13 @@ APRM (Adaptive Priority Resource Manager) is an ADA course project (B.Tech CSE, 
 6. Run `make test` (plus `make sanitize` for C changes) and `pytest tests/py` for Python changes. Fix until green.
 7. Explain the work in plain English for the viva: idea, steps, invariants, time and space complexity, edge cases.
 8. Fill in the PR from `.github/pull_request_template.md`, tick the issue's "Done when" boxes, add a line to `docs/AI_USE.md`.
-9. Stop and wait for review. Never merge.
+9. Merge automatically once CI is green (Krishna has authorised this; no need to ask):
+   - Wait for the PR's checks: `gh pr checks <n> --watch`.
+   - All required checks green: `gh pr merge <n> --squash --delete-branch --subject "<issue id>: <topic> (#<n>)" --body "<plain summary>"`. Always pass `--subject` and `--body` explicitly so GitHub does not pre-fill them from the commits.
+   - The squash message must contain no `Co-Authored-By`, "Generated with" or other AI attribution lines.
+   - A check fails: fix on the same branch and push again. Never merge red; never bypass checks (`--admin`, force-push to `main`).
+   - Exception: do not merge `a/*` PRs or PRs that change PRD §5 contracts. Those wait for the named human reviewer (see Ownership).
+   - After merging: `git checkout main && git pull`.
 
 ## Commands
 | Command | What it does (PRD §3, §10) |
@@ -72,7 +78,7 @@ APRM (Adaptive Priority Resource Manager) is an ADA course project (B.Tech CSE, 
 - [ ] Any decision made is added to DECISIONS.md; any open question answered there
 - [ ] PR filled in from the template, including the plain-English explanation
 - [ ] `docs/AI_USE.md` updated
-- [ ] Owner can explain every line; human review done; not merged by the assistant
+- [ ] Owner can explain every line; CI green; squash-merged by the assistant (except `a/*` and PRD §5 PRs, which wait for human review)
 
 ## Working with Ahaana (A-xx issues)
 - Teach while building: explain each step before writing it, in simple language.
