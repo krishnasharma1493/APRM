@@ -456,6 +456,26 @@ test('a bad setting names the problem once and opens More settings', () => {
   p.doc.byId['run-start'].click();
   assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be 0 to 10000.');
   assert.equal(p.doc.byId['run-more'].open, true);
+test('Play, Step and Jump work from the first screen: they start the run themselves', () => {
+  let p = ready({ totalSteps: 10 });
+  assert.equal(p.doc.byId['run-play'].disabled, false, 'jobs are loaded, so Play is live');
+  p.doc.byId['run-play'].click();
+  assert.equal(p.A.player.snapshot().status, 'playing');
+  p = ready({ totalSteps: 10 });
+  p.doc.byId['run-step'].click();
+  assert.equal(p.A.player.snapshot().events, 1);
+  p = ready({ totalSteps: 10 });
+  assert.equal(p.A.player.ensureRun(), true);
+  assert.equal(p.A.player.snapshot().status, 'paused');
+});
+
+test('with no jobs the controls stay off and say why', () => {
+  const p = ready({ totalSteps: 10 });
+  p.A.store.setJobs([]);
+  assert.equal(p.doc.byId['run-play'].disabled, true);
+  assert.equal(p.doc.byId['run-step'].disabled, true);
+  assert.equal(p.A.player.ensureRun(), false);
+  assert.equal(p.doc.byId['run-error'].hidden, false);
 });
 
 test('a new job list or machine ends the old run, so Run never shows a stale board', () => {

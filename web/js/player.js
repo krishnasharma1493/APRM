@@ -417,12 +417,13 @@
     var play = byId('run-play');
     if (play) { play.textContent = status === 'playing' ? copyText('run.pause', 'Pause') : copyText('run.play', 'Play'); }
     var live = run !== null;
+    var hasJobs = APRM.store.get().jobs.length > 0;      /* Play, Step and Jump start the run themselves */
     var startBtn = byId('run-start');
     if (startBtn) { startBtn.textContent = live ? copyText('run.restart', 'Start over') : copyText('run.start', 'Run'); }
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
-    set('run-play', !live || status === 'jumping');
-    set('run-step', !live || status === 'playing' || status === 'jumping');
-    set('run-jump', !live || status === 'jumping' || status === 'finished');
+    set('run-play', (!live && !hasJobs) || status === 'jumping');
+    set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping');
+    set('run-jump', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-reset', !live);
     set('ra-submit', !live);
   }
@@ -667,6 +668,12 @@
     return '';
   }
 
+  /* Make sure a run exists: from the first screen, Play, Step and Space simply begin. True when one does. */
+  function ensureRun() {
+    if (run === null) { onStart(); }
+    return run !== null;
+  }
+
   function onStart() {
     var bad = readSettings();
     if (bad) { showMessage('run-error', settingsWords(bad)); return; }
@@ -727,9 +734,9 @@
     }
     var on = function (id, fn) { var el = byId(id); if (el) { el.addEventListener('click', fn); } };
     on('run-start', onStart);
-    on('run-play', function () { if (status === 'playing') { pause(); } else { play(); } });
-    on('run-step', stepOnce);
-    on('run-jump', jumpToEnd);
+    on('run-play', function () { if (status === 'playing') { pause(); } else if (ensureRun()) { play(); } });
+    on('run-step', function () { if (ensureRun()) { stepOnce(); } });
+    on('run-jump', function () { if (ensureRun()) { jumpToEnd(); } });
     on('run-reset', reset);
     on('ra-submit', onAdd);
     var sp = byId('run-speed');
@@ -798,6 +805,7 @@
     start: start,
     reset: reset,
     play: play,
+    ensureRun: ensureRun,
     pause: pause,
     stepOnce: stepOnce,
     setSpeed: setSpeed,
