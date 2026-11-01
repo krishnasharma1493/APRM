@@ -37,3 +37,5 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-29 | Aging-order and starvation-bound checks, D70; brute-force checker agreed on 1500 runs and 2239 perturbations | PR #87 | to confirm |
 | 2026-11-01 | Ahaana (owner) | A-03 | Written by the assistant at Krishna's request: E1 to E3 figures and guide section | PR #78 | to confirm |
 | 2026-11-01 | Ahaana (owner) | A-04 | Written by the assistant at Krishna's request: E5 figure and guide section | PR #83 | to confirm |
+| 2026-11-01 | Krishna | K-27 | Compare mode with lazily loaded Chart.js (version and hash re-verified independently by the reviewer); review forced lazy loading | PR #88 | to confirm |
+| 2026-11-01 | Ahaana (owner) | A-05 | Written by the assistant at Krishna's request: one command for every figure; tests tightened after review | PR #89 | to confirm |
