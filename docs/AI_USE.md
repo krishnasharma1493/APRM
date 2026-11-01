@@ -23,3 +23,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-15 | Autonomous run: experiment runner; independent AI review | PR #70 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-16 | Autonomous run: invariant property checker; independent AI review with differential and mutation testing | PR #71 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-23 | Autonomous run: website shell (index.html, wasm.js, store.js, app.js), Node tests with fake DOM; independent AI review with mutation testing; file:// checked in headless Chrome | PR #72 | to confirm |
+| 2026-11-01 | Krishna | K-18 | Run-owner-authorised freeze: PRD §5 marker, TOOLCHAIN CI column from real CI logs, lock file, pinned emsdk; D65; independent AI review found wording and unmet-box issues, fixed | PR #75 (not yet merged) | to confirm |
