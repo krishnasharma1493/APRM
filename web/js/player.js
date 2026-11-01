@@ -706,7 +706,7 @@
         if (!policyAvailable(POLICY_NAMES[i])) {
           opt.disabled = true;
           opt.setAttribute('disabled', 'disabled');
-          opt.textContent += copyText('policy.knapsack.soon', '');
+          opt.textContent = copyText('short.' + POLICY_NAMES[i], POLICY_NAMES[i]) + copyText('policy.knapsack.soon', '');
         }
         sel.appendChild(opt);
       }
