@@ -47,7 +47,7 @@ INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
 # valid for every policy that uses the shared greedy fill (fcfs, priority, sjf,
 # aging) but never for reserve or knapsack.  K-19 widens this to
 # ("fcfs", "priority", "sjf", "aging") once those policies run.
-GREEDY_FILL_POLICIES = ("fcfs",)
+GREEDY_FILL_POLICIES = ("fcfs", "priority", "sjf", "aging")
 MAX_MESSAGES_PER_CHECK = 5        # keep reports short: first few offenders only
 
 
@@ -241,7 +241,7 @@ def check_greedy_fill_postcondition(jobs: pd.DataFrame, results: pd.DataFrame,
     business (FCFS order is not checkable here).  The check applies to fcfs,
     priority, sjf and aging (they share the greedy fill) and never to reserve
     or knapsack (reservation / knapsack choice); the runner lists the policies
-    in GREEDY_FILL_POLICIES (fcfs only until K-19).
+    in GREEDY_FILL_POLICIES (fcfs, priority, sjf and aging since K-19).
 
     Needs usable ids: only result rows whose id is in the input are looked at.
     Time O((n + m) log(n + m) + sum of the waiting spans in event ticks).

@@ -115,17 +115,21 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           node --version
           node wasm/test_api.mjs
-      - name: Every FCFS golden case through Node equals its expected file
+      - name: Every golden case of the built policies through Node equals its expected file
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
-          for exp in tests/cases/*.fcfs.expected.csv; do
-            name=$(basename "$exp" .fcfs.expected.csv)
+          # reserve (K-26) and knapsack (K-34) are not built yet: their cases are not run.
+          for exp in tests/cases/*.expected.csv; do
+            base=$(basename "$exp" .expected.csv)
+            name=${base%%.*}
+            policy=${base#*.}
+            case "$policy" in fcfs|priority|sjf|aging) ;; *) continue ;; esac
             args=""
             if [ -f "tests/cases/$name.args" ]; then args=$(cat "tests/cases/$name.args"); fi
             # shellcheck disable=SC2086
-            node wasm/run_wasm.mjs --policy fcfs --in "tests/cases/$name.csv" $args > "$RUNNER_TEMP/w.csv"
+            node wasm/run_wasm.mjs --policy "$policy" --in "tests/cases/$name.csv" $args > "$RUNNER_TEMP/w.csv"
             diff "$RUNNER_TEMP/w.csv" "$exp"
-            echo "ok $name"
+            echo "ok $name $policy"
           done
       - name: api.c natively under ASan and UBSan (no Node)
         run: |

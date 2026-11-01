@@ -15,7 +15,8 @@ const root = resolve(here, '..');
 const require = createRequire(import.meta.url);
 const M = await require(join(root, 'web', 'vendor', 'aprm.js'))();
 
-const FCFS = 0, PRIORITY = 1, SJF = 2;
+const FCFS = 0, PRIORITY = 1, SJF = 2, AGING = 3, AGING_RESERVE = 4, KNAPSACK = 5;
+const BUILT = ['fcfs', 'priority', 'sjf', 'aging'];   // reserve (K-26) and knapsack (K-34) are not built yet
 const MAXSAFE = 2 ** 53;
 let passed = 0;
 const tests = [];
@@ -180,7 +181,7 @@ test('LIMIT_REACHED at 5000 jobs', () => {
 });
 
 test('step and run_until: not-implemented policy, number check, D59 clock', () => {
-  const h = mk(SJF);
+  const h = mk(AGING_RESERVE);
   assert.equal(M._aprm_step(h), -1);
   expectErr(h, -1);
   assert.match(lastErr(h).error.message, /not implemented/);
@@ -368,27 +369,28 @@ test('aprm.js runs as a classic script in a browser-like context (no module, no 
 const runner = join(here, 'run_wasm.mjs');
 const casesDir = join(root, 'tests', 'cases');
 const cli = join(root, 'build', 'aprm');
-const goldens = readdirSync(casesDir).filter((f) => /\.fcfs\.expected\.csv$/.test(f)).sort();
-for (const g of goldens) {
-  const name = g.replace(/\.fcfs\.expected\.csv$/, '');
-  test(`golden ${name} (fcfs): run_wasm.mjs is byte-identical to ${g}`, () => {
+const goldens = readdirSync(casesDir).filter((f) => /\.expected\.csv$/.test(f)).sort()
+  .map((f) => [f.split('.')[0], f.split('.')[1], f])
+  .filter(([, policy]) => BUILT.includes(policy));
+for (const [name, policy, g] of goldens) {
+  test(`golden ${name} (${policy}): run_wasm.mjs is byte-identical to ${g}`, () => {
     const argsFile = join(casesDir, `${name}.args`);
     const extra = existsSync(argsFile) ? readFileSync(argsFile, 'utf8').split(/\s+/).filter(Boolean) : [];
-    const run = spawnSync('node', [runner, '--policy', 'fcfs', '--in', join(casesDir, `${name}.csv`), ...extra]);
+    const run = spawnSync('node', [runner, '--policy', policy, '--in', join(casesDir, `${name}.csv`), ...extra]);
     assert.equal(run.status, 0, run.stderr.toString());
     assert.ok(run.stdout.equals(readFileSync(join(casesDir, g))), 'stdout differs from the golden file');
     if (existsSync(cli)) {
-      const out = join(root, 'build', `wasm-test-${name}.csv`);
-      const c = spawnSync(cli, ['--policy', 'fcfs', '--in', join(casesDir, `${name}.csv`), '--out', out, ...extra]);
+      const out = join(root, 'build', `wasm-test-${name}-${policy}.csv`);
+      const c = spawnSync(cli, ['--policy', policy, '--in', join(casesDir, `${name}.csv`), '--out', out, ...extra]);
       assert.equal(c.status, 0, c.stderr.toString());
       assert.ok(readFileSync(out).equals(run.stdout), 'differs from build/aprm');
     }
   });
 }
-test('golden cases for other policies are skipped (not implemented yet)', () => {
-  const others = readdirSync(casesDir).filter((f) => /\.expected\.csv$/.test(f) && !/\.fcfs\.expected\.csv$/.test(f));
-  console.log(`  skipped ${others.length} golden files of policies other than fcfs`);
-  const run = spawnSync('node', [runner, '--policy', 'sjf', '--in', join(casesDir, 'sjf_order.csv')]);
+test('golden cases for policies not built yet (reserve, knapsack) are skipped', () => {
+  const others = readdirSync(casesDir).filter((f) => /\.expected\.csv$/.test(f) && !BUILT.includes(f.split('.')[1]));
+  console.log(`  skipped ${others.length} golden files of policies not built yet`);
+  const run = spawnSync('node', [runner, '--policy', 'reserve', '--in', join(casesDir, 'sjf_order.csv')]);
   assert.equal(run.status, 4);
 });
 
@@ -479,7 +481,7 @@ test('run_wasm.mjs exit codes', () => {
   assert.equal(r(['--in', join(casesDir, 'capacity_reject.csv')]), 3);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv'), '--cpu', '0']), 1);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv')]), 0);
-  assert.equal(r(['--policy', 'aging', '--in', join(casesDir, 'fcfs_basic.csv')]), 4);
+  assert.equal(r(['--policy', 'reserve', '--in', join(casesDir, 'fcfs_basic.csv')]), 4);
 });
 
 if (existsSync(cli)) console.log('build/aprm found: golden cases also compared with the console program');
