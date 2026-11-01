@@ -131,6 +131,21 @@ jobs:
             diff "$RUNNER_TEMP/w.csv" "$exp"
             echo "ok $name $policy"
           done
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Conformance, console program versus the fresh WebAssembly build (K-21)
+        env:
+          # The check must really run here: a skip (no node, no build) fails the test.
+          CONFORMANCE_REQUIRED: "1"
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          make
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.lock.txt
+          .venv/bin/python -m pytest tests/py/test_conformance.py -v -rs
+          # 200 seeds x 5 policies = 1,000 byte-for-byte comparisons
+          .venv/bin/python tools/conformance.py --runs 200
       - name: api.c natively under ASan and UBSan (no Node)
         run: |
           mkdir -p build
