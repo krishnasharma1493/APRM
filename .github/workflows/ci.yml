@@ -4,7 +4,9 @@
 #  - actions/checkout      v7  (latest release v7.0.1; README recommends @v7)
 #  - actions/setup-python  v7  (latest release v7.1.0; README recommends @v7)
 #  - runner image          ubuntu-24.04 (what GitHub's runner-images README lists for ubuntu-latest)
-#  - Python 3.13           the version recorded in docs/TOOLCHAIN.md. Exact patch is frozen in K-18.
+#  - Python 3.13           the line recorded in docs/TOOLCHAIN.md; setup-python picks the newest 3.13.x patch (K-18 freeze).
+#  - pip packages          installed from requirements.lock.txt (K-18 freeze).
+#  - emsdk                 pinned exactly in the build-wasm job (env EMSDK_VERSION), same as docs/TOOLCHAIN.md.
 # No secrets are used.
 name: CI
 
@@ -23,6 +25,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Print tool versions (recorded in docs/TOOLCHAIN.md)
+        run: |
+          cc --version | head -1
+          gcc --version | head -1
+          make --version | head -1
+          cat /etc/os-release | head -2
       - name: Build with -Wall -Wextra -Werror
         run: make
 
@@ -61,10 +69,12 @@ jobs:
           python-version: "3.13"
       - name: Build the console program (the K-15 tests run build/aprm)
         run: make
-      - name: Create venv and install requirements
+      - name: Create venv and install from the lock file
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/python -m pip install -r requirements.lock.txt
+          .venv/bin/python --version
+          .venv/bin/python -m pip --version
       - name: Run Python tests
         run: |
           # pytest exit code 5 means "no tests collected": treated as a pass until tests exist.
@@ -81,18 +91,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Install the emsdk version recorded in docs/TOOLCHAIN.md
+      - name: Install the pinned emsdk
+        env:
+          # Exact version, kept equal to the Emscripten row of docs/TOOLCHAIN.md (change both together).
+          EMSDK_VERSION: "6.0.13"
         run: |
-          # The version is read from the Emscripten row of docs/TOOLCHAIN.md. The regex takes the FIRST
-          # version number in the row, which is the Krishna's-laptop column; K-18 must move it to the
-          # CI column when that column is filled in.
-          ver=$(grep '^| Emscripten' docs/TOOLCHAIN.md | sed -E 's/^\|[^|]*\| *([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-          echo "emsdk version: $ver"
-          test -n "$ver"
+          echo "emsdk version: $EMSDK_VERSION"
           git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
           cd "$HOME/emsdk"
-          ./emsdk install "$ver"
-          ./emsdk activate "$ver"
+          ./emsdk install "$EMSDK_VERSION"
+          ./emsdk activate "$EMSDK_VERSION"
       - name: Build web/vendor/aprm.js
         run: |
           . "$HOME/emsdk/emsdk_env.sh"

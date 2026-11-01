@@ -343,6 +343,8 @@ This list is the reference for every invariant check in the project (C debug che
 
 ## 5. Engine API contract
 
+**Frozen at Gate 2 (2026-11-01).** The step API, the CSV formats and the summary CSV formats in this section no longer move. To change anything here: ask first, update this section first, then the code, then tell Ahaana (§13). **One exception, open on purpose:** the representation of `knapsack_eps` (DECISIONS O-2) is the only open item; K-34 may change it through the same process (PRD first, code, tell Ahaana). The freeze was done on Krishna's authorisation; Ahaana's review of the CSV and summary formats is still awaited.
+
 This section is the contract between the C core, the website and Python. Agree on it before Gate 2, change it here first, then in code, then tell the other member.
 
 ### Conventions

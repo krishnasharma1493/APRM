@@ -10,7 +10,7 @@ Rules used (BLUEPRINT §2, §3.2, §3.4): time jumps between events; at one tick
 
 ## FCFS cases
 
-Status of the paper check by Ahaana: **pending** for every case (deferred to K-17; tick here when done). Until then the only independent check is a separate AI session that derived all four schedules from the inputs alone and matched every row.
+Status of the paper check by Ahaana: **awaiting Ahaana's paper check** for every case (not ticked; K-18 froze PRD §5 on Krishna's authorisation without it; tick here when she has done it). Until then the only independent check is a separate AI session that derived all four schedules from the inputs alone and matched every row.
 
 ### fcfs_basic (shows: priority is ignored)
 
@@ -300,22 +300,22 @@ No output file and no expected CSV (D54, part 5). Files: `capacity_reject.csv`, 
 
 ## Status of the paper check by Ahaana (every case)
 
-All PENDING; deferred to K-18 (Gate 2 freeze, issue #19). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
+All awaiting Ahaana's paper check (K-18 froze PRD §5 on Krishna's authorisation without it). Change a cell to DONE (with date) when she has redone the case on paper without looking at the expected file.
 
 | case | policy files | paper check by Ahaana |
 | --- | --- | --- |
-| fcfs_basic | fcfs | PENDING |
-| fcfs_finish_arrival | fcfs | PENDING |
-| fcfs_skip | fcfs | PENDING |
-| fcfs_tiebreak | fcfs | PENDING |
-| priority_order | priority | PENDING |
-| priority_skip | priority | PENDING |
-| sjf_order | sjf | PENDING |
-| sjf_starvation | sjf, fcfs | PENDING |
-| aging_tiebreak | aging, priority | PENDING |
-| priority_starvation | priority, aging | PENDING |
-| big_job_trap | fcfs, priority, sjf, aging, reserve | PENDING |
-| sjf_finish_arrival | sjf, priority | PENDING |
-| memory_hog | aging, reserve | PENDING |
-| reserve_backfill | reserve, aging | PENDING |
-| capacity_reject | console (exit 3, stderr) | PENDING |
+| fcfs_basic | fcfs | awaiting Ahaana's paper check |
+| fcfs_finish_arrival | fcfs | awaiting Ahaana's paper check |
+| fcfs_skip | fcfs | awaiting Ahaana's paper check |
+| fcfs_tiebreak | fcfs | awaiting Ahaana's paper check |
+| priority_order | priority | awaiting Ahaana's paper check |
+| priority_skip | priority | awaiting Ahaana's paper check |
+| sjf_order | sjf | awaiting Ahaana's paper check |
+| sjf_starvation | sjf, fcfs | awaiting Ahaana's paper check |
+| aging_tiebreak | aging, priority | awaiting Ahaana's paper check |
+| priority_starvation | priority, aging | awaiting Ahaana's paper check |
+| big_job_trap | fcfs, priority, sjf, aging, reserve | awaiting Ahaana's paper check |
+| sjf_finish_arrival | sjf, priority | awaiting Ahaana's paper check |
+| memory_hog | aging, reserve | awaiting Ahaana's paper check |
+| reserve_backfill | reserve, aging | awaiting Ahaana's paper check |
+| capacity_reject | console (exit 3, stderr) | awaiting Ahaana's paper check |
