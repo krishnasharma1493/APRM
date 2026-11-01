@@ -425,7 +425,7 @@ State, returned after every step:
 } }
 ```
 
-In the state, `reservation` is `null` when none is active. Event log entry:
+In the state, `reservation` is `null` when none is active. `score` is the live aging score for the `aging` and `aging_reserve` policies (three decimals, from integers, D14) and `null` for every other policy (D63). `waiting` is in service order (best first) and `running` is ordered by finish time, then arrival, then id. Event log entry:
 
 ```json
 { "seq": 17, "t": 42, "kind": "SKIP", "job": 7,
@@ -444,6 +444,8 @@ Metrics:
   "avg_wait_by_priority": [30.2, 28.0, 21.5, 18.0, 14.1, 11.0, 9.2, 6.3, 4.0, 2.1]
 } }
 ```
+
+Metrics are computed over the finished jobs. Averages and utilisations are printed with exactly nine decimals, rounded half up from exact integer arithmetic (no floating point; so `12.4` appears as `12.400000000`, which is within 1e-9 of any correct value). `max_wait`, `weighted_completion` and `makespan` are integers. A value whose denominator is zero is `null`: `avg_wait`, `avg_turnaround` with no finished job, `util_cpu` and `util_mem` when the makespan is 0, and an entry of `avg_wait_by_priority` whose priority level has no finished job (D61, D62). Utilisation is the busy resource-time of the finished jobs divided by capacity × makespan over the interval [0, makespan].
 
 ### Error codes
 

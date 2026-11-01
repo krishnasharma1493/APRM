@@ -13,6 +13,7 @@
 #define APRM_ENGINE_H
 
 #include <stdint.h>
+#include "csv.h"
 #include "job.h"
 #include "json.h"
 
@@ -99,5 +100,33 @@ void sim_destroy(Sim *s);
  * code == 0 means no error since create/reset. A successful call does not
  * clear it. Extra to PRD section 5. O(1). */
 const SimError *sim_last_error(const Sim *s);
+
+/* ---- Reports (K-11, PRD section 5 "JSON shapes"; engine_json.c) ----
+ * Each *_json function replaces the contents of *out (it calls json_reset
+ * first) with one complete envelope {"ok":true,"data":...}, only reads the
+ * Sim, and returns APRM_OK, APRM_INVALID_ARGUMENT (NULL s or out) or
+ * APRM_OUT_OF_MEMORY / APRM_INVALID_FIELD (sums too large for 64 bits;
+ * unreachable within PRD section 3 except weighted completion on a
+ * pathological input). On failure *out is left empty. The caller owns *out. */
+
+/* State at the current time: waiting in service order (best first), running
+ * ordered by finish; reservation null until K-26. O(n log n) time, O(n)
+ * temporary space (it sorts copies of the two heaps, never the heaps). */
+int  sim_state_json(const Sim *s, JsonBuf *out);
+
+/* Finished jobs only, sorted by id, same columns as results.csv.
+ * O(n log n) time, O(n) temporary space. */
+int  sim_results_json(const Sim *s, JsonBuf *out);
+
+/* Metrics over the finished jobs (metrics.h). O(n log n) time (it builds the
+ * sorted rows first), O(n) temporary space. */
+int  sim_metrics_json(const Sim *s, JsonBuf *out);
+
+/* The rows of results.csv for the finished jobs, sorted by id, for the
+ * console program's csv_write_results (K-12). On success *rows is a malloc'd
+ * array of *n rows (NULL when *n is 0) that the caller frees with free().
+ * On failure *rows is NULL and *n is 0. Returns APRM_OK,
+ * APRM_INVALID_ARGUMENT or APRM_OUT_OF_MEMORY. O(n log n) time, O(n) space. */
+int  sim_results_rows(const Sim *s, ResultRow **rows, int64_t *n);
 
 #endif /* APRM_ENGINE_H */
