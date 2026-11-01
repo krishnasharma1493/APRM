@@ -40,3 +40,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-27 | Compare mode with lazily loaded Chart.js (version and hash re-verified independently by the reviewer); review forced lazy loading | PR #88 | to confirm |
 | 2026-11-01 | Ahaana (owner) | A-05 | Written by the assistant at Krishna's request: one command for every figure; tests tightened after review | PR #89 | to confirm |
 | 2026-11-01 | Krishna | K-30 | Hardening review: docs/HARDENING.md, make hardening (fuzz, allocation-failure injection, stress); independent AI review found the harness could not fail, fixed, plus website error cap, engine start timeout, exclusive temp file | PR #90 | to confirm |
+| 2026-11-02 | Krishna | K-38 | Timing benchmark tools/bench_timing.py writing timing.csv; log-log slope note | K-38 PR | to confirm |
