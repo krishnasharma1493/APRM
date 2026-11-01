@@ -138,3 +138,10 @@ Scope: do EVERY open issue in backlog and gate order, including Ahaana's (A-xx) 
 On stopping: write the reason on the first line of `docs/PROGRESS.md`; for condition 1 create `.autorun/DONE`; commit and push; give one short report (issues merged, what needs Krishna with exact steps, a reminder that Ahaana should read `docs/AHAANA_GUIDE.md`).
 
 `autorun.sh` restarts the session every 15 minutes until `.autorun/DONE` or `.autorun/STOP` exists.
+
+### Merge conditions (clarified by Krishna, 2026-11-01)
+
+- The only issue allowed to change PRD §5 is K-18 (contract freeze). Any later change needs Krishna.
+- `a/*` PRs auto-merge under the same conditions as `k/*` PRs: reviewer subagent approval plus green checks. Keep the `done-by-claude` label and the `docs/AHAANA_GUIDE.md` section.
+- Avoid stacking on unmerged PRs. Merge first, then branch from the updated main, unless waiting would leave every subagent idle. When a stacked branch's base merges, merge main into the branch (or rebase), re-run its checks, then continue.
+- Do not delete a base branch while another PR is stacked on it; retarget the dependent PR to main first (GitHub closes PRs whose base branch is deleted).
