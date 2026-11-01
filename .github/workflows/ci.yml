@@ -101,6 +101,10 @@ jobs:
           cd "$HOME/emsdk"
           ./emsdk install "$EMSDK_VERSION"
           ./emsdk activate "$EMSDK_VERSION"
+      - name: Print Node version (recorded in docs/TOOLCHAIN.md)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node --version
       - name: Build web/vendor/aprm.js
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
