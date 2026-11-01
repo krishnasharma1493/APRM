@@ -4,7 +4,6 @@ An online, non-preemptive job scheduler for one machine with two resources (CPU 
 
 Course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi. Team: Krishna Sharma and Ahaana Arya.
 
-> **Status:** setup stage. Most commands below work once their backlog issue is done (see `docs/BACKLOG.md`).
 
 ## Documentation map
 
@@ -18,41 +17,90 @@ Course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester),
 | `docs/RESEARCH_NOTES.md` | What each paper says, where we use it, glossary |
 | `docs/TOOLCHAIN.md` | Frozen tool versions (the only place versions are written) |
 | `docs/AI_USE.md` | Log of AI-assistant use |
+| `docs/FRESH_CLONE_TEST.md` | Timed fresh-clone setup test (steps, times, problems found) |
 | `docs/research/` | The papers |
 | `data/sample_summaries/README.md` | Fake summary files for building figures early |
 
 ## Setup
 
-Install the exact versions listed in `docs/TOOLCHAIN.md`. Until that table is filled in (issue K-01), use the latest stable release from each official source. Do not copy version numbers from anywhere else.
+Versions are written in one place only: `docs/TOOLCHAIN.md`. Do not copy version numbers from anywhere else. Where a version matters (Emscripten), install the one that file lists.
 
-You need: a C compiler (GCC or Clang), GNU Make, Git, Python 3 with `venv`, and Emscripten (emsdk) for the WebAssembly build. Node.js is needed only for the WebAssembly tests.
+### Prerequisites (check each with the command shown)
+
+| You need | Check with | Needed for |
+| --- | --- | --- |
+| A C compiler (GCC or Clang) | `cc --version` | `make`, `make test` |
+| GNU Make | `make --version` | every build command |
+| Git | `git --version` | cloning |
+| Python 3 with `venv` | `python3 --version` and `python3 -m venv --help` | tools, `pytest`, figures |
+| A web browser (Chrome, Edge, Firefox) | open it | the website |
+| Emscripten (emsdk), optional | `emcc --version` | `make wasm` only (the website's engine file) |
+| Node.js, optional | `node --version` | some WebAssembly tests; emsdk bundles one |
+
+If a command prints "command not found", install that tool using the system section below, then run the check again. Everything except the website's engine file builds without Emscripten.
 
 ### Windows (WSL2 Ubuntu)
 
 1. Install WSL2 with Ubuntu (`wsl --install` in an administrator PowerShell, then restart).
 2. In the Ubuntu terminal: `sudo apt update && sudo apt install build-essential git python3 python3-venv`.
-3. Install Emscripten with emsdk, following emscripten.org: clone `emsdk`, then `./emsdk install <version from TOOLCHAIN.md>`, `./emsdk activate <same version>`, `source ./emsdk_env.sh`.
-4. Keep the repository inside the Linux file system (for example `~/aprm`), not under `/mnt/c`, and open it with the VS Code WSL extension.
+3. Keep the repository inside the Linux file system (for example `~/aprm`), not under `/mnt/c`, and open it with the VS Code WSL extension.
+4. Emscripten: see "Installing Emscripten" below.
 
 ### Mac
 
-1. `xcode-select --install` (Clang and Make).
+1. `xcode-select --install` (Clang and Make; `cc` and `make` then exist).
 2. Python 3 from python.org (or Homebrew), and Git.
-3. Emscripten through emsdk as above.
+3. Emscripten: see "Installing Emscripten" below.
 
 ### Linux
 
 1. Install `build-essential` (or your distribution's GCC + Make), `git`, `python3`, `python3-venv`.
-2. Emscripten through emsdk as above.
+2. Emscripten: see "Installing Emscripten" below.
+
+### Installing Emscripten (only for `make wasm`)
+
+Follow emscripten.org: clone `emsdk` into `~/emsdk`, then `./emsdk install <version from docs/TOOLCHAIN.md>`, `./emsdk activate <same version>`. `make wasm` finds `~/emsdk` on its own (it sources `emsdk_env.sh` for you). If emsdk is somewhere else, run `source <your emsdk folder>/emsdk_env.sh` in the same terminal first, then check `emcc --version`.
+
+There is no prebuilt engine file to download: CI does not publish one and the `demo-ready` build does not exist yet. So the website needs `make wasm`, and therefore emsdk. Without it, everything else (console program, tests, figures) still works.
 
 ### Python environment (all systems)
+
+From the repository folder:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt        # names only, until the Gate 2 freeze
-pip install -r requirements.lock.txt   # after the freeze: exact versions
+pip install -r requirements.lock.txt   # exact versions; use this one
 ```
+
+(`requirements.txt` lists the package names only; install it instead only if the lock file fails on your Python.) On Windows WSL and Mac/Linux the prompt shows `(.venv)` while it is active. Open a new terminal later? Run `source .venv/bin/activate` again before `pytest` or `python tools/...`.
+
+## First run: from a fresh clone to everything working
+
+Run these in order, from the repository folder, with the virtual environment active. Each step says what success looks like.
+
+| Step | Command | Success looks like |
+| --- | --- | --- |
+| 1. Build | `make` | Last line links `build/aprm`, no errors |
+| 2. C tests | `make test` | Ends with "passed" lines, exit code 0 |
+| 3. Python tests | `pytest tests/py -q` | `... passed, ... skipped`, no failures (about a minute) |
+| 4. Engine for the website | `make wasm` | `built web/vendor/aprm.js (... bytes)` |
+| 5. Website | double-click `web/index.html` | The page says "Engine ready" |
+| 6. Figures | `python tools/plot_figures.py` | Prints the paths of `.png` and `.pdf` files in `docs/report/figures/` |
+
+Run step 1 before step 3: some Python tests call `build/aprm`. Step 6 reads `data/sample_summaries/` until real summaries exist in `results/summaries/`. A timed record of this procedure on a fresh clone is in `docs/FRESH_CLONE_TEST.md`.
+
+### Troubleshooting
+
+| You see | Cause and fix |
+| --- | --- |
+| `make: cc: command not found` or similar | No C compiler. Mac: `xcode-select --install`. Ubuntu/WSL: `sudo apt install build-essential`. |
+| `wasm/build.sh: emcc not found` | Emscripten is not installed or not active. See "Installing Emscripten"; check with `emcc --version`. All other steps still work. |
+| Website shows "The engine file (web/vendor/aprm.js) did not load. Run "make wasm"..." | `web/vendor/aprm.js` is not built (it is never committed). Run `make wasm`, then reload the page. |
+| `ModuleNotFoundError` (numpy, pandas, matplotlib, pytest) or `pytest: command not found` | The virtual environment is not active in this terminal. Run `source .venv/bin/activate`. |
+| `python3 -m venv` fails on Ubuntu/WSL | `sudo apt install python3-venv`. |
+| `pip` prints "A new release of pip is available" | A notice, not an error. Ignore it; do not upgrade pip for this project. |
+| `pytest` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
 
 ## Build and test
 
@@ -61,7 +109,7 @@ make              # console program → build/aprm
 make debug        # with invariant checks after every step
 make sanitize     # AddressSanitizer + UndefinedBehaviorSanitizer
 make test         # C unit tests and golden cases
-make wasm         # WebAssembly bundle → web/vendor/aprm.js
+make wasm         # WebAssembly bundle → web/vendor/aprm.js (needs emsdk)
 make clean
 pytest tests/py   # property checks, conformance, summary and figure checks
 ```
@@ -80,7 +128,7 @@ Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Input and o
 
 **Website**
 
-Run `make wasm` (or download `aprm.js` from the CI run), then double-click `web/index.html`. It works offline from the folder; no server is needed.
+Run `make wasm`, then double-click `web/index.html` (or open it from your browser with File > Open). It works offline from the folder; no server is needed. The page shows "Engine ready" when the engine loaded.
 
 **Python**
 
