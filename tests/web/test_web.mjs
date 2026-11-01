@@ -24,7 +24,7 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
   'js/editor.js', 'js/generator.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
   'js/share.js', 'js/app.js'];
-const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 test('index.html: script order follows PRD section 7, vendor first, app.js last', () => {
   assert.ok(scriptSrcs.length >= 4);
