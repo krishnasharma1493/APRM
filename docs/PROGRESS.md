@@ -78,3 +78,4 @@ Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (mis
 ## Decisions made during autonomous run
 
 - 2026-11-01: K-18 not done by the run: its acceptance needs two humans (Ahaana's paper check and format approval, Krishna's sign-off). Labelled needs-krishna. Chain K-19..K-22, K-24+ stays blocked; only K-23 was eligible.
+- 2026-11-01: K-18 freeze: O-2 (knapsack_eps representation) is still open and belongs to K-34. Chose to freeze PRD §5 with an explicit exception for `knapsack_eps` (changes only through the PRD §13 process) instead of settling O-2 early. Ahaana's paper check and format approval stay marked 'awaiting Ahaana'.
