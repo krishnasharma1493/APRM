@@ -140,7 +140,7 @@ function fakeModule() {
     },
     _aprm_step(h) { m.calls.push('step(' + h + ')'); return live.has(h) ? 0 : fail(0, -1, 'Not a live handle.', 'handle'); },
     _aprm_state(h) { m.calls.push('state(' + h + ')'); return put({ ok: true, data: { now: 0, done: 0, total: 0 } }); },
-    _aprm_last_error(h) { return put(lastErr.has(h) ? lastErr.get(h) : (live.has(h) ? { ok: true, data: null } : orphan)); },
+    _aprm_last_error(h) { m.calls.push('last_error(' + h + ')'); return put(lastErr.has(h) ? lastErr.get(h) : (live.has(h) ? { ok: true, data: null } : orphan)); },
     _aprm_exact() { return put({ ok: false, error: { code: -9, message: 'Exact solver supports up to 9 jobs.' } }); },
     _aprm_results() { return put('this is not json'); },
     _aprm_metrics() { return put({ ok: true, data: { makespan: 0 } }); },
@@ -233,9 +233,13 @@ test('wasm: handle checking happens in JavaScript (ToInt32 trap)', async () => {
 });
 
 test('wasm: create failure reads aprm_last_error(0); status failures read the handle error', async () => {
-  const w = await ready();
+  const mod = fakeModule();
+  const page = loadPage({ createAprm: () => Promise.resolve(mod), only: ['js/wasm.js'] });
+  await page.APRM.wasm.init();
+  const w = page.APRM.wasm;
   const e = throwsEngine(() => w.create(0, 1000, 'fcfs', 100, 50, 0.1), -2, 'cpu');
   assert.equal(e.message, 'cpu must be 1 to 1000000.');
+  assert.ok(mod.calls.includes('last_error(0)'), 'a failed create reads the orphan record with handle 0 (D64)');
   const h = w.create(4, 1000, 'priority', 100, 50, 0.1);
   assert.equal(w.addJob(h, 1, 0, 5, 1, 1, 0), 0);
   const dup = throwsEngine(() => w.addJob(h, 7, 0, 5, 1, 1, 0), -5, 'id');
