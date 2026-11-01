@@ -130,6 +130,15 @@ Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Input and o
 
 Run `make wasm`, then double-click `web/index.html` (or open it from your browser with File > Open). It works offline from the folder; no server is needed. The page shows "Engine ready" when the engine loaded.
 
+**Optional: GitHub Pages copy**
+
+The laptop is the primary demo. A bonus copy can be published from `main` by the `deploy` job in `.github/workflows/ci.yml`. It stays skipped until two human steps are done:
+
+1. In the repository, Settings > Pages > Source: GitHub Actions.
+2. Set the repository variable: Settings > Secrets and variables > Actions > Variables > `PAGES_ENABLED` = `true`, or `gh variable set PAGES_ENABLED --body true`.
+
+The next push to `main` (after all five checks pass) publishes only `web/`, with the CI-built `web/vendor/aprm.js`. To stop publishing, delete the variable.
+
 **Python**
 
 ```sh
