@@ -128,7 +128,7 @@ This first version uses fake sample data. My script only reads and draws.
 
 ### Exercises
 
-1. **Change a line colour.** Make the fcfs line blue.
+1. **Change a line colour.** Make the fcfs line light blue (sky blue).
 2. **Change the title** so it says "Hello figure".
 3. **Plot a different column.** Draw average turnaround time instead of average wait.
 
@@ -136,9 +136,15 @@ This first version uses fake sample data. My script only reads and draws.
 <summary>Answers (try first!)</summary>
 
 1. The colour now lives in `POLICY_LOOK` (see A-02). Change the first entry
-   from `"#000000"` to another colour, for example
-   `"fcfs": ("#0000FF", "-", "o")`, run the script and open the picture. The
-   fcfs line and its band are now blue. Undo the change afterwards.
+   from `"#000000"` to sky blue: `"fcfs": ("#56B4E9", "-", "o")`. Run the
+   script and open the picture: the fcfs line and its band are now sky blue.
+   Sky blue is in the colour-blind-safe Okabe-Ito palette, so the palette test
+   still passes. But `test_look_table_matches_literal_expected` and
+   `test_drawn_lines_use_the_policy_look` will FAIL, on purpose: they hold the
+   agreed colours typed out, so nobody changes a scheduler's colour by
+   accident. (I ran this: 2 failed, 15 passed.) A colour that is not in the
+   palette, such as pure blue `#0000FF`, would also fail the palette test.
+   Undo the change afterwards.
 
 2. In `build_e1_figure`, change the text inside `ax.set_title("...")`. Keep
    "(SAMPLE DATA)" while the data is fake.
@@ -185,7 +191,7 @@ where a scheduler's look is decided: this table.
 | priority | vermillion | dashed | square |
 | sjf | blue | dash-dot | triangle up |
 | aging | bluish green | dotted | diamond |
-| reserve | reddish purple | long dashes | triangle down |
+| reserve | reddish purple | very long dashes | triangle down |
 | knapsack | orange | sparse dots | filled plus |
 
 **`FIGURE_SIZE = (7, 4.5)`** is the picture size in inches. Using one constant
@@ -249,7 +255,8 @@ figure still works printed in black and white, and for colour-blind readers.
 1. In `POLICY_LOOK`, change the last entry to
    `"knapsack": ("#E69F00", (0, (1, 3)), "*")`. Run the script. It works and
    the knapsack markers become stars. (I ran this: the figure was written
-   without errors.) Undo it afterwards.
+   without errors.) The two tests that hold the agreed look typed out will
+   fail, on purpose, until you change them too. Undo it afterwards.
 
 2. `policy_look("mystery")` raises:
    `KeyError: "No style for policy 'mystery'. Add it to POLICY_LOOK. Known

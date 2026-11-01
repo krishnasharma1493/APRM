@@ -34,7 +34,7 @@ POLICY_LOOK = {
     "priority": ("#D55E00", "--", "s"),  # vermillion, dashed, square
     "sjf": ("#0072B2", "-.", "^"),  # blue, dash-dot, triangle
     "aging": ("#009E73", ":", "D"),  # bluish green, dotted, diamond
-    "reserve": ("#CC79A7", (0, (5, 1)), "v"),  # purple, long dashes, down triangle
+    "reserve": ("#CC79A7", (0, (10, 3)), "v"),  # purple, very long dashes, down triangle
     "knapsack": ("#E69F00", (0, (1, 3)), "P"),  # orange, sparse dots, filled plus
 }
 
