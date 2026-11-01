@@ -37,3 +37,7 @@ docs/research/*.pdf
 # Autonomous-run state and logs
 .autorun/
 .playwright-mcp/
+
+# Generated report figures (A-01 sample-data figure is fake). Not committed by default;
+# add a real final figure on purpose with: git add -f <file>
+docs/report/figures/*.png
