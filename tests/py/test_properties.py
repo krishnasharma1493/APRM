@@ -533,3 +533,154 @@ def test_scenarios_include_large_times():
     for sc in late:
         assert max(j["arrival"] for j in sc["jobs"]) <= 10 ** 9
         assert max(j["arrival"] for j in sc["jobs"]) >= 10 ** 9 - 5
+
+
+# ------------------------------------------------------------ K-29: aging order and starvation bound
+# Machine 4 cpu / 100 mem.  Job 1 fills the cpu until tick 10; jobs 2 (better) and 3 (worse) wait.
+def _order_jobs(b_j=9, b_k=0, arr_j=1, arr_k=1):
+    return mk_jobs([(1, 0, 10, 4, 10, 5), (2, arr_j, 5, 2, 10, b_j), (3, arr_k, 5, 2, 10, b_k)])
+
+
+def test_aging_order_correct_schedule_passes():
+    jobs = _order_jobs()
+    ok = mk_results(jobs, {1: 0, 2: 10, 3: 10})          # both fit together: no one is passed over
+    assert cp.check_aging_order(jobs, ok, 4, 100, 100) == []
+    ok2 = mk_results(jobs, {1: 0, 2: 10, 3: 15})         # k later than j: right order
+    assert cp.check_aging_order(jobs, ok2, 4, 100, 100) == []
+
+
+def test_aging_order_violation_flagged():
+    jobs = _order_jobs()
+    bad = mk_results(jobs, {1: 0, 2: 12, 3: 10})         # worse job 3 starts at 10, better job 2 at 12 though it fit
+    msgs = cp.check_aging_order(jobs, bad, 4, 100, 100)
+    assert len(msgs) == 1 and "aging order" in msgs[0] and "job 3" in msgs[0] and "job 2" in msgs[0], msgs
+
+
+def test_aging_order_not_flagged_when_better_job_did_not_fit():
+    jobs = mk_jobs([(1, 0, 10, 3, 10, 5), (2, 1, 5, 2, 10, 9), (3, 1, 5, 1, 10, 0)])
+    # at tick 10... machine 4 cpu: job 1 uses 3, free 1: job 2 (2 cpu) does not fit, job 3 (1 cpu) does
+    res = mk_results(jobs, {1: 0, 2: 10, 3: 1})
+    assert cp.check_aging_order(jobs, res, 4, 100, 100) == []
+
+
+def test_aging_order_ties_are_not_judged():
+    jobs = _order_jobs(b_j=3, b_k=3, arr_j=1, arr_k=1)    # identical keys
+    res = mk_results(jobs, {1: 0, 2: 12, 3: 10})
+    assert cp.check_aging_order(jobs, res, 4, 100, 100) == []
+    # alpha 0 and equal priority: keys equal whatever the arrival
+    jobs = _order_jobs(b_j=3, b_k=3, arr_j=1, arr_k=7)
+    res = mk_results(jobs, {1: 0, 2: 12, 3: 10})
+    assert cp.check_aging_order(jobs, res, 4, 100, 0) == []
+
+
+def test_aging_order_alpha_zero_is_static_priority():
+    jobs = _order_jobs()
+    bad = mk_results(jobs, {1: 0, 2: 12, 3: 10})
+    assert cp.check_aging_order(jobs, bad, 4, 100, 0) != []
+
+
+def test_aging_order_uses_the_key_not_just_priority():
+    # job 2: priority 0 arrives at 0; job 3: priority 9 arrives at 1000.  alpha 100: K_2 = 0, K_3 = 9000-100000 < K_2.
+    jobs = mk_jobs([(1, 0, 2000, 4, 10, 5), (2, 0, 5, 2, 10, 0), (3, 1000, 5, 2, 10, 9)])
+    bad = mk_results(jobs, {1: 0, 2: 2010, 3: 2000})
+    assert cp.check_aging_order(jobs, bad, 4, 100, 100) != []
+    # alpha 0: priority only; job 3 is better, so serving it first is right
+    assert cp.check_aging_order(jobs, bad, 4, 100, 0) == []
+
+
+def test_starvation_bound_violation_flagged():
+    # bound for job 2 (priority 0, arrival 1): 100*(1050-1)=104900 > 1000*9 = 9000
+    jobs = mk_jobs([(1, 0, 1100, 4, 10, 5), (2, 1, 5, 2, 10, 0), (3, 1050, 5, 2, 10, 9)])
+    bad = mk_results(jobs, {1: 0, 2: 1105, 3: 1100})
+    msgs = cp.check_starvation_bound(jobs, bad, 4, 100, 100)
+    assert len(msgs) == 1 and "starvation bound" in msgs[0] and "job 3" in msgs[0], msgs
+    good = mk_results(jobs, {1: 0, 2: 1100, 3: 1100})
+    assert cp.check_starvation_bound(jobs, good, 4, 100, 100) == []
+
+
+def test_starvation_bound_does_not_cover_pairs_inside_the_bound():
+    # k arrives 5 ticks after j, same priority: ranks below j but within the bound (500 <= 9000)
+    jobs = mk_jobs([(1, 0, 10, 4, 10, 5), (2, 1, 5, 2, 10, 0), (3, 6, 5, 2, 10, 0)])
+    bad = mk_results(jobs, {1: 0, 2: 12, 3: 10})
+    assert cp.check_starvation_bound(jobs, bad, 4, 100, 100) == []
+    assert cp.check_aging_order(jobs, bad, 4, 100, 100) != []
+
+
+def test_starvation_bound_boundary_is_strict():
+    # alpha 100: bound is exactly 90 ticks for priority 0 (1000*9/100).  gap 90 is not beyond it, 91 is.
+    for gap, flagged in ((90, False), (91, True)):
+        jobs = mk_jobs([(1, 0, 200, 4, 10, 5), (2, 0, 5, 2, 10, 0), (3, gap, 5, 2, 10, 9)])
+        bad = mk_results(jobs, {1: 0, 2: 205, 3: 200})
+        assert bool(cp.check_starvation_bound(jobs, bad, 4, 100, 100)) is flagged, gap
+
+
+def test_starvation_bound_alpha_zero_is_skipped():
+    jobs = mk_jobs([(1, 0, 1100, 4, 10, 5), (2, 1, 5, 2, 10, 0), (3, 1050, 5, 2, 10, 9)])
+    bad = mk_results(jobs, {1: 0, 2: 1105, 3: 1100})
+    assert cp.check_starvation_bound(jobs, bad, 4, 100, 0) == []   # no division, no flag
+
+
+def test_aging_checks_with_huge_arrivals_do_not_overflow():
+    big = 10 ** 9
+    jobs = mk_jobs([(1, big - 3000, 3000, 4, 10, 5), (2, big - 2999, 5, 2, 10, 0), (3, big - 100, 5, 2, 10, 9)])
+    bad = mk_results(jobs, {1: big - 3000, 2: big + 5, 3: big})
+    assert cp.check_aging_order(jobs, bad, 4, 100, 10000) != []
+    assert cp.check_starvation_bound(jobs, bad, 4, 100, 10000) != []
+    good = mk_results(jobs, {1: big - 3000, 2: big, 3: big})
+    assert cp.check_aging_order(jobs, good, 4, 100, 10000) == []
+    # values far beyond int64 products (alpha * arrival) are handled exactly with Python ints
+    huge = mk_jobs([(1, 0, 5, 4, 10, 5), (2, 2 ** 52, 5, 2, 10, 0)])
+    assert cp.check_aging_order(huge, mk_results(huge, {1: 0, 2: 2 ** 52}), 4, 100, 10000) == []
+
+
+def test_aging_checks_empty_and_unusable_inputs():
+    empty = mk_jobs([])
+    assert cp.check_aging_order(empty, mk_results(empty, {}), 4, 100, 100) == []
+    assert cp.check_starvation_bound(empty, mk_results(empty, {}), 4, 100, 100) == []
+    assert cp.check_aging_order(JOBS, GOOD.drop(columns=["start"]), 4, 100, 100) == []
+
+
+def test_aging_alphas_cover_zero_and_default():
+    assert 0 in cp.AGING_ALPHAS and 100 in cp.AGING_ALPHAS and 10000 in cp.AGING_ALPHAS
+
+
+@needs_cli
+def test_aging_order_and_starvation_on_real_runs():
+    """300 random aging runs (alpha varies by seed): both checks, run inside random_runs, find nothing."""
+    out = cp.random_runs(300, 1, ("aging",), str(REAL), jobs=4)
+    assert out["violations"] == [], out["violations"][:3]
+    assert out["runs"] == 300 and out["ok"] == 300
+
+
+@needs_cli
+def test_aging_checks_directly_on_real_results(tmp_path):
+    """Same checks called straight on engine output for a different seed range."""
+    import run_experiments
+    import gen_workload
+    import pandas as pd
+    for seed in range(1000, 1060):
+        sc = cp.make_scenario(seed)
+        alpha = cp.AGING_ALPHAS[seed % len(cp.AGING_ALPHAS)]
+        jobs_csv = tmp_path / f"j{seed}.csv"
+        gen_workload.write_jobs_csv(sc["jobs"], str(jobs_csv), {"seed": seed, "label": sc["label"]})
+        res = run_experiments.run_one(str(REAL), str(jobs_csv), "aging", str(tmp_path / f"o{seed}"),
+                                      ["--cpu", str(sc["cpu"]), "--mem", str(sc["mem"]),
+                                       "--alpha-milli", str(alpha)], context={"seed": seed})
+        jobs = pd.read_csv(jobs_csv)
+        results = pd.read_csv(res["paths"]["results"])
+        assert cp.check_aging_order(jobs, results, sc["cpu"], sc["mem"], alpha) == [], (seed, alpha)
+        assert cp.check_starvation_bound(jobs, results, sc["cpu"], sc["mem"], alpha) == [], (seed, alpha)
+
+
+def test_aging_order_counts_the_resources_of_the_passing_job():
+    """j and k cannot run together, but j alone fitted when k took the machine: still a violation.
+
+    Both need 3 of 4 cpu (or 60 of 100 mem), so after k starts only free(t) = 1 is left; the
+    check must add k's own demand back (the greedy fill looked at j first, with the room k used).
+    """
+    for jr, kr in (((3, 10), (3, 10)), ((1, 60), (1, 60))):
+        jobs = mk_jobs([(1, 0, 10, 4, 100, 5), (2, 1, 5, jr[0], jr[1], 9), (3, 1, 5, kr[0], kr[1], 0)])
+        bad = mk_results(jobs, {1: 0, 2: 15, 3: 10})
+        assert cp.check_aging_order(jobs, bad, 4, 100, 100) != [], jr
+        good = mk_results(jobs, {1: 0, 2: 10, 3: 15})
+        assert cp.check_aging_order(jobs, good, 4, 100, 100) == []
