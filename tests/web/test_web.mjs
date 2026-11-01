@@ -21,9 +21,9 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 
 // ---------- static checks on the files ----------
 
-const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
+const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
   'js/editor.js', 'js/generator.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
-  'js/share.js', 'js/app.js'];
+  'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 test('index.html: script order follows PRD section 7, vendor first, app.js last', () => {
@@ -68,7 +68,7 @@ test('no hard-coded colours outside the :root variable blocks', () => {
   const css = read('css/style.css');
   const outside = css.replace(/:root\s*\{[^}]*\}/g, '');
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(outside), 'colour literal outside :root');
-  assert.ok(/prefers-color-scheme:\s*dark/.test(css), 'dark theme');
+  assert.ok(/prefers-color-scheme:\s*dark/.test(read('css/tokens.css')), 'dark theme');
 });
 
 // ---------- a tiny fake DOM, enough for app.js ----------
@@ -87,6 +87,7 @@ class El {
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   click() { for (const fn of this.listeners.click || []) fn({ currentTarget: this }); }
+  change() { for (const fn of this.listeners.change || []) fn({ currentTarget: this }); }
   get currentTarget() { return this; }
 }
 class Text { constructor(t) { this._t = t; } get textContent() { return this._t; } }
@@ -102,12 +103,15 @@ function fakeDocument() {
   const buttons = [...html.matchAll(/data-mode-button="([^"]+)"/g)].map((m) => {
     const b = new El('button'); b.setAttribute('data-mode-button', m[1]); return b;
   });
+  const nexts = [...html.matchAll(/data-next="([^"]+)"/g)].map((m) => {
+    const b = new El('button'); b.setAttribute('data-next', m[1]); return b;
+  });
   return {
-    byId, buttons,
+    byId, buttons, nexts,
     getElementById: (id) => byId[id] || null,
     createElement: (t) => new El(t),
     createTextNode: (t) => new Text(t),
-    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : []),
+    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : sel === '[data-next]' ? nexts : []),
   };
 }
 
@@ -335,7 +339,7 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   let release;
   const gate = new Promise((r) => { release = r; });
   const { doc, APRM } = loadPage({ createAprm: () => gate.then(() => fakeModule()) });
-  assert.equal(doc.byId['engine-status'].textContent, 'Loading engine…');
+  assert.equal(doc.byId['engine-status'].textContent, 'Starting the engine…');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'loading');
   assert.equal(doc.byId['engine-error'].hidden, true);
   assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, load a preset, or generate a random set.');
@@ -357,6 +361,28 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.equal(doc.byId['jobs-empty'].hidden, false);
 });
 
+test('shell: one step at a time, Next buttons move on, Show details switch works without storage', async () => {
+  const { doc, APRM } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
+  await tick(); await tick();
+  assert.equal(doc.byId['app-main'].hidden, true, 'dashboard hidden on Build');
+  assert.equal(doc.byId['app-footer'].hidden, true);
+  const next = (to) => doc.nexts.find((b) => b.getAttribute('data-next') === to);
+  next('run').click();
+  assert.equal(APRM.store.get().mode, 'run');
+  assert.equal(doc.byId['app-main'].hidden, false, 'dashboard shown on Run');
+  next('compare').click();
+  assert.equal(APRM.store.get().mode, 'compare');
+  assert.equal(doc.byId['app-main'].hidden, true);
+  next('build').click();
+  assert.equal(APRM.store.get().mode, 'build');
+  const sw = doc.byId['details-switch'];
+  assert.equal(APRM.store.get().details, false);
+  sw.checked = true; sw.change();                       // window.localStorage is undefined here: must not throw
+  assert.equal(APRM.store.get().details, true);
+  sw.checked = false; sw.change();
+  assert.equal(APRM.store.get().details, false);
+});
+
 test('app: wasm missing shows the error state with a message, not a blank page', async () => {
   const { doc } = loadPage({});                                  // no createAprm
   await tick(); await tick();
@@ -367,7 +393,7 @@ test('app: wasm missing shows the error state with a message, not a blank page',
   assert.match(box.textContent, /did not load/);
   assert.match(box.textContent, /backup video/);
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'error');
-  assert.equal(doc.byId['engine-status'].textContent, 'Engine not available');
+  assert.equal(doc.byId['engine-status'].textContent, 'The engine could not start');
 });
 
 test('app: showError puts the engine message and field next to the caller\'s element', async () => {

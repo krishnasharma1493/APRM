@@ -576,6 +576,7 @@ The website is plain JavaScript around the WebAssembly engine. It builds inputs 
 | Script | Responsibility |
 | --- | --- |
 | `wasm.js` | Initialises `aprm.js`, wraps every export in a function that parses the JSON envelope and throws a typed error on `ok: false` |
+| `copy.js` | Every word the user reads (labels, hints, empty states, error lead-ins) in one place; engine sentences are never reworded here |
 | `store.js` | One app-state object: machine, job list, selected policies and settings, current mode; notifies views on change |
 | `editor.js` | Job table: add, edit, delete, CSV import and export; shows the same range errors as §3 before calling C |
 | `presets_data.js` | The six presets as a JavaScript data object (capacities + jobs), generated from `data/presets/` by Krishna's tooling and committed |
@@ -585,6 +586,8 @@ The website is plain JavaScript around the WebAssembly engine. It builds inputs 
 | `canvas.js` | Draws resource bars, waiting line with live scores, running jobs, Gantt timeline, "now" marker |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
 | `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |
+| `motion.js` | Small critically damped spring helper; only `transform` and `opacity`; applies the end state at once under reduced motion |
+| `keys.js` | Space plays or pauses, Right arrow steps; ignored in fields, buttons and with modifier keys |
 | `share.js` | Encodes and decodes a case in the URL hash (N4) |
 | `app.js` | Loaded last: wires the scripts together, shows the loading state, starts the page |
 

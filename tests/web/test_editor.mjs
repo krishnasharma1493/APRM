@@ -87,7 +87,7 @@ const msgs = (list) => plain(list.map((e) => e.message));
 
 // ---------- static: the new scripts are wired in PRD order ----------
 test('index.html lists presets_data, presets, editor, generator before app.js', () => {
-  const want = ['js/presets_data.js', 'js/presets.js', 'js/editor.js', 'js/generator.js', 'js/app.js'];
+  const want = ['js/copy.js', 'js/presets_data.js', 'js/presets.js', 'js/editor.js', 'js/generator.js', 'js/app.js'];
   const at = want.map((w) => srcs.indexOf(w));
   assert.ok(at.every((i) => i >= 0), String(srcs));
   assert.deepEqual(at, [...at].sort((a, b) => a - b));

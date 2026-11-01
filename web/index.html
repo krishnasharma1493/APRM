@@ -5,22 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>APRM Scheduler</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1>APRM scheduler</h1>
-    <div class="modes" role="group" aria-label="Mode">
-      <button type="button" data-mode-button="build" aria-pressed="true">Build</button>
-      <button type="button" data-mode-button="run" aria-pressed="false">Run</button>
-      <button type="button" data-mode-button="compare" aria-pressed="false">Compare</button>
+  <header class="topbar material">
+    <h1 data-copy="app.title">APRM scheduler</h1>
+    <div class="segmented modes" role="group" data-copy-label="steps.label" aria-label="Steps">
+      <button type="button" data-mode-button="build" aria-pressed="true" data-copy="step.build">1 Build</button>
+      <button type="button" data-mode-button="run" aria-pressed="false" data-copy="step.run">2 Run</button>
+      <button type="button" data-mode-button="compare" aria-pressed="false" data-copy="step.compare">3 Compare</button>
     </div>
-    <p id="engine-status" class="status" role="status" aria-live="polite">Loading engine&hellip;</p>
+    <label class="switch" for="details-switch">
+      <input id="details-switch" type="checkbox" aria-describedby="details-hint">
+      <span class="track" aria-hidden="true"></span>
+      <span data-copy="details.label">Show details</span>
+    </label>
+    <p id="details-hint" class="hint" data-copy="details.hint">Shows exact numbers, scores and log kinds.</p>
+    <p id="engine-status" class="status" role="status" aria-live="polite" data-copy="engine.loading">Starting the engine&hellip;</p>
   </header>
 
   <div id="engine-error" class="error-box" role="alert" hidden></div>
 
-  <noscript><p class="error-box">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
+  <noscript><p class="error-box" data-copy="noscript">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
 
   <section id="build-panel" class="panel build-panel" aria-label="Build">
     <h2>Build</h2>
@@ -95,6 +103,7 @@
       </table>
     </div>
     <p id="add-error" class="field-error" role="alert" hidden></p>
+    <p class="next-row"><button type="button" class="btn btn-primary" data-next="run" data-copy="next.build">Next: run your jobs</button></p>
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
@@ -143,6 +152,7 @@
         <p id="ra-error" class="field-error" role="alert" hidden></p>
       </fieldset>
     </div>
+    <p class="next-row"><span class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</span> <button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
   </section>
 
   <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
@@ -169,9 +179,10 @@
     <h3>Charts</h3>
     <p id="compare-chart-note" class="empty" role="status" hidden></p>
     <div id="compare-charts" class="compare-charts"></div>
+    <p class="next-row"><button type="button" class="btn" data-next="build" data-copy="next.compare">Back to your jobs</button></p>
   </section>
 
-  <main id="app-main" data-engine="loading" data-mode="build">
+  <main id="app-main" data-engine="loading" data-mode="build" hidden>
     <aside class="panel panel-left" aria-label="Machine and jobs">
       <h2>Machine</h2>
       <p id="machine-text">CPU 16 cores, memory 32768 MB</p>
@@ -195,7 +206,7 @@
     </aside>
   </main>
 
-  <footer class="panel panel-bottom" aria-label="Metrics">
+  <footer id="app-footer" class="panel panel-bottom" aria-label="Metrics" hidden>
     <h2>Metrics</h2>
     <p id="metrics-empty" class="empty">Metrics appear when jobs have finished.</p>
     <ul id="metrics-list" class="metrics-list"></ul>
@@ -207,6 +218,7 @@
        Still to be added by a later issue, before app.js: share.js -->
   <script src="vendor/aprm.js"></script>
   <script src="js/wasm.js"></script>
+  <script src="js/copy.js"></script>
   <script src="js/store.js"></script>
   <script src="js/presets_data.js"></script>
   <script src="js/presets.js"></script>
@@ -216,6 +228,8 @@
   <script src="js/whylog.js"></script>
   <script src="js/player.js"></script>
   <script src="js/compare.js"></script>
+  <script src="js/motion.js"></script>
+  <script src="js/keys.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
