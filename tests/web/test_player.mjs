@@ -444,6 +444,20 @@ test('run page: the resource strip and the settings line show the engine numbers
   assert.equal(p.doc.byId['run-settings-summary'].textContent, 'Settings: \u03b1 = ' + s.alphaMilli + ', T = ' + s.threshold + ', \u03b5 = ' + s.eps);
 });
 
+test('a new job list or machine ends the old run, so Run never shows a stale board', () => {
+  const p = ready({ totalSteps: 10 });
+  const P = p.A.player;
+  P.start(); P.stepOnce();
+  assert.equal(P.snapshot().status, 'paused');
+  p.A.store.setJobs(JOBS.slice(0, 1).map((j) => ({ ...j })));
+  assert.equal(P.snapshot().status, 'idle', 'jobs changed');
+  assert.equal(p.doc.byId['canvas-empty'].hidden, false);
+  P.start(); P.stepOnce();
+  p.A.store.setMachine(32, 65536);
+  assert.equal(P.snapshot().status, 'idle', 'machine changed');
+  assert.equal(p.fe.live.size, 0, 'no engine handle left behind');
+});
+
 test('run page: a scheduler the engine does not have yet cannot be chosen', () => {
   const p = ready();
   const opts = p.doc.byId['run-policy'].children;
