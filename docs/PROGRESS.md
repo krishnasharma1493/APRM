@@ -24,7 +24,7 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-15 | #16 | Done, PR #70 merged | Experiment runner |
 | K-16 | #17 | Done, PR #71 merged | Invariant checker; 10,000 real runs, 0 violations |
 | K-18 | #19 | **Blocked, label needs-krishna** | Needs Ahaana's paper check of all golden cases, her format approval and laptop versions, and Krishna's freeze sign-off. Blocks K-19 and everything after it |
-| K-23 | #25 | In progress (PR pending) | Only eligible issue; depends on K-13 only |
+| K-23 | #25 | Done, PR #72 merged | Website shell; file:// checked in headless Chrome; BACKUP_VIDEO_URL in web/js/app.js is empty until the backup video exists (Krishna) |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
