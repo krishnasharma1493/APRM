@@ -6,7 +6,7 @@
 #  - runner image          ubuntu-24.04 (what GitHub's runner-images README lists for ubuntu-latest)
 #  - Python 3.13           the line recorded in docs/TOOLCHAIN.md; setup-python picks the newest 3.13.x patch (K-18 freeze).
 #  - pip packages          installed from requirements.lock.txt (K-18 freeze).
-#  - emsdk                 pinned exactly in the build-wasm job (env EMSDK_VERSION), same as docs/TOOLCHAIN.md.
+#  - emsdk                 pinned exactly in the build-wasm and deploy jobs (env EMSDK_VERSION, equal in both), same as docs/TOOLCHAIN.md.
 # No secrets are used.
 name: CI
 
@@ -171,6 +171,9 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

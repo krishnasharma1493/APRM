@@ -132,7 +132,7 @@ Run `make wasm`, then double-click `web/index.html` (or open it from your browse
 
 **Optional: GitHub Pages copy**
 
-The laptop is the primary demo. A bonus copy can be published from `main` by the `deploy` job in `.github/workflows/ci.yml`. It stays skipped until two human steps are done:
+The laptop is the primary demo. A bonus copy can be published from `main` by the `deploy` job in `.github/workflows/ci.yml`. It stays skipped until two human steps are done, in this order (step 1 before step 2):
 
 1. In the repository, Settings > Pages > Source: GitHub Actions.
 2. Set the repository variable: Settings > Secrets and variables > Actions > Variables > `PAGES_ENABLED` = `true`, or `gh variable set PAGES_ENABLED --body true`.

@@ -2,6 +2,8 @@
 import re
 from pathlib import Path
 
+# Layout assumptions: jobs sit at exactly two spaces of indent under `jobs:`, job keys are at four spaces,
+# `needs` is written as an inline list, and `if:` is a single-line expression.
 CI = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 CHECKS = ["build-c", "test-c", "sanitize", "python", "build-wasm"]
 
@@ -37,9 +39,10 @@ def test_deploy_job_gated_and_ordered() -> None:
     m = re.search(r"needs: \[(.*?)\]", d)
     assert m and sorted(x.strip() for x in m.group(1).split(",")) == sorted(CHECKS)
     cond = re.search(r"^    if: (.*)$", d, flags=re.M).group(1)
-    assert "github.event_name == 'push'" in cond
-    assert "github.ref == 'refs/heads/main'" in cond
-    assert "vars.PAGES_ENABLED == 'true'" in cond
+    assert cond == (
+        "github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'"
+    )
+    assert "concurrency:\n      group: pages\n      cancel-in-progress: false" in d
     assert "environment:\n      name: github-pages" in d
 
 
@@ -59,3 +62,10 @@ def test_deploy_uploads_only_web_and_never_persists_credentials() -> None:
     assert "persist-credentials: false" in d
     assert "make wasm" in d
     assert "secrets." not in CI.read_text()
+
+
+def test_deploy_emsdk_version_equals_build_wasm() -> None:
+    """Deploy rebuilds aprm.js with the same emsdk version as build-wasm."""
+    jobs = load_jobs()
+    pat = r'EMSDK_VERSION: "([^"]+)"'
+    assert re.findall(pat, jobs["deploy"]) == re.findall(pat, jobs["build-wasm"]) != []
