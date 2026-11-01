@@ -42,3 +42,9 @@ docs/research/*.pdf
 # add a real final figure on purpose with: git add -f <file>
 docs/report/figures/*.png
 docs/report/figures/*.pdf
+
+# Design tool working files (Impeccable question sessions, captures, build state)
+.impeccable/questions/
+.impeccable/review/
+.impeccable/build/
+.impeccable/critique/
