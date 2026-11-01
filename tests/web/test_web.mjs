@@ -21,9 +21,9 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 
 // ---------- static checks on the files ----------
 
-const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
+const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
   'js/editor.js', 'js/generator.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
-  'js/share.js', 'js/app.js'];
+  'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
 test('index.html: script order follows PRD section 7, vendor first, app.js last', () => {
@@ -40,12 +40,24 @@ test('index.html: script order follows PRD section 7, vendor first, app.js last'
 function webFiles(dir = web, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'vendor') continue;                       // build output, not our code
+    if (e.name === 'dist' || e.name === 'node_modules') continue;   // the built copy of these files and third-party code (K-49)
     const p = join(dir, e.name);
     if (e.isDirectory()) webFiles(p, out);
     else if (/\.(html|js|css)$/.test(e.name)) out.push(p);
   }
   return out;
 }
+
+test('build: web/dist/index.html is one file with no external script, stylesheet or module', () => {
+  const built = join(web, 'dist', 'index.html');
+  if (!existsSync(built)) { console.log('note: web/dist/index.html not built (run make web); built-file test skipped'); return; }
+  const b = readFileSync(built, 'utf8');
+  assert.ok(!/<script\b[^>]*\bsrc=/.test(b), 'no script src');
+  assert.ok(!/<link\b[^>]*rel="stylesheet"/.test(b), 'no linked stylesheet');
+  assert.ok(!/type="module"/.test(b), 'no module script');
+  assert.ok(!/https?:\/\/cdn\./.test(b.replace(/var CHART_URL = '[^']*'/, '')), 'no CDN reference outside the unused fallback constant');
+  assert.ok(b.includes('window.APRM') && /Chart\.js v4\.5\.1/.test(b), 'page scripts and the bundled chart library are inside');
+});
 
 test('grep-safety: no innerHTML, eval, new Function, inline handlers, modules, fetch', () => {
   const bad = [
@@ -64,11 +76,23 @@ test('grep-safety: no innerHTML, eval, new Function, inline handlers, modules, f
   }
 });
 
+test('every stylesheet has balanced braces (a stray one silently drops the next rule)', () => {
+  for (const f of ['css/tokens.css', 'css/components.css', 'css/style.css']) {
+    let depth = 0;
+    for (const ch of read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/"[^"]*"/g, '')) {
+      if (ch === '{') depth++;
+      if (ch === '}') depth--;
+      assert.ok(depth >= 0, f + ': a closing brace with nothing to close');
+    }
+    assert.equal(depth, 0, f + ': unclosed brace');
+  }
+});
+
 test('no hard-coded colours outside the :root variable blocks', () => {
   const css = read('css/style.css');
   const outside = css.replace(/:root\s*\{[^}]*\}/g, '');
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(outside), 'colour literal outside :root');
-  assert.ok(/prefers-color-scheme:\s*dark/.test(css), 'dark theme');
+  assert.ok(/prefers-color-scheme:\s*dark/.test(read('css/tokens.css')), 'dark theme');
 });
 
 // ---------- a tiny fake DOM, enough for app.js ----------
@@ -87,6 +111,7 @@ class El {
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   click() { for (const fn of this.listeners.click || []) fn({ currentTarget: this }); }
+  change() { for (const fn of this.listeners.change || []) fn({ currentTarget: this }); }
   get currentTarget() { return this; }
 }
 class Text { constructor(t) { this._t = t; } get textContent() { return this._t; } }
@@ -102,12 +127,15 @@ function fakeDocument() {
   const buttons = [...html.matchAll(/data-mode-button="([^"]+)"/g)].map((m) => {
     const b = new El('button'); b.setAttribute('data-mode-button', m[1]); return b;
   });
+  const nexts = [...html.matchAll(/data-next="([^"]+)"/g)].map((m) => {
+    const b = new El('button'); b.setAttribute('data-next', m[1]); return b;
+  });
   return {
-    byId, buttons,
+    byId, buttons, nexts,
     getElementById: (id) => byId[id] || null,
     createElement: (t) => new El(t),
     createTextNode: (t) => new Text(t),
-    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : []),
+    querySelectorAll: (sel) => (sel === '[data-mode-button]' ? buttons : sel === '[data-next]' ? nexts : []),
   };
 }
 
@@ -169,6 +197,11 @@ function loadPage({ createAprm, only } = {}) {
   return { ctx, doc, APRM: ctx.APRM, added };
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
+// The real engine compiles asynchronously and can take several ticks on a busy machine.
+async function engineReady(page) {
+  for (let i = 0; i < 500 && page.APRM.store.get().engine.status === 'loading'; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(page.APRM.store.get().engine.status, 'ready');
+}
 
 test('scripts define nothing global except window.APRM', () => {
   const { added } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
@@ -335,10 +368,10 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   let release;
   const gate = new Promise((r) => { release = r; });
   const { doc, APRM } = loadPage({ createAprm: () => gate.then(() => fakeModule()) });
-  assert.equal(doc.byId['engine-status'].textContent, 'Loading engine…');
+  assert.equal(doc.byId['engine-status'].textContent, 'Starting the engine…');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'loading');
   assert.equal(doc.byId['engine-error'].hidden, true);
-  assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, load a preset, or generate a random set.');
+  assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, or start with an example.');
   assert.equal(doc.byId['jobs-empty'].hidden, false);
   release(); await tick(); await tick();
   assert.equal(doc.byId['engine-status'].textContent, 'Engine ready');
@@ -357,6 +390,47 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.equal(doc.byId['jobs-empty'].hidden, false);
 });
 
+test('shell: one step at a time, Next buttons move on, Show details switch works without storage', async () => {
+  const { doc, APRM } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
+  await tick(); await tick();
+  assert.equal(doc.byId['app-main'].hidden, true, 'dashboard hidden on Build');
+  assert.equal(doc.byId['app-footer'].hidden, true);
+  const next = (to) => doc.nexts.find((b) => b.getAttribute('data-next') === to);
+  next('run').click();
+  assert.equal(APRM.store.get().mode, 'run');
+  assert.equal(doc.byId['app-main'].hidden, false, 'dashboard shown on Run');
+  next('compare').click();
+  assert.equal(APRM.store.get().mode, 'compare');
+  assert.equal(doc.byId['app-main'].hidden, true);
+  next('build').click();
+  assert.equal(APRM.store.get().mode, 'build');
+  const sw = doc.byId['details-switch'];
+  assert.equal(APRM.store.get().details, false);
+  sw.checked = true; sw.change();                       // window.localStorage is undefined here: must not throw
+  assert.equal(APRM.store.get().details, true);
+  sw.checked = false; sw.change();
+  assert.equal(APRM.store.get().details, false);
+});
+
+test('theme: store accepts light and dark only; the button flips data-theme and its label, storage may be blocked', async () => {
+  const { doc, APRM } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
+  await tick(); await tick();
+  let seen = 0;
+  APRM.store.subscribe((st, changed) => { if (changed === 'theme') seen++; });
+  assert.equal(APRM.store.get().theme, 'light');
+  assert.equal(APRM.store.setTheme('purple'), 'light');
+  assert.equal(seen, 0, 'an unknown theme is ignored');
+  const btn = doc.byId['theme-toggle'];
+  assert.equal(btn.textContent, 'Night mode');
+  btn.click();                                           // window.localStorage is undefined here: must not throw
+  assert.equal(APRM.store.get().theme, 'dark');
+  assert.equal(btn.textContent, 'Day mode');
+  assert.equal(seen, 1);
+  btn.click();
+  assert.equal(APRM.store.get().theme, 'light');
+  assert.equal(btn.textContent, 'Night mode');
+});
+
 test('app: wasm missing shows the error state with a message, not a blank page', async () => {
   const { doc } = loadPage({});                                  // no createAprm
   await tick(); await tick();
@@ -367,7 +441,7 @@ test('app: wasm missing shows the error state with a message, not a blank page',
   assert.match(box.textContent, /did not load/);
   assert.match(box.textContent, /backup video/);
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'error');
-  assert.equal(doc.byId['engine-status'].textContent, 'Engine not available');
+  assert.equal(doc.byId['engine-status'].textContent, 'The engine could not start');
 });
 
 test('app: showError puts the engine message and field next to the caller\'s element', async () => {
@@ -417,6 +491,68 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     throwsEngine(() => w.step(2 ** 32 + h), -1, 'handle');
     assert.equal(w.destroy(h), 0);
     throwsEngine(() => w.step(h), -1);
+  });
+
+  test('real engine: Run page numbers equal the engine JSON for the six presets', async () => {
+    const createAprm = require(vendor);
+    for (const name of ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case']) {
+      const page = loadPage({ createAprm });
+      await engineReady(page);
+      const A = page.APRM;
+      A.presets.load(name);
+      A.store.setMode('run');
+      assert.equal(A.player.start(), true, name);
+      for (let n = 0; n < 40; n++) {
+        const snap = A.player.snapshot();
+        const st = snap.state;
+        assert.equal(page.doc.byId['res-cpu-text'].textContent,
+          (st.cap.cpu - st.free.cpu) + ' of ' + st.cap.cpu + ' cores busy, ' + st.free.cpu + ' free', name + ' cpu at step ' + n);
+        assert.equal(page.doc.byId['res-mem-text'].textContent,
+          (st.cap.mem - st.free.mem) + ' of ' + st.cap.mem + ' MB in use, ' + st.free.mem + ' MB free', name + ' mem at step ' + n);
+        if (!A.player.stepOnce()) break;
+      }
+      A.player.jumpToEnd();
+      while (A.player.snapshot().status === 'jumping') await new Promise((r) => setTimeout(r, 5));
+      const snap = A.player.snapshot();
+      assert.equal(snap.state.done, snap.state.total, name + ' finished');
+      A.store.setDetails(true);
+      const rows = page.doc.byId['metrics-list'].children.map((c) => c.textContent);
+      assert.ok(rows.includes('Average wait: ' + String(snap.metrics.avg_wait)), name + ': exact average wait');
+      assert.ok(rows.includes('Time until everything finished (makespan): ' + String(snap.metrics.makespan)), name + ': exact makespan');
+    }
+  });
+
+  test('real engine: Compare table, verdict and exact line equal the engine for tiny_case', async () => {
+    const createAprm = require(vendor);
+    const page = loadPage({ createAprm });
+    await engineReady(page);
+    const A = page.APRM;
+    A.presets.load('tiny_case');
+    A.store.setMode('compare');
+    A.compare.setSelected(['fcfs', 'sjf', 'aging']);
+    const queue = [];
+    A.compare.setScheduler({ later: (fn) => queue.push(fn), timeout: () => 0, cancelLater: () => {}, cancelTimeout: () => {} });
+    assert.equal(A.compare.start(), true);
+    while (queue.length) queue.shift()();
+    const snap = A.compare.snapshot();
+    assert.equal(snap.status, 'done');
+    const rows = page.doc.byId['compare-body'].children;
+    assert.equal(rows.length, 3);
+    snap.columns.forEach((col, i) => {
+      const cells = rows[i].children.map((c) => c.textContent);
+      const m = col.metrics;
+      assert.equal(cells[5], String(m.makespan), col.policy + ' makespan');
+      assert.equal(cells[1], Number.isInteger(m.avg_wait) ? String(m.avg_wait) : m.avg_wait.toFixed(3), col.policy + ' avg wait');
+    });
+    // the exact line: total wait from a fresh engine handle on the same jobs
+    const st = A.store.get();
+    const w = A.wasm;
+    const h = w.create(st.machine.cpu, st.machine.mem, 'fcfs', st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
+    for (const j of st.jobs) w.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
+    const ex = w.exact(h); w.destroy(h);
+    assert.ok(page.doc.byId['compare-exact'].textContent.startsWith('Exact best order (up to 9 jobs): total wait ' + ex.total_wait + '.'));
+    const best = Math.min(...snap.columns.map((c) => c.metrics.makespan));
+    assert.ok(page.doc.byId['compare-verdict'].hidden || page.doc.byId['compare-verdict'].textContent.includes('tick ' + best), 'verdict names the best makespan');
   });
 } else {
   console.log('note: web/vendor/aprm.js not built (run `make wasm`); real-engine test skipped');

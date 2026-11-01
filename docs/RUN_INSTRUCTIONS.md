@@ -24,7 +24,7 @@ Everything else in CLAUDE.md still applies: hard rules, coding standards, the ve
 - If a task would clearly benefit from a skill or plugin that is not installed, you may install it only from the tool vendor's official sources or a well-known official marketplace. Never install unverified third-party plugins or anything that asks for credentials. Log every installation in docs/PROGRESS.md.
 - You may create project subagents in the assistant's project agents folder (commit them), for example:
   - c-implementer: C11 core work following PRD §5, §6 and BLUEPRINT §3;
-  - web-implementer: classic scripts on window.APRM, PRD §7–§8;
+  - web-implementer: the website per PRD §7–§8 and DESIGN.md (D76: bundled build, offline from file://);
   - python-implementer: tools/ and tests/py/;
   - reviewer: an independent, read-only review of a PR against its issue, CLAUDE.md, PRD §5 contracts and DECISIONS.md;
   - test-writer: tests and golden cases.

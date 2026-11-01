@@ -112,6 +112,23 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           emcc --version | head -1
           make wasm
+      - name: Build the website into one offline file (make web, K-49)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node --version
+          make web
+      - name: Offline rehearsal of the built website in headless Chrome (K-49)
+        env:
+          CHROME: google-chrome
+          CHROME_EXTRA_ARGS: --no-sandbox
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          google-chrome --version
+          node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline
+      - name: Website tests with the built file present (K-49)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          node tests/web/test_web.mjs
       - name: API tests and golden cases through Node
         run: |
           . "$HOME/emsdk/emsdk_env.sh"
@@ -195,11 +212,15 @@ jobs:
           . "$HOME/emsdk/emsdk_env.sh"
           make wasm
           test -s web/vendor/aprm.js
-          rm -f web/vendor/.gitkeep
+      - name: Build the one-file website (never committed)
+        run: |
+          . "$HOME/emsdk/emsdk_env.sh"
+          make web
+          test -s web/dist/index.html
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: web/
+          path: web/dist/
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

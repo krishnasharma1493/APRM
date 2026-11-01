@@ -231,6 +231,7 @@
     var d = decode(h);
     if (d.ok && d.empty) { setText('share-error', ''); return d; }
     if (!d.ok) { showError(d.message); return d; }
+    d['case'].policies = usablePolicies(d['case'].policies);
     try {
       apply(d['case']);
     } catch (e) {
@@ -240,6 +241,17 @@
     var n = d['case'].jobs.length;
     showStatus('Loaded the shared case: ' + n + ' job' + (n === 1 ? '' : 's') + ', policy ' + d['case'].policies.join(', ') + '.');
     return d;
+  }
+
+  /* The schedulers of a link that this build's engine really has (compare.js keeps the list). A link
+   * may name one that is not built, for example from a newer copy; it falls back to first come, first served. */
+  function usablePolicies(list) {
+    var known = APRM.compare && APRM.compare.POLICIES ? APRM.compare.POLICIES : [];
+    var out = list.filter(function (name) {
+      for (var i = 0; i < known.length; i++) { if (known[i].name === name) { return known[i].available; } }
+      return true;
+    });
+    return out.length > 0 ? out : ['fcfs'];
   }
 
   /* The page address without any hash, as text. */

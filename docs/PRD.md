@@ -14,6 +14,7 @@ This PRD follows the structure of the Hackathon Project Blueprint & PRD v3.0 tem
 6. **Ownership fixed (revised 2026-10-31).** Krishna Sharma owns everything except the report graphs: the C core and every algorithm, the WebAssembly build, the website, CI, golden test cases, preset CSVs, and all non-graph Python (workload generator, experiment runner, metrics and statistics, summary CSVs, property checks, conformance checks, timing benchmarks). Ahaana Arya owns the Python plotting script that turns summary CSV files into the report figures for E1–E6, plus figure styling and captions. She also hand-checks every golden case and reviews changes to CSV formats, summary formats and figures.
 7. **Kept from the template:** the version safety rule, MVP scope tiers, repository rules, one standard error shape, the testing-first attitude, the demo script with fallbacks, risks with early warnings, master prompts for AI assistants, future scope and document maintenance rules.
 8. **Step 1 review (2026-10-31).** Decisions taken after reading the papers and the Consensus report are recorded in `DECISIONS.md` and reflected here: integer aging rate (`alpha_milli`), `max_jobs` in `SimConfig`, classic scripts instead of ES modules, a fixed exact-solver limit of 9, the summary CSV contract (§5), and E6 measured on total turnaround.
+9. **Website rules relaxed (2026-11-02, D76).** Frameworks, libraries, ES modules, a build tool and self-hosted web fonts are allowed for the website when they improve the result; Impeccable (`PRODUCT.md`, `DESIGN.md`) is the design authority. Unchanged: scheduling stays in C, the built site works offline from `file://`, no raw HTML injection, versions verified, no build output committed. §5 is not changed.
 
 ## Version safety rule (read first)
 
@@ -42,7 +43,7 @@ Never copy version numbers from this document or from memory into `requirements.
 | Node.js (only to run WebAssembly tests in CI) | Current Active LTS from nodejs.org. Exception: the emsdk-bundled Node is kept for laptop/CI parity (DECISIONS D65) |
 | Python | python.org, a release still in bugfix or security support |
 | `numpy`, `pandas`, `matplotlib`, `pytest` | PyPI latest stable + advisories |
-| Chart.js (website CDN) | npm or jsDelivr page; exact pinned version + SRI hash |
+| Chart.js (bundled by `make web`; CDN only for the unbuilt page) | npm registry `time` field; exact version in `web/package.json` and the lockfile; same version as the CDN pin + SRI hash |
 
 ## 0. Project brief and assumptions
 
@@ -86,7 +87,7 @@ User accounts, servers, databases, cloud deployment beyond a static page, real o
 | A6 | Jobs cannot be paused or moved once started | Matches the synopsis and the research model |
 | A7 | Every simulation is deterministic: same input and settings, same result, on every machine | Makes testing, conformance and demos repeatable |
 | A8 | All workloads are synthetic, generated with recorded seeds | Any graph can be regenerated exactly |
-| A9 | The primary demo runs from the laptop: `web/index.html` opens with a double-click (`file://`), using classic scripts and a bundled presets data file, so no local server is needed. The GitHub Pages link is a bonus copy | Venue networks fail; a local file does not. Browsers block ES modules and `fetch` from `file://`, so neither is used |
+| A9 | The primary demo runs from the laptop: the built `index.html` opens with a double-click (`file://`), with everything bundled (scripts, styles, fonts, presets data, engine), so no local server or network is needed. The GitHub Pages link is a bonus copy | Venue networks fail; a local file does not. Browsers block ES module loading and `fetch` from `file://`, so the build inlines every module and nothing is fetched at runtime |
 
 ### Success metrics
 
@@ -103,7 +104,7 @@ User accounts, servers, databases, cloud deployment beyond a static page, real o
 
 ## 1. Tech stack
 
-C for every algorithm, compiled twice; plain HTML, CSS and JavaScript for the website; Python for experiments. Versions are verified per the rule above, never copied from here.
+C for every algorithm, compiled twice; a bundled HTML, CSS and JavaScript website (D76); Python for experiments. Versions are verified per the rule above, never copied from here.
 
 | Layer | Choice | Owner | Notes |
 | --- | --- | --- | --- |
@@ -111,9 +112,9 @@ C for every algorithm, compiled twice; plain HTML, CSS and JavaScript for the we
 | Laptop build | GCC (Clang on Mac) + GNU Make | Krishna | `-std=c11 -Wall -Wextra -Werror`; debug and sanitizer targets |
 | Browser build | Emscripten → WebAssembly, single-file output | Krishna | Same `core/` sources; exported step API only |
 | Console program | C, `cli/main.c` | Krishna | The synopsis deliverable; reads and writes CSV |
-| Website | HTML + CSS + plain JavaScript (classic `<script>` files loaded in order, each attaching to one global namespace `window.APRM`) | Krishna | No framework, no ES modules, no build step for the page itself; works from `file://` |
+| Website | HTML + CSS + JavaScript, built and bundled by a frontend build tool (`make web`; tool and libraries chosen and justified in DECISIONS.md, D76 onward) | Krishna | Frameworks, ES modules and self-hosted web fonts allowed; the built `index.html` works from `file://` with no network; design authority Impeccable (`PRODUCT.md`, `DESIGN.md`) |
 | Live visuals | HTML Canvas 2D | Krishna | Resource bars, waiting line, running jobs, Gantt timeline |
-| Comparison charts | Chart.js from a CDN, pinned with SRI | Krishna | Compare mode only; the page still works if it fails to load (table fallback) |
+| Comparison charts | A charting library bundled into the build (no CDN at runtime once K-49 lands; until then Chart.js from a CDN, pinned with SRI) | Krishna | Compare mode only; a table fallback always shows the same numbers |
 | Workload generation | Python 3 + `numpy` | Krishna | Seeded random workloads and presets written as CSV |
 | Experiment runner | Python 3 `subprocess` | Krishna | Calls the console program; never schedules in Python |
 | Metrics, statistics and summaries | `pandas` + `numpy` | Krishna | Means, 95% confidence intervals, summary CSVs in the §5 formats (`tools/summarize.py`) |
@@ -125,7 +126,7 @@ C for every algorithm, compiled twice; plain HTML, CSS and JavaScript for the we
 | CI and hosting | GitHub Actions + GitHub Pages | Krishna | Build, test, conformance, then publish the website |
 | Editor | VS Code (WSL extension on Windows) | Both | Shared settings in `.vscode/` |
 
-**Ports and servers.** None. The website opens as a local file: double-click `web/index.html`. A local server (`python -m http.server` from `web/`) is optional and never required.
+**Ports and servers.** None at demo time. The built website opens as a local file (double-click the built `index.html`). A development server from the build tool is allowed while working and never required for the demo.
 
 ## 1A. MVP scope
 
@@ -191,12 +192,15 @@ aprm/
 │   ├── build.sh                 K  Emscripten command (flags in §3)
 │   └── run_wasm.mjs             K  Headless runner for CI conformance
 ├── web/                         K
-│   ├── index.html                  Loads the classic scripts below in order
-│   ├── css/style.css
+│   ├── index.html                  Page source; `make web` bundles it for file:// (D76)
+│   ├── package.json, package-lock.json  K  Website dependencies (chart library), exact versions (D78)
+│   ├── build.mjs                K  Inlines every script, stylesheet and the chart library into dist/index.html (D77)
+│   ├── dist/index.html          K  The built single file for the demo (never committed)
+│   ├── css/  tokens.css components.css style.css
 │   ├── vendor/aprm.js           K  Generated WebAssembly bundle (CI builds it)
 │   └── js/  wasm.js store.js editor.js presets_data.js presets.js
 │            generator.js player.js canvas.js whylog.js compare.js
-│            share.js app.js     K  Classic scripts on window.APRM
+│            share.js app.js     K  Page scripts (bundled by make web)
 ├── tools/                       K  Python (except plot_figures.py)
 │   ├── config.py                K  Paths, default seeds, experiment grid
 │   ├── gen_workload.py          K  Seeded workloads and preset CSVs
@@ -266,6 +270,7 @@ There are no secrets and no environment variables to protect. Configuration live
 | `make sanitize` | Debug build with AddressSanitizer and UndefinedBehaviorSanitizer |
 | `make test` | Builds and runs all C tests and golden cases |
 | `make wasm` | Runs `wasm/build.sh` to produce `web/vendor/aprm.js` |
+| `make web` | Installs the website dependencies from `web/package-lock.json` and writes `web/dist/index.html`, one file that opens from `file://` with no network (needs `make wasm` first) |
 | `make clean` | Removes build output |
 
 **Emscripten flags (in `wasm/build.sh`).** Modular output with a named factory, single-file output (WebAssembly embedded in the JavaScript), memory growth allowed, and only the step API functions exported. Exact flag spellings are checked against the current Emscripten documentation when the script is written.
@@ -567,24 +572,27 @@ Threads, signal handling, file locking and fuzzing infrastructure. The core is s
 
 ## 7. Frontend architecture
 
-The website is plain JavaScript around the WebAssembly engine. It builds inputs and draws outputs; it never decides which job runs. Owner: Krishna. Feature spec: `BLUEPRINT.md` §5.
+The website is bundled JavaScript around the WebAssembly engine (D76). It builds inputs and draws outputs; it never decides which job runs. Owner: Krishna. Feature spec: `BLUEPRINT.md` §5.
 
-**Loading model.** `index.html` loads classic `<script>` files (no `type="module"`) in a fixed order: `vendor/aprm.js`, then `js/wasm.js`, `store.js`, `presets_data.js`, `presets.js`, `editor.js`, `generator.js`, `canvas.js`, `whylog.js`, `player.js`, `compare.js`, `share.js`, and last `app.js`. Each file attaches its functions to one global namespace, `window.APRM` (for example `APRM.store`, `APRM.player`), and defines nothing else globally. No file uses `fetch`, so the page works from `file://` with a double-click.
+**Loading model (D76).** The site is built by `make web` into a bundle that opens from `file://` with no network: scripts, styles, self-hosted fonts, the presets data and the WebAssembly engine are all included, and nothing is fetched at runtime. ES modules and a framework may be used in the source. The scripts listed below are the current modules; K-49 may restructure them, and this table is updated with it.
 
 ### Scripts (`web/js/`)
 
 | Script | Responsibility |
 | --- | --- |
 | `wasm.js` | Initialises `aprm.js`, wraps every export in a function that parses the JSON envelope and throws a typed error on `ok: false` |
+| `copy.js` | Every word the user reads (labels, hints, empty states, error lead-ins) in one place; engine sentences are never reworded here |
 | `store.js` | One app-state object: machine, job list, selected policies and settings, current mode; notifies views on change |
 | `editor.js` | Job table: add, edit, delete, CSV import and export; shows the same range errors as §3 before calling C |
 | `presets_data.js` | The six presets as a JavaScript data object (capacities + jobs), generated from `data/presets/` by Krishna's tooling and committed |
 | `presets.js` | Reads presets from `presets_data.js` (no `fetch`) and loads one into the store |
 | `generator.js` | Random job sets from slider settings with a visible seed; produces input only |
-| `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step` and pulls state and new log entries after each step |
-| `canvas.js` | Draws resource bars, waiting line with live scores, running jobs, Gantt timeline, "now" marker |
+| `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step`, pulls state and new log entries after each step; draws the waiting tray and moves a magnet to the board when a job starts |
+| `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
 | `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |
+| `motion.js` | Small critically damped spring helper; only `transform` and `opacity`; applies the end state at once under reduced motion |
+| `keys.js` | Space plays or pauses, Right arrow steps; ignored in fields, buttons and with modifier keys |
 | `share.js` | Encodes and decodes a case in the URL hash (N4) |
 | `app.js` | Loaded last: wires the scripts together, shows the loading state, starts the page |
 
@@ -605,18 +613,19 @@ The website is plain JavaScript around the WebAssembly engine. It builds inputs 
 
 ### Layout
 
-Left panel: machine settings and job editor. Centre: canvas. Right panel: "why" log. Bottom: metrics. A mode switch at the top chooses Build, Run or Compare. Light and dark themes follow the system setting.
+Three numbered steps (Build, Run, Compare) chosen at the top; the design is recorded in `DESIGN.md` (Impeccable is the design authority, D76). Light and dark themes follow the system setting, with a day and night button (K-48).
 
 ## 8. Frontend safety checklist
 
 The website has no accounts or stored data, so the risks are bad input from files and links, and the page breaking during the demo.
 
-- [x] All text from users, files, URLs or the engine is shown with `textContent`, never `innerHTML`.
+- [x] All text from users, files, URLs or the engine is shown as text, never as raw HTML (`textContent`; no `innerHTML`, `dangerouslySetInnerHTML` or `v-html`).
 - [x] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
-- [ ] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
-- [x] The only external request is Chart.js from a CDN, pinned to an exact version with an integrity hash. If it fails, Compare mode falls back to a table.
+- [x] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
+- [x] No runtime network request from the built page: the chart library is bundled into `web/dist/index.html` (K-49, D78). The unbuilt `web/index.html` still loads it lazily from the CDN, pinned with an integrity hash, with a table fallback.
 - [x] No `eval`, no `new Function`, no inline event-handler attributes.
-- [x] Classic scripts only; each defines nothing globally except properties of `window.APRM`. No `fetch`, so the page works from `file://`.
+- [x] `web/index.html` works from `file://` today: no `fetch`, nothing loaded from a server.
+- [x] The built page (`make web`) works from `file://` with the network off (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`, also run in CI); dependencies verified per the version safety rule, lockfile committed.
 - [x] A failed WebAssembly load shows a clear error state, never a blank page.
 - [x] Long runs cannot freeze the tab: steps per frame are capped, and "jump to end" runs in slices.
 - [x] Nothing is stored in the browser beyond optional user preferences (theme, speed), wrapped in `try/catch`.
@@ -649,8 +658,9 @@ On every push and pull request:
 2. **test-c:** `make test` (unit tests + golden cases).
 3. **sanitize:** `make sanitize` and the full test suite under sanitizers.
 4. **build-wasm:** install the frozen emsdk version, `make wasm`.
+4a. **build-web (K-49, inside the build-wasm job):** `make web` from the lockfile, then the offline rehearsal (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`) in headless Chrome against the built file.
 5. **python:** install from the lock file (from `requirements.txt` names before the Gate 2 freeze), run `pytest tests/py` (property checks, summary-format checks, the figure smoke test on `data/sample_summaries/`, and conformance against the fresh WebAssembly build through `wasm/run_wasm.mjs`).
-6. **deploy (main only):** publish `web/` to GitHub Pages.
+6. **deploy (main only):** build with `make wasm` and `make web`, then publish `web/dist/` to GitHub Pages.
 
 ## 10. Testing guide
 
@@ -788,7 +798,7 @@ Context: docs/PRD.md sections 5 (API contract), 7 (frontend architecture), 8 (sa
 Task: implement <MODULE> (e.g. web/js/player.js, or wasm/api.c + wasm/build.sh).
 
 Rules:
-- Plain HTML, CSS and classic JavaScript files attached to window.APRM. No ES modules, no fetch, no framework, no bundler. Must work from file://.
+- Bundled HTML, CSS and JavaScript (frameworks, ES modules, build tool and self-hosted fonts allowed, D76). The built site must work from file:// with no network.
 - JavaScript never makes scheduling decisions; it only calls the aprm_* exports and draws results.
 - Parse every engine response as the PRD section 5 JSON envelope; show error.message next to the right field.
 - textContent only, never innerHTML for any user, file, URL or engine text.

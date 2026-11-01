@@ -268,6 +268,7 @@
   /* One editable cell. */
   function makeCell(index, field, value, problem) {
     var td = document.createElement('td');
+    if (APRM.copy) { td.setAttribute('data-label', APRM.copy.get('short.col.' + field)); }
     var key = index + ':' + field;
     var input = document.createElement('input');
     input.setAttribute('type', 'text');
@@ -295,6 +296,17 @@
       APRM.store.setJobs(jobs);
     });
     td.appendChild(input);
+    if (field === 'id') {
+      /* The job's magnet: same colour and hatch as on the Run board, with its number stamped on it. */
+      td.setAttribute('class', (td.getAttribute('class') || '') + ' id-cell');
+      var magnet = document.createElement('span');
+      magnet.setAttribute('class', 'magnet magnet-' + (((value % 10) + 10) % 10) + ' hatch-' + (((value % 3) + 3) % 3));
+      magnet.setAttribute('aria-hidden', 'true');
+      var stamp = document.createElement('b');
+      stamp.textContent = String(value);
+      magnet.appendChild(stamp);
+      td.appendChild(magnet);
+    }
     return td;
   }
 
@@ -330,8 +342,10 @@
       msgCell.textContent = texts.join(' ');
       tr.appendChild(msgCell);
       var delCell = document.createElement('td');
+      delCell.setAttribute('class', 'row-actions');
       var del = document.createElement('button');
       del.setAttribute('type', 'button');
+      del.setAttribute('class', 'btn btn-quiet');
       del.textContent = 'Delete';
       del.setAttribute('aria-label', 'Delete row ' + (i + 1));
       del.addEventListener('click', makeDeleter(i));
@@ -339,10 +353,13 @@
       tr.appendChild(delCell);
       body.appendChild(tr);
     }
+    var machineLine = byId('machine-summary');
+    if (machineLine && APRM.copy) { machineLine.textContent = APRM.copy.fill('build.machine.summary', { cpu: st.machine.cpu, mem: st.machine.mem }); }
     var summary = byId('table-summary');
     if (summary) {
-      summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + ' (limit ' + MAX_JOBS_WEB + ')' +
+      summary.textContent = st.jobs.length + ' job' + (st.jobs.length === 1 ? '' : 's') + (APRM.store.get().details && APRM.copy ? APRM.copy.fill('build.count.limit', { n: MAX_JOBS_WEB }) : '') +
         (problems.length > 0 ? '; ' + problems.length + ' problem' + (problems.length === 1 ? '' : 's') + ' marked in red' : '');
+      summary.hidden = st.jobs.length === 0;
     }
   }
 
@@ -380,6 +397,8 @@
       if (inp) { setClass(inp, 'cell-error', !!bad[FIELDS[n]]); }
     }
     setMsg(byId('add-error'), msgs.join(' '));
+    var lead = byId('add-error-lead');
+    if (lead) { lead.hidden = msgs.length === 0; }
     if (msgs.length > 0) { return false; }
     var jobs = st.jobs;
     jobs.push(job);
@@ -465,6 +484,7 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       say('Exported ' + st.jobs.length + ' jobs to jobs.csv.', true);
+      if (APRM.app && typeof APRM.app.toast === 'function' && APRM.copy) { APRM.app.toast(APRM.copy.get('toast.exported')); }
     } catch (e) {
       say('The download could not start: ' + (e && e.message ? e.message : String(e)), false);
     }
@@ -508,7 +528,7 @@
     var idEl = byId('add-id');
     if (idEl && idEl.value === '') { idEl.value = '1'; }
     APRM.store.subscribe(function (st, changed) {
-      if (changed === 'jobs' || changed === 'machine' || changed === 'mode') {
+      if (changed === 'jobs' || changed === 'machine' || changed === 'mode' || changed === 'details') {
         if (changed === 'jobs' && st.jobs.length === 0) { drafts = {}; }
         renderTable(st);
       }

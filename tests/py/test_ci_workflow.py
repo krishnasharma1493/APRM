@@ -56,11 +56,12 @@ def test_deploy_permissions_narrow() -> None:
 
 
 def test_deploy_uploads_only_web_and_never_persists_credentials() -> None:
-    """The Pages artifact is web/ only; checkout drops credentials; no secrets are used."""
+    """The Pages artifact is the built web/dist/ only; checkout drops credentials; no secrets are used."""
     d = load_jobs()["deploy"]
-    assert re.findall(r"upload-pages-artifact@v\d+\n\s+with:\n\s+path: (\S+)", d) == ["web/"]
+    assert re.findall(r"upload-pages-artifact@v\d+\n\s+with:\n\s+path: (\S+)", d) == ["web/dist/"]
     assert "persist-credentials: false" in d
     assert "make wasm" in d
+    assert "make web" in d
     assert "secrets." not in CI.read_text()
 
 

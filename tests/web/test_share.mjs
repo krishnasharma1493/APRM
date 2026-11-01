@@ -311,10 +311,19 @@ test('an invalid link leaves the old case alone and shows the reason; a good one
   assert.equal(q.el('share-error').hidden, true);
 });
 
+test('a link naming a scheduler this build lacks falls back, so Run cannot hit an engine error', () => {
+  const p = page({});
+  p.A.compare = { POLICIES: [{ name: 'fcfs', available: true }, { name: 'knapsack', available: false }] };
+  const link = p.A.share.encode({ machine: { cpu: 4, mem: 1024 }, settings: { alphaMilli: 100, threshold: 50, eps: 0.1 }, policies: ['knapsack'], jobs: [{ id: 1, arrival: 0, duration: 1, cpu: 1, mem: 1, priority: 1 }] });
+  const r = p.A.share.loadFromHash(link.hash);
+  assert.equal(r.ok, true);
+  assert.deepEqual(plain(p.A.store.get().policies), ['fcfs']);
+});
+
 test('startup with a bad hash: page still mounts, store usable, error shown', () => {
   const q = page({ hash: '#aprm1=!!!!' });
   assert.equal(q.el('share-error').hidden, false);
-  assert.ok(q.el('preset-select').children.length > 0);
+  assert.ok(q.el('preset-tiles').children.length > 0);
   q.A.presets.load('tiny_case');
   assert.ok(q.A.store.get().jobs.length > 0);
 });

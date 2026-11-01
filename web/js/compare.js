@@ -30,6 +30,7 @@
   var SLICE_STEPS = 500;
   var DASH = '—'; /* shown for a null metric (D62: no finished job, or makespan 0) */
   var MIN_POLICIES = 2;
+  var BOARD_HEIGHT = 260;    /* css pixels, each finished board */
 
   /* The ONE place the pinned Chart.js file is named (version, URL, SRI hash).
    * Verified for K-27 and recorded in docs/TOOLCHAIN.md. */
@@ -132,9 +133,21 @@
     return err && err.field ? err.field + ': ' + m : m;
   }
 
+  /* Words from copy.js, with a fallback when copy.js is not loaded. */
+  function words(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
+  /* Short plain name with the technical term beside it, for table rows, timelines and charts. */
   function labelOf(name) {
-    for (var i = 0; i < POLICIES.length; i++) { if (POLICIES[i].name === name) { return POLICIES[i].label; } }
-    return name;
+    return words('short.' + name, name);
+  }
+
+  /* The longer plain name used in the picker. */
+  function pickerLabel(p) {
+    return words('policy.' + p.name, p.label) + (p.available ? '' : words('policy.knapsack.soon', ' (not implemented yet)'));
   }
 
   /* ---------- handles ---------- */
@@ -215,13 +228,13 @@
     var st = APRM.store.get();
     if (st.jobs.length === 0) {
       status = 'idle';
-      errorText = 'There are no jobs. Add some in Build mode first.';
+      errorText = words('compare.error.nojobs', 'There are no jobs. Add some in Build mode first.');
       render();
       return false;
     }
     if (selected.length < MIN_POLICIES) {
       status = 'idle';
-      errorText = 'Tick at least two schedulers to compare.';
+      errorText = words('compare.error.pick', 'Tick at least two schedulers to compare.');
       render();
       return false;
     }
@@ -242,7 +255,7 @@
     } catch (err) {
       return fail(err);
     }
-    model = { jobs: st.jobs.map(copyJob), tmax: 0, columns: [] };
+    model = { jobs: st.jobs.map(copyJob), cap: { cpu: st.machine.cpu, mem: st.machine.mem }, tmax: 0, columns: [] };
     status = 'running';
     render();
     scheduleSlice(token);
@@ -279,6 +292,47 @@
     if (allDone) { finish(); } else { renderStatus(); scheduleSlice(t); }
   }
 
+  var EXACT_MAX_JOBS = 9;
+
+  /* The exact solver's answer for the same jobs: {totalWait} on success, {tooBig: true} above 9
+   * jobs, {error: text} if the engine refused. The exact solver minimises total wait (PRD section 5).
+   * Called before the handles are destroyed. Never throws. */
+  function readExact(handle, nJobs) {
+    if (nJobs > EXACT_MAX_JOBS) { return { tooBig: true }; }
+    try {
+      var r = APRM.wasm.exact(handle);
+      if (r && typeof r.total_wait === 'number') { return { totalWait: r.total_wait }; }
+      return { error: 'no answer' };
+    } catch (e) {
+      return { error: errorMessage(e) };
+    }
+  }
+
+  /* Total wait of one column: the sum of (start - arrival) over the engine's result rows. O(rows). */
+  function totalWait(col) {
+    var arrival = {};
+    for (var i = 0; i < model.jobs.length; i++) { arrival[model.jobs[i].id] = model.jobs[i].arrival; }
+    var sum = 0;
+    for (var k = 0; k < col.rows.length; k++) { sum += col.rows[k].start - arrival[col.rows[k].id]; }
+    return sum;
+  }
+
+  /* The exact line: the best possible total wait and how far each scheduler is above it. */
+  function exactText() {
+    var ex = model ? model.exact : null;
+    if (!ex) { return ''; }
+    if (ex.tooBig) { return words('compare.exact.big', 'The exact best order is only worked out for 9 jobs or fewer.'); }
+    if (ex.error) { return words('compare.exact.failed', 'The exact best order could not be worked out: ' + ex.error, { why: ex.error }); }
+    var out = words('compare.exact.line', 'Exact best order: total wait ' + ex.totalWait + '.', { t: ex.totalWait });
+    for (var c = 0; c < model.columns.length; c++) {
+      var nm = labelOf(model.columns[c].policy);
+      if (model.columns[c].rows.length !== model.jobs.length) { out += ' ' + words('compare.exact.partial', nm + ' did not finish every job, so its gap is not shown.', { name: nm }); continue; }
+      var d = totalWait(model.columns[c]) - ex.totalWait;
+      out += ' ' + (d === 0 ? words('compare.exact.same', nm + ' matches it.', { name: nm }) : words('compare.exact.gap', nm + ' is ' + d + ' above it.', { name: nm, d: d }));
+    }
+    return out;
+  }
+
   /* Read every answer, then destroy every handle (always). */
   function finish() {
     var columns = [];
@@ -294,6 +348,8 @@
       fail(err);
       return;
     }
+    /* The solver depends only on the jobs, so any handle (here the first, already run to the end) gives the same answer. */
+    model.exact = readExact(columns.length > 0 ? runs[0].handle : 0, model.jobs.length);
     destroyAll();
     model.columns = columns;
     model.tmax = tmax;
@@ -315,6 +371,45 @@
     return c;
   }
 
+  /* Lower is better for waits, turnaround, weighted completion and makespan; higher for utilization. */
+  var HIGHER_IS_BETTER = { util_cpu: true, util_mem: true };
+
+  /* True when value v is the best of that metric among the columns, and the columns differ.
+   * The word "Best" is shown by CSS from data-best, so the cell text stays the engine's number. O(columns). */
+  function isBest(key, v) {
+    if (typeof v !== 'number' || model === null) { return false; }
+    var vals = [];
+    for (var i = 0; i < model.columns.length; i++) {
+      var x = model.columns[i].metrics[key];
+      if (typeof x === 'number') { vals.push(x); }
+    }
+    if (vals.length < 2) { return false; }
+    var best = HIGHER_IS_BETTER[key] ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
+    var worst = HIGHER_IS_BETTER[key] ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+    return best !== worst && v === best;
+  }
+
+  /* One or two sentences from the makespans the engine reported: who finished first and how much
+   * longer the slowest took. Names only; no scheduling happens here. Returns '' when no run finished anything. */
+  function verdictText() {
+    var cols = model ? model.columns : [];
+    var ok = cols.filter(function (c) { return typeof c.metrics.makespan === 'number'; });
+    if (ok.length < 2 || ok.length < cols.length) { return ''; }   /* a column with no value: say nothing rather than guess */
+    var best = Math.min.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
+    var worst = Math.max.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
+    var winners = ok.filter(function (c) { return c.metrics.makespan === best; });
+    var names = winners.map(function (c) { return labelOf(c.policy); });
+    var joined = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
+    var line;
+    if (winners.length === ok.length) { return words('compare.verdict.tie', names.join(', ') + ' tied at tick ' + best + '.', { names: joined, t: best }); }
+    if (winners.length === 1) { line = words('compare.verdict.best', names[0] + ' finished first, at tick ' + best + '.', { name: names[0], t: best }); }
+    else { line = words('compare.verdict.tie', joined + ' tied for first at tick ' + best + '.', { names: joined, t: best }); }
+    var slows = ok.filter(function (c) { return c.metrics.makespan === worst; }).map(function (c) { return labelOf(c.policy); });
+    var slowName = slows.length > 1 ? slows.slice(0, -1).join(', ') + ' and ' + slows[slows.length - 1] : slows[0];
+    var gap = worst - best;
+    return line + ' ' + words('compare.verdict.later', slowName + ' took ' + gap + ' ticks longer.', { name: slowName, d: gap, ticks: gap === 1 ? 'tick' : 'ticks' });
+  }
+
   /* The metrics table: one row per policy. Always drawn when a run is done. */
   function drawTable() {
     var body = byId('compare-body');
@@ -326,8 +421,8 @@
     if (wrap) { wrap.hidden = !show; }
     if (!show) { return; }
     var hr = document.createElement('tr');
-    hr.appendChild(cell('th', 'Scheduler'));
-    for (var m = 0; m < METRIC_COLUMNS.length; m++) { hr.appendChild(cell('th', METRIC_COLUMNS[m][1])); }
+    hr.appendChild(cell('th', words('compare.col.scheduler', 'Scheduler')));
+    for (var m = 0; m < METRIC_COLUMNS.length; m++) { hr.appendChild(cell('th', words('metric.' + METRIC_COLUMNS[m][0], METRIC_COLUMNS[m][1]))); }
     head.appendChild(hr);
     for (var c = 0; c < model.columns.length; c++) {
       var col = model.columns[c];
@@ -336,7 +431,13 @@
       tr.appendChild(cell('th', labelOf(col.policy)));
       for (var k = 0; k < METRIC_COLUMNS.length; k++) {
         var v = col.metrics[METRIC_COLUMNS[k][0]];
-        tr.appendChild(cell('td', metricText(v), (v === null || v === undefined) ? 'na' : ''));
+        var td = cell('td', metricText(v), (v === null || v === undefined) ? 'na' : '');
+        td.setAttribute('data-label', words('metric.' + METRIC_COLUMNS[k][0], METRIC_COLUMNS[k][1]));
+        if (isBest(METRIC_COLUMNS[k][0], v)) {
+          td.setAttribute('data-best', words('compare.best', 'Best'));
+          td.setAttribute('class', (td.getAttribute('class') ? td.getAttribute('class') + ' ' : '') + 'best');
+        }
+        tr.appendChild(td);
       }
       body.appendChild(tr);
     }
@@ -344,51 +445,24 @@
 
   /* Colours from the CSS variables, with fixed fallbacks. */
   function themeColours() {
-    var out = { text: '#1c2330', muted: '#5b6577', border: '#d5dae3', jobs: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6', '#ec4899', '#84cc16'] };
+    var out = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', accent: '#0B5E6B', jobs: ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'] };
     if (typeof getComputedStyle !== 'function' || !document.documentElement) { return out; }
     try {
       var cs = getComputedStyle(document.documentElement);
       var pick = function (n, fb) { var v = String(cs.getPropertyValue(n) || '').trim(); return v || fb; };
-      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border);
-      for (var i = 0; i < 8; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
+      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border); out.accent = pick('--accent', out.accent);
+      for (var i = 0; i < 10; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
     } catch (e) { /* keep the fallbacks */ }
     return out;
   }
 
-  /* One Gantt picture: a row per job (arrival, then id), a thin line from
-   * arrival to start (waiting), a bar from start to finish. All columns share
-   * tmax so the pictures can be compared by eye. O(jobs). */
-  function drawTimeline(canvas, jobs, rows, tmax) {
-    if (typeof canvas.getContext !== 'function') { return false; }
-    var ctx = canvas.getContext('2d');
-    if (!ctx) { return false; }
-    var col = themeColours();
-    var W = canvas.width, H = canvas.height;
-    var padL = 6, padR = 6, padT = 6, padB = 16;
-    var order = jobs.slice().sort(function (a, b) { return a.arrival - b.arrival || a.id - b.id; });
-    var byIdMap = {};
-    for (var i = 0; i < rows.length; i++) { byIdMap[rows[i].id] = rows[i]; }
-    var span = Math.max(1, tmax);
-    var plotW = W - padL - padR, plotH = H - padT - padB;
-    var rowH = plotH / Math.max(1, order.length);
-    var sx = function (t) { return padL + (t / span) * plotW; };
-    ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = col.border; ctx.lineWidth = 1;
-    ctx.strokeRect(padL, padT, plotW, plotH);
-    for (var k = 0; k < order.length; k++) {
-      var job = order[k], res = byIdMap[job.id];
-      if (!res) { continue; }
-      var y = padT + k * rowH;
-      var bh = Math.max(1, Math.min(10, rowH - 1));
-      ctx.fillStyle = col.muted;
-      ctx.fillRect(sx(job.arrival), y + bh / 2, Math.max(0, sx(res.start) - sx(job.arrival)), 1);
-      ctx.fillStyle = col.jobs[APRM.canvas ? APRM.canvas.paletteIndex(job.id) : job.id % 8];
-      ctx.fillRect(sx(res.start), y, Math.max(1, sx(res.finish) - sx(res.start)), bh);
-    }
-    ctx.fillStyle = col.muted; ctx.font = '11px sans-serif';
-    ctx.fillText('0', padL, H - 3);
-    ctx.fillText(String(tmax), Math.max(padL, W - padR - 30), H - 3);
-    return true;
+  /* One finished board, in the same form as the Run page: the engine's start and finish times, on the
+   * time scale shared by every board, so the pictures can be compared by eye. Returns false with no canvas. */
+  function drawTimeline(canvas, jobs, rows, tmax, finished) {
+    var bars = {};
+    for (var i = 0; i < rows.length; i++) { bars[rows[i].id] = { start: rows[i].start, finish: rows[i].finish }; }
+    var st = { now: tmax, cap: model.cap, free: model.cap, waiting: [], running: [], reservation: null, done: rows.length, total: jobs.length };
+    return APRM.canvas.draw(canvas, { state: st, jobs: jobs, bars: bars, selected: null, events: 0, hideNow: true, endMark: finished, tmax: tmax }, BOARD_HEIGHT);
   }
 
   function drawTimelines() {
@@ -396,24 +470,23 @@
     if (!box) { return; }
     clear(box);
     if (status !== 'done' || model === null) { return; }
+    var boards = [];
     for (var c = 0; c < model.columns.length; c++) {
       var col = model.columns[c];
       var fig = document.createElement('figure');
       fig.setAttribute('class', 'compare-fig');
       var cap = document.createElement('figcaption');
-      cap.textContent = labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')';
+      cap.textContent = words('compare.timeline.cap', labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')', { name: labelOf(col.policy), t: metricText(col.metrics.makespan) });
       var cv = document.createElement('canvas');
-      cv.setAttribute('width', '420');
-      cv.width = 420;
-      cv.height = 240;
-      cv.setAttribute('height', '240');
       cv.setAttribute('role', 'img');
-      cv.setAttribute('aria-label', 'Timeline of every job under ' + labelOf(col.policy));
+      cv.setAttribute('aria-label', words('compare.timeline.aria', 'Timeline of every job under ' + labelOf(col.policy), { name: labelOf(col.policy) }));
       fig.appendChild(cap);
       fig.appendChild(cv);
       box.appendChild(fig);
-      drawTimeline(cv, model.jobs, col.rows, model.tmax);
+      boards.push({ cv: cv, rows: col.rows, finished: col.metrics.makespan });
     }
+    /* Draw after every board is in the page: each one's width depends on how many share the row. */
+    for (var b = 0; b < boards.length; b++) { drawTimeline(boards[b].cv, model.jobs, boards[b].rows, model.tmax, boards[b].finished); }
   }
 
   /* Bar charts, only if Chart.js loaded. Any failure falls back to the table. */
@@ -425,38 +498,38 @@
     if (!box || !note) { return; }
     if (status !== 'done' || model === null) { note.hidden = true; return; }
     if (typeof window.Chart !== 'function' && chartLoad === 'loading') {
-      note.textContent = 'Chart.js is still loading. The table above has the numbers; the charts appear when it arrives.';
+      note.textContent = words('compare.chart.loading', 'Chart.js is still loading. The table above has the numbers; the charts appear when it arrives.');
       note.hidden = false;
       return;
     }
     if (typeof window.Chart !== 'function') {
-      note.textContent = 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.';
+      note.textContent = words('compare.chart.failed', 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.');
       note.hidden = false;
       return;
     }
     var col = themeColours();
     try {
-      var labels = model.columns.map(function (c) { return labelOf(c.policy); });
+      var labels = model.columns.map(function (c) { return labelOf(c.policy).split(' ('); });   /* two short lines, never slanted */
       for (var m = 0; m < CHART_METRICS.length; m++) {
         var key = CHART_METRICS[m];
         var title = '';
-        for (var t = 0; t < METRIC_COLUMNS.length; t++) { if (METRIC_COLUMNS[t][0] === key) { title = METRIC_COLUMNS[t][1]; } }
+        for (var t = 0; t < METRIC_COLUMNS.length; t++) { if (METRIC_COLUMNS[t][0] === key) { title = words('metric.' + key, METRIC_COLUMNS[t][1]); } }
         var holder = document.createElement('div');
         holder.setAttribute('class', 'compare-chart');
         var cv = document.createElement('canvas');
         cv.setAttribute('role', 'img');
-        cv.setAttribute('aria-label', 'Bar chart of ' + title + ' per scheduler');
+        cv.setAttribute('aria-label', words('compare.chart.aria', 'Bar chart of ' + title + ' per scheduler', { title: title }));
         holder.appendChild(cv);
         box.appendChild(holder);
         var data = model.columns.map(function (c) { var v = c.metrics[key]; return (typeof v === 'number') ? v : null; });
         charts.push(new window.Chart(cv, {
           type: 'bar',
-          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.jobs.slice(0, labels.length) }] },
+          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.accent }] },
           options: {
             animation: false, responsive: true, maintainAspectRatio: false, color: col.text,
             plugins: { legend: { display: false }, title: { display: true, text: title + ' (ticks)', color: col.text } },
             scales: {
-              x: { ticks: { color: col.muted }, grid: { color: col.border } },
+              x: { ticks: { color: col.muted, maxRotation: 0, minRotation: 0, autoSkip: false }, grid: { color: col.border } },
               y: { beginAtZero: true, ticks: { color: col.muted }, grid: { color: col.border } }
             }
           }
@@ -466,21 +539,21 @@
     } catch (e) {
       destroyCharts();
       clear(box);
-      note.textContent = 'Charts could not be drawn (' + (e && e.message ? e.message : 'unknown problem') + '). The table above has the same numbers.';
+      note.textContent = words('compare.chart.error', 'Charts could not be drawn. The table above has the same numbers.', { why: (e && e.message ? e.message : 'unknown problem') });
       note.hidden = false;
     }
   }
 
   function renderStatus() {
-    var line = 'Idle. Tick two or more schedulers and press Compare.';
+    var line = words('compare.status.idle', 'Idle. Tick two or more schedulers and press Compare.');
     if (status === 'running') {
       var events = 0;
       for (var i = 0; i < runs.length; i++) { events += runs[i].events; }
-      line = 'Running ' + runs.length + ' schedulers on the same jobs: ' + events + ' events so far.';
+      line = words('compare.status.running', 'Running ' + runs.length + ' schedulers: ' + events + ' events so far.', { n: runs.length, events: events });
     } else if (status === 'done') {
-      line = 'Done: ' + model.columns.length + ' schedulers on ' + model.jobs.length + ' jobs.' + (stale ? ' The jobs or settings changed since; press Compare again.' : '');
+      line = words('compare.status.done', 'Done.', { n: model.columns.length, jobs: model.jobs.length }) + (stale ? words('compare.status.stale', ' The jobs or settings changed since; press Compare again.') : '');
     } else if (status === 'error') {
-      line = 'The comparison stopped.';
+      line = words('compare.status.error', 'The comparison stopped.');
     }
     text('compare-status', line);
   }
@@ -502,7 +575,13 @@
     var exact = byId('compare-exact');
     if (exact) {
       exact.hidden = status !== 'done';
-      exact.textContent = 'Exact optimum (9 jobs or fewer): not available yet. This row is added by a later issue (K-33); no value is shown rather than a made-up one.';
+      exact.textContent = status === 'done' ? exactText() : '';
+    }
+    var verdict = byId('compare-verdict');
+    if (verdict) {
+      var v = status === 'done' ? verdictText() : '';
+      verdict.textContent = v;
+      verdict.hidden = v === '';
     }
     updateButtons();
   }
@@ -533,7 +612,7 @@
           });
         }
         label.appendChild(input);
-        label.appendChild(document.createTextNode(' ' + p.label));
+        label.appendChild(document.createTextNode(' ' + pickerLabel(p)));
         box.appendChild(label);
       });
     }
@@ -543,6 +622,7 @@
       var panel = byId('compare-panel');
       if (panel) { panel.hidden = s.mode !== 'compare'; }
       if (s.mode === 'compare') { ensureChart(); }
+      if (changed === 'theme' && status === 'done' && s.mode === 'compare') { render(); }
       if (changed === 'mode' && s.mode !== 'compare') { destroyCharts(); }
       if (changed === 'mode' && s.mode === 'compare' && status === 'done') { drawCharts(); }
       if (changed === 'mode' && s.mode !== 'compare' && status === 'running') { cancel(); }

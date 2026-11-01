@@ -13,8 +13,8 @@
 
   var APRM = (window.APRM = window.APRM || {});
 
-  var TEXT_LOADING = 'Loading engine…';
-  var TEXT_EMPTY = 'No jobs yet. Add one, load a preset, or generate a random set.';
+  var TEXT_LOADING = APRM.copy ? APRM.copy.get('engine.loading') : 'Starting the engine…';
+  var TEXT_EMPTY = APRM.copy ? APRM.copy.get('build.empty') : 'No jobs yet. Add one, or start with an example.';
 
   /* Where the backup demo video lives (M13). Not recorded yet, so empty: the
    * error state then says the link is still to be added. Set when the video exists. */
@@ -57,14 +57,15 @@
     var main = byId('app-main');
 
     main.setAttribute('data-engine', st.engine.status);
+    status.setAttribute('data-state', st.engine.status);
     main.setAttribute('data-mode', st.mode);
 
     if (st.engine.status === 'loading') {
       status.textContent = TEXT_LOADING;
     } else if (st.engine.status === 'ready') {
-      status.textContent = 'Engine ready';
+      status.textContent = APRM.copy.get('engine.ready');
     } else {
-      status.textContent = 'Engine not available';
+      status.textContent = APRM.copy.get('engine.error');
     }
 
     if (st.engine.status === 'error') {
@@ -73,10 +74,19 @@
       clearError(errBox);
     }
 
+    /* One step at a time: the run dashboard (machine, timeline, why, metrics) belongs to the Run step. */
+    var dash = [main, byId('app-footer')];
+    for (var d = 0; d < dash.length; d++) { if (dash[d]) { dash[d].hidden = st.mode !== 'run'; } }
+    var sw = byId('details-switch');
+    if (sw && sw.checked !== st.details) { sw.checked = st.details; }
+    var root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function') { root.setAttribute('data-details', st.details ? 'on' : 'off'); }
+
     var modeButtons = document.querySelectorAll('[data-mode-button]');
     for (var i = 0; i < modeButtons.length; i++) {
       var on = modeButtons[i].getAttribute('data-mode-button') === st.mode;
       modeButtons[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+      modeButtons[i].setAttribute('aria-current', on ? 'step' : 'false');
     }
 
     byId('machine-text').textContent = 'CPU ' + st.machine.cpu + ' cores, memory ' + st.machine.mem + ' MB';
@@ -131,9 +141,84 @@
     var buttons = document.querySelectorAll('[data-mode-button]');
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].addEventListener('click', function (ev) {
-        APRM.store.setMode(ev.currentTarget.getAttribute('data-mode-button'));
+        var to = ev.currentTarget.getAttribute('data-mode-button');
+        APRM.store.setMode(to);
+        focusStep(to);
       });
     }
+  }
+
+  var toastTimer = null;
+
+  /* A short message at the bottom of the page (aria-live). Hides itself after a few seconds. */
+  function toast(text) {
+    var el = byId('toast');
+    if (!el) { return; }
+    el.textContent = text;
+    if (toastTimer !== null && typeof clearTimeout === 'function') { clearTimeout(toastTimer); }
+    if (typeof setTimeout === 'function') { toastTimer = setTimeout(function () { el.textContent = ''; toastTimer = null; }, 4000); }
+  }
+
+  /* After a step change, move focus to that step's heading so Space and the arrow keys
+   * work at once (they are ignored while a button has focus). Skipped when focus() is missing. */
+  function focusStep(mode) {
+    var panel = byId(mode + '-panel');
+    var h = panel && panel.querySelector ? panel.querySelector('h2') : (mode === 'run' ? byId('run-panel') : null);
+    if (!h || typeof h.focus !== 'function') { return; }
+    h.setAttribute('tabindex', '-1');
+    h.focus();
+  }
+
+  /* Next and Back buttons move to another step. */
+  function wireNextButtons() {
+    var buttons = document.querySelectorAll('[data-next]');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener('click', function (ev) {
+        var to = ev.currentTarget.getAttribute('data-next');
+        APRM.store.setMode(to);
+        if (typeof window.scrollTo === 'function') { window.scrollTo(0, 0); }
+        focusStep(to);
+      });
+    }
+  }
+
+  /* Day and night button. The first look follows the system; a saved choice wins. The page theme is
+   * the data-theme attribute on the root element (tokens.css holds both colour sets). */
+  function applyTheme(theme) {
+    var root = document.documentElement;
+    if (root && typeof root.setAttribute === 'function') { root.setAttribute('data-theme', theme); }
+    var btn = byId('theme-toggle');
+    if (btn) { btn.textContent = APRM.copy.get(theme === 'dark' ? 'theme.day' : 'theme.night'); }
+  }
+
+  function wireThemeButton() {
+    var btn = byId('theme-toggle');
+    var theme = 'light';
+    try {
+      var saved = window.localStorage ? window.localStorage.getItem('aprm.theme') : null;
+      if (saved === 'light' || saved === 'dark') { theme = saved; }
+      else if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) { theme = 'dark'; }
+    } catch (e) { /* storage or matchMedia blocked: stay light */ }
+    APRM.store.setTheme(theme);
+    applyTheme(theme);
+    if (!btn) { return; }
+    btn.addEventListener('click', function () {
+      var next = APRM.store.get().theme === 'dark' ? 'light' : 'dark';
+      APRM.store.setTheme(next);
+      applyTheme(next);
+      try { if (window.localStorage) { window.localStorage.setItem('aprm.theme', next); } } catch (e) { /* storage blocked: fine */ }
+    });
+  }
+
+  /* Show details switch. The choice is remembered when the browser allows it. */
+  function wireDetailsSwitch() {
+    var sw = byId('details-switch');
+    if (!sw) { return; }
+    try { if (window.localStorage && window.localStorage.getItem('aprm.details') === '1') { APRM.store.setDetails(true); } } catch (e) { /* storage blocked: fine */ }
+    sw.addEventListener('change', function () {
+      APRM.store.setDetails(sw.checked);
+      try { if (window.localStorage) { window.localStorage.setItem('aprm.details', sw.checked ? '1' : '0'); } } catch (e) { /* storage blocked: fine */ }
+    });
   }
 
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
@@ -146,7 +231,12 @@
   /* Start: show loading, load the engine, then ready or error. Returns a
    * Promise that always resolves (an engine failure is a state, not a crash). */
   function start() {
+    APRM.copy.apply(document);
     wireModeButtons();
+    wireNextButtons();
+    wireDetailsSwitch();
+    wireThemeButton();
+    if (APRM.keys && typeof APRM.keys.mount === 'function') { APRM.keys.mount(); }
     APRM.store.subscribe(render);
     mountBuildMode();
     APRM.store.setEngine('loading', '');
@@ -161,6 +251,7 @@
     TEXT_LOADING: TEXT_LOADING,
     TEXT_EMPTY: TEXT_EMPTY,
     showError: showError,
+    toast: toast,
     clearError: clearError,
     start: start
   };

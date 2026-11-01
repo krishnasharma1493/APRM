@@ -83,7 +83,7 @@ try {
   check('no hash: no share message, page loads', (await ev(`document.getElementById('share-error').hidden`)) === true);
 
   // Share a preset, then open the link in a "new tab" (a fresh navigation).
-  await ev(`document.getElementById('preset-select').value = 'memory_hog'; document.getElementById('preset-load').click(); true`);
+  await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); true`);
   const before = await ev(`JSON.stringify(APRM.store.get(), (k, v) => k === 'engine' ? undefined : v)`);
   await ev(`document.getElementById('share-copy').click(); true`);
   await waitFor(`document.getElementById('share-link').value !== ''`);
