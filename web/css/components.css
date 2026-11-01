@@ -193,9 +193,11 @@ td.best::after { content: attr(data-best); display: inline-block; margin-left: v
   .job-table.compare-table tbody th { display: block; padding: 0 0 var(--s-1); border: 0; font-size: var(--fs-body); color: var(--text); }
   .job-table.compare-table td { display: flex; justify-content: space-between; gap: var(--s-3); text-align: right; padding: 2px 0; }
   .job-table.compare-table td::before { content: attr(data-label); color: var(--muted); font-size: var(--fs-caption); text-align: left; margin: 0; }
-  .job-table.compare-table td.best { flex-wrap: wrap; }
+  .job-table.compare-table td { justify-content: flex-end; white-space: normal; }
+  .job-table.compare-table td::before { margin-right: auto; }
 }
 .job-table.compare-table td, .job-table.compare-table thead th + th { text-align: right; }
+.job-table.compare-table td { white-space: nowrap; }
 .compare-fig { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-2); padding: var(--s-2) var(--s-3); min-width: 0; }
 .compare-fig figcaption { font-size: var(--fs-caption); font-weight: 650; margin-bottom: var(--s-1); }
 
