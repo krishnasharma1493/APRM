@@ -184,10 +184,10 @@
     var setMeter = function (fillId, textId, key, unitKey) {
       var fill = byId(fillId), label = byId(textId);
       if (!label) { return; }
-      if (!st) { label.textContent = copyText('run.res.none', ''); if (fill && fill.style) { fill.style.width = '0%'; } return; }
+      if (!st) { label.textContent = copyText('run.res.none', ''); if (fill && fill.style) { fill.style.transform = 'scaleX(0)'; } return; }
       var cap = st.cap[key], free = st.free[key], used = cap - free;
       label.textContent = copyText(unitKey, used + ' of ' + cap + ', ' + free + ' free', { used: used, cap: cap, free: free });
-      if (fill && fill.style) { fill.style.width = (cap > 0 ? Math.round(used * 1000 / cap) / 10 : 0) + '%'; }
+      if (fill && fill.style) { fill.style.transform = 'scaleX(' + (cap > 0 ? used / cap : 0) + ')'; }
     };
     setMeter('res-cpu-fill', 'res-cpu-text', 'cpu', 'run.res.cpu.text');
     setMeter('res-mem-fill', 'res-mem-text', 'mem', 'run.res.mem.text');

@@ -128,7 +128,7 @@ html[data-details="off"] .detail-only { display: none; }
 .res-row { display: grid; grid-template-columns: 5rem minmax(6rem, 1fr) minmax(12rem, auto); gap: var(--s-3); align-items: center; }
 .res-name { color: var(--muted); font-weight: 600; }
 .meter { height: 0.625rem; border-radius: 999px; background: var(--border); overflow: hidden; }
-.meter > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width var(--move) var(--ease); }
+.meter > span { display: block; height: 100%; width: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left center; transition: transform var(--move) var(--ease); }
 .reserve-card { margin-top: var(--s-3); border-color: var(--amber); color: var(--amber); background: var(--warn-bg); }
 .run-panel > main { margin-top: var(--s-4); padding: 0; }
 .run-panel .panel-bottom { margin: var(--s-4) 0 0; }
@@ -150,3 +150,9 @@ td.best::after { content: " " attr(data-best); font-size: var(--fs-caption); fon
 
 /* The page rules in style.css style every button inside a panel; the primary button must still win. */
 .panel .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+
+/* Form controls never push the page wider than the screen. */
+input, select, textarea { max-width: 100%; }
+input[type="file"] { width: 100%; font: inherit; color: var(--text); }
+input[type="file"]::file-selector-button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-1); padding: var(--s-1) var(--s-3); margin-right: var(--s-2); cursor: pointer; }
+.build-box { min-width: 0; }

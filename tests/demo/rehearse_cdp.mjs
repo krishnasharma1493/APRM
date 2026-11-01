@@ -121,7 +121,7 @@ try {
   console.log('     chart state: ' + chartState + '; note: ' + note);
   check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
   if (offline) { check('offline: Chart.js did not load, table fallback message shown', chartState === 'failed' && /could not load/.test(note || '')); }
-  check('row 4: exact-optimum row shows the exact best order', /Exact best order/.test(await ev(`__h.text('compare-exact')`)));
+  check('row 4: exact-optimum row explains the 9-job limit (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('compare-exact')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log
   await ev(`__h.loadPreset('memory_hog'); true`);
