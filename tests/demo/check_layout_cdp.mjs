@@ -30,7 +30,7 @@ async function load(width) {
   await send('Page.navigate', { url: pathToFileURL(page).href });
   for (let i = 0; i < 100 && !(await ev(`(document.getElementById('engine-status')||{}).textContent === 'Engine ready'`)); i++) await sleep(100);
 }
-const hscroll = () => ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+const hscroll = () => ev(`Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth, document.body.scrollWidth - document.body.clientWidth)`);
 async function pressTab() {
   for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
 }
@@ -56,36 +56,55 @@ try {
     check(`${width}px Compare: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
   }
 
-  // 2. keyboard: every control reached by Tab on the Build step has a visible focus ring
-  await load(1280);
-  await ev(`document.activeElement && document.activeElement.blur(); true`);
-  const seen = [];
-  for (let i = 0; i < 40; i++) {
-    await pressTab();
-    const info = await ev(`(function(){ const e = document.activeElement; if (!e || e === document.body) return null; const cs = getComputedStyle(e); const sw = e.matches('#details-switch') ? getComputedStyle(e.nextElementSibling) : null; return { id: e.id || e.tagName + ':' + (e.textContent||'').slice(0,20), outline: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2, trackOutline: sw ? (sw.outlineStyle !== 'none' && parseFloat(sw.outlineWidth) >= 2) : null }; })()`);
-    if (info) seen.push(info);
+  // 2. keyboard: every control reached by Tab, on each step, shows a visible focus ring
+  async function tabWalk(label, minStops) {
+    await ev(`document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0); true`);
+    const seen = [];
+    for (let i = 0; i < 60; i++) {
+      await pressTab();
+      const info = await ev(`(function(){ const e = document.activeElement; if (!e || e === document.body) return null; const ring = (c) => c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2; const isSwitch = e.id === 'details-switch'; const ok = isSwitch ? ring(getComputedStyle(e.nextElementSibling)) : ring(getComputedStyle(e)); return { id: e.id || e.tagName + ':' + (e.textContent||'').slice(0,20), ok }; })()`);
+      if (info) seen.push(info);
+    }
+    const bad = seen.filter((x) => !x.ok);
+    check(`${label}: Tab reaches the controls (at least ${minStops} stops)`, seen.length >= minStops, seen.length + ' stops');
+    check(`${label}: every focused control shows a focus ring of at least 2 px (the switch shows it on its track)`, bad.length === 0, bad.map((x) => x.id).join(', '));
   }
-  const bad = seen.filter((s) => !(s.outline || s.trackOutline));
-  check('Tab reaches the controls (at least 20 stops)', seen.length >= 20, seen.length + ' stops');
-  check('every focused control shows a focus ring of at least 2 px', bad.length === 0, bad.map((b) => b.id).join(', '));
+  await load(1280);
+  await ev(`document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); true`);
+  await tabWalk('Build', 20);
+  await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); true`);
+  await tabWalk('Run', 12);
+  await ev(`document.querySelector('[data-mode-button="compare"]').click(); true`);
+  await tabWalk('Compare', 8);
 
-  // 3. Space and Right arrow only act on the Run step, and not while a button has focus
-  await ev(`document.activeElement.blur(); document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.activeElement.blur(); true`);
-  const before = await ev(`APRM.player.snapshot().events`);
-  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
-  const after = await ev(`APRM.player.snapshot().events`);
-  check('Right arrow steps one event on the Run step', after === before + 1, before + ' -> ' + after);
+  // 3. Space and Right arrow act on the Run step, and do nothing while a button has focus
+  const key = async (k, code, vk) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: vk }); };
+  await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.activeElement.blur(); true`);
+  let n = await ev(`APRM.player.snapshot().events`);
+  await key('ArrowRight', 'ArrowRight', 39);
+  check('Right arrow steps one event on the Run step', (await ev(`APRM.player.snapshot().events`)) === n + 1);
+  n = await ev(`APRM.player.snapshot().events`);
+  await ev(`document.getElementById('run-reset').focus(); true`);
+  await key('ArrowRight', 'ArrowRight', 39);
+  check('Right arrow does nothing while a button has focus', (await ev(`APRM.player.snapshot().events`)) === n);
+  await ev(`document.activeElement.blur(); true`);
+  await key(' ', 'Space', 32);
+  check('Space starts playing on the Run step', ['playing', 'finished'].includes(await ev(`APRM.player.snapshot().status`)));
+  await key(' ', 'Space', 32);
 
-  // 4. media preferences
-  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  // 4. media preferences: measure before and after, with the colour scheme pinned
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.card')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
+  check('baseline: buttons have a transition, the top bar is blurred, the hairline is the light grey', base.dur > 1 && base.blur !== 'none' && base.border === 'rgb(207, 211, 208)', JSON.stringify(base));
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   const dur = await ev(`parseFloat(getComputedStyle(document.querySelector('.btn')).transitionDuration) * 1000`);
   check('reduced motion: button transitions are removed', dur <= 1, dur + ' ms');
-  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }] });
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-transparency', value: 'reduce' }] });
   const bg = await ev(`getComputedStyle(document.querySelector('.topbar')).backdropFilter`);
   check('reduced transparency: the top bar has no blur', bg === 'none' || bg === '', bg);
-  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-contrast', value: 'more' }] });
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-contrast', value: 'more' }] });
   const bd = await ev(`getComputedStyle(document.querySelector('.card')).borderTopColor`);
-  check('increased contrast: borders are darker than the normal hairline', bd !== 'rgb(207, 211, 208)', bd);
+  check('increased contrast: borders are darker than the normal hairline', bd === 'rgb(91, 98, 94)', bd);
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;
 console.log(failed === 0 ? 'ALL PASS (' + results.length + ')' : failed + ' FAILED of ' + results.length);
