@@ -112,7 +112,7 @@
       var e = fresh[i];
       run.entries.push(e);
       if (e.seq > run.lastSeq) { run.lastSeq = e.seq; }
-      if (e.kind === 'START') { barOf(e.job).start = e.t; }
+      if (e.kind === 'START') { barOf(e.job).start = e.t; run.justStarted.push(e.job); }
       if (e.kind === 'FINISH') { barOf(e.job).finish = e.t; }
     }
     return fresh.length;
@@ -181,16 +181,114 @@
   /* The machine in numbers, straight from the state JSON: used = capacity minus free. */
   function drawResources() {
     var st = run ? run.state : null;
-    var setMeter = function (fillId, textId, key, unitKey) {
-      var fill = byId(fillId), label = byId(textId);
+    var line = function (textId, key, unitKey) {
+      var label = byId(textId);
       if (!label) { return; }
-      if (!st) { label.textContent = copyText('run.res.none', ''); if (fill && fill.style) { fill.style.transform = 'scaleX(0)'; } return; }
+      if (!st) { label.textContent = copyText('run.res.none', ''); return; }
       var cap = st.cap[key], free = st.free[key], used = cap - free;
       label.textContent = copyText(unitKey, used + ' of ' + cap + ', ' + free + ' free', { used: used, cap: cap, free: free });
-      if (fill && fill.style) { fill.style.transform = 'scaleX(' + (cap > 0 ? used / cap : 0) + ')'; }
     };
-    setMeter('res-cpu-fill', 'res-cpu-text', 'cpu', 'run.res.cpu.text');
-    setMeter('res-mem-fill', 'res-mem-text', 'mem', 'run.res.mem.text');
+    line('res-cpu-text', 'cpu', 'run.res.cpu.text');
+    line('res-mem-text', 'mem', 'run.res.mem.text');
+  }
+
+  var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
+
+  /* A job's magnet: colour, hatch and stamped number. Bigger for a higher priority (a fixed ramp). */
+  function magnet(id, priority) {
+    var pal = APRM.canvas.paletteIndex(id);
+    var hatch = ((id % 3) + 3) % 3;
+    var size = priority >= 7 ? 'l' : priority >= 4 ? 'm' : 's';
+    var m = document.createElement('span');
+    m.setAttribute('class', 'magnet magnet-' + pal + ' hatch-' + hatch + ' magnet-size-' + size);
+    m.setAttribute('aria-hidden', 'true');
+    var b = document.createElement('b');
+    b.textContent = String(id);
+    m.appendChild(b);
+    return m;
+  }
+
+  /* The tray: waiting jobs in the order the engine reports, with its score when it gives one. */
+  function drawTray() {
+    var list = byId('tray-list');
+    if (!list) { return; }
+    clear(list);
+    var w = run && run.state ? run.state.waiting : [];
+    var saved = run && run.state && run.state.reservation ? run.state.reservation.id : null;
+    text('tray-count', '(' + w.length + ')');
+    var empty = byId('tray-empty');
+    if (empty) { empty.hidden = w.length > 0; }
+    var shown = Math.min(w.length, TRAY_ROWS);
+    for (var i = 0; i < shown; i++) {
+      var j = w[i];
+      var li = document.createElement('li');
+      li.setAttribute('data-job', String(j.id));
+      li.setAttribute('class', 'tray-card' + (selected === j.id ? ' selected' : ''));
+      li.appendChild(magnet(j.id, j.priority));
+      var body = document.createElement('span');
+      body.setAttribute('class', 'tray-body');
+      var head = document.createElement('span');
+      head.setAttribute('class', 'tray-head');
+      head.textContent = 'Job ' + j.id;
+      body.appendChild(head);
+      if (saved === j.id || i === 0) {
+        var stamp = document.createElement('span');
+        stamp.setAttribute('class', 'stamp' + (saved === j.id ? ' stamp-saved' : ''));
+        stamp.textContent = saved === j.id ? copyText('run.tray.saved', 'Spot saved') : copyText('run.tray.next', 'Next');
+        body.appendChild(stamp);
+      }
+      var meta = document.createElement('span');
+      meta.setAttribute('class', 'tray-meta');
+      var words = copyText('run.tray.needs', 'priority ' + j.priority, { p: j.priority, c: j.cpu, cores: j.cpu === 1 ? 'core' : 'cores', m: j.mem });
+      if (typeof j.score === 'number') { words += ', ' + copyText('run.tray.score', 'score ' + j.score.toFixed(3), { s: j.score.toFixed(3) }); }
+      meta.textContent = words;
+      body.appendChild(meta);
+      li.appendChild(body);
+      list.appendChild(li);
+    }
+    var more = byId('tray-more');
+    if (more) {
+      more.hidden = w.length <= shown;
+      more.textContent = copyText('run.tray.more', 'and ' + (w.length - shown) + ' more', { n: w.length - shown });
+    }
+  }
+
+  var flights = 0;
+
+  /* The signature moment: when the engine starts a job, its magnet travels from the tray to its card
+   * on the board. Purely visual, skipped under reduced motion, at high speed and when the jump runs. */
+  function flyCard(id, from) {
+    var canvasEl = byId('run-canvas');
+    if (!from || !canvasEl || flights >= 3 || !APRM.motion || APRM.motion.reduced() || speed > 3 || status === 'jumping') { return; }
+    var regs = canvasEl.__regions || [];
+    var reg = null;
+    for (var i = 0; i < regs.length && !reg; i++) { if (regs[i].id === id) { reg = regs[i]; } }
+    if (!reg || typeof canvasEl.getBoundingClientRect !== 'function' || !document.body) { return; }
+    var box = canvasEl.getBoundingClientRect();
+    var job = null;
+    for (var k = 0; k < run.jobs.length; k++) { if (run.jobs[k].id === id) { job = run.jobs[k]; } }
+    var el = magnet(id, job ? job.priority : 0);
+    el.setAttribute('class', el.getAttribute('class') + ' flying');
+    el.style.left = from.left + 'px';
+    el.style.top = from.top + 'px';
+    document.body.appendChild(el);
+    flights++;
+    var dx = box.left + reg.x - from.left, dy = box.top + reg.y - from.top;
+    APRM.motion.animateValue(0, 1, { response: 0.28 }, function (t) {
+      el.style.transform = 'translate(' + (dx * t) + 'px,' + (dy * t) + 'px)';
+    }, function () { flights--; if (el.parentNode) { el.parentNode.removeChild(el); } });
+  }
+
+  /* Tray positions before a redraw, so a started card can fly from where it was. O(cards shown). */
+  function trayRects() {
+    var out = {};
+    var list = byId('tray-list');
+    var kids = list && list.children ? list.children : [];
+    for (var i = 0; i < kids.length; i++) {
+      var m = kids[i].firstChild;
+      if (m && typeof m.getBoundingClientRect === 'function') { out[kids[i].getAttribute('data-job')] = m.getBoundingClientRect(); }
+    }
+    return out;
   }
 
   /* The saved spot for the long-waiting job, as the engine reports it (id and shadow time). */
@@ -227,6 +325,8 @@
 
   /* Redraw every view from the remembered engine answers. O(shown rows + jobs). */
   function render() {
+    var from = run && run.justStarted.length > 0 ? trayRects() : null;
+    drawTray();
     text('run-clock', clockText());
     text('run-status', copyText('status.' + status, status));
     var canvasEl = byId('run-canvas');
@@ -245,6 +345,10 @@
     drawReservation();
     drawSettingsLine();
     highlightJobList();
+    if (run && from) {
+      for (var f = 0; f < run.justStarted.length; f++) { flyCard(run.justStarted[f], from[run.justStarted[f]]); }
+      run.justStarted = [];
+    } else if (run) { run.justStarted = []; }
     updateButtons();
     if (status !== 'playing') { refreshAddForm(); }
   }
@@ -296,7 +400,7 @@
     var h = null;
     try {
       h = APRM.wasm.create(st.machine.cpu, st.machine.mem, policy, st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
-      run = { handle: h, jobs: st.jobs.map(copyJob), entries: [], lastSeq: 0, bars: {}, events: 0, state: null, metrics: null, policy: policy };
+      run = { handle: h, jobs: st.jobs.map(copyJob), justStarted: [], entries: [], lastSeq: 0, bars: {}, events: 0, state: null, metrics: null, policy: policy };
       for (var i = 0; i < st.jobs.length; i++) {
         var j = st.jobs[i];
         try {
@@ -571,6 +675,15 @@
         var r = typeof cv.getBoundingClientRect === 'function' ? cv.getBoundingClientRect() : { left: 0, top: 0 };
         var id = APRM.canvas.hit(cv, ev.clientX - r.left, ev.clientY - r.top);
         select(id === selected ? null : id);
+      });
+    }
+    var tray = byId('tray-list');
+    if (tray) {
+      tray.addEventListener('click', function (ev) {
+        var t = ev.target;
+        while (t && t !== tray && !(t.getAttribute && t.getAttribute('data-job'))) { t = t.parentNode; }
+        var id = t && t !== tray && t.getAttribute ? t.getAttribute('data-job') : null;
+        if (id !== null && id !== undefined) { select(Number(id) === selected ? null : Number(id)); }
       });
     }
     var jl = byId('job-list');

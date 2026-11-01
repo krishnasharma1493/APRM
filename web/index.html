@@ -125,56 +125,83 @@
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
     <h2 data-copy="run.heading">Run your jobs</h2>
 
-    <div class="card run-setup">
-      <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
-      <select id="run-policy"></select>
+    <div class="run-setup">
+      <div class="run-choice">
+        <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
+        <select id="run-policy"></select>
+      </div>
+      <button type="button" class="btn" id="run-start" data-copy="run.start">Run</button>
       <p id="run-settings-summary" class="hint"></p>
       <details class="disclosure" id="run-more">
         <summary data-copy="run.more">More settings</summary>
-        <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
-        <input id="run-alpha" type="text" inputmode="numeric" value="100">
-        <p class="hint" data-copy="run.alpha.hint"></p>
-        <label for="run-threshold" class="label" data-copy="run.threshold">Reservation threshold T (ticks)</label>
-        <input id="run-threshold" type="text" inputmode="numeric" value="50">
-        <p class="hint" data-copy="run.threshold.hint"></p>
-        <label for="run-eps" class="label" data-copy="run.eps">Knapsack &epsilon; (epsilon)</label>
-        <input id="run-eps" type="text" inputmode="decimal" value="0.1">
-        <p class="hint" data-copy="run.eps.hint"></p>
+        <div class="settings-grid">
+          <div>
+            <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
+            <input id="run-alpha" type="text" inputmode="numeric" value="100">
+            <p class="hint" data-copy="run.alpha.hint"></p>
+          </div>
+          <div>
+            <label for="run-threshold" class="label" data-copy="run.threshold">Reservation threshold T (ticks)</label>
+            <input id="run-threshold" type="text" inputmode="numeric" value="50">
+            <p class="hint" data-copy="run.threshold.hint"></p>
+          </div>
+          <div>
+            <label for="run-eps" class="label" data-copy="run.eps">Knapsack &epsilon; (epsilon)</label>
+            <input id="run-eps" type="text" inputmode="decimal" value="0.1">
+            <p class="hint" data-copy="run.eps.hint"></p>
+          </div>
+        </div>
       </details>
-      <button type="button" class="btn btn-primary" id="run-start" data-copy="run.start">Run</button>
     </div>
+    <p id="run-error" class="field-error" role="alert" hidden></p>
+    <div id="reserve-card" class="reserve-card" role="status" hidden></div>
 
-    <div id="resource-strip" class="card resource-strip" role="group" aria-label="Machine resources">
-      <div class="res-row"><span class="res-name" data-copy="run.res.cpu">CPU</span><div class="meter" aria-hidden="true"><span id="res-cpu-fill"></span></div><span id="res-cpu-text" class="num"></span></div>
-      <div class="res-row"><span class="res-name" data-copy="run.res.mem">Memory</span><div class="meter" aria-hidden="true"><span id="res-mem-fill"></span></div><span id="res-mem-text" class="num"></span></div>
-    </div>
-    <div id="reserve-card" class="card reserve-card" role="status" hidden></div>
-
-    <main id="app-main" data-engine="loading" data-mode="build" hidden>
-      <aside class="panel panel-left" aria-label="Machine and jobs">
-        <h2 data-copy="run.jobs">Your jobs</h2>
-        <p id="machine-text" class="hint">CPU 16 cores, memory 32768 MB</p>
-        <p id="jobs-empty" class="empty">No jobs yet. Add one, or start with an example.</p>
-        <ul id="job-list" class="job-list"></ul>
-      </aside>
-
-      <section class="panel panel-centre" aria-label="Timeline">
-        <h2 data-copy="run.timeline">Timeline</h2>
-        <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
-        <canvas id="run-canvas" class="run-canvas" width="640" height="640" aria-label="Live picture of the run: resource bars, waiting line, running jobs and timeline" hidden></canvas>
+    <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
+      <section class="module tray" aria-labelledby="tray-title">
+        <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
+        <p id="tray-empty" class="empty" data-copy="run.tray.empty">Nobody is waiting.</p>
+        <ol id="tray-list" class="tray-list"></ol>
+        <p id="tray-more" class="hint" hidden></p>
+        <details class="disclosure">
+          <summary data-copy="run.alljobs">All jobs</summary>
+          <p id="machine-text" class="hint">CPU 16 cores, memory 32768 MB</p>
+          <p id="jobs-empty" class="empty">No jobs yet. Add one, or start with an example.</p>
+          <ul id="job-list" class="job-list"></ul>
+        </details>
       </section>
 
-      <aside class="panel panel-right" aria-label="Why log">
-        <h2 data-copy="run.why">Why</h2>
+      <section class="module board" aria-labelledby="board-title">
+        <h3 id="board-title" class="tab" data-copy="run.timeline">The board</h3>
+        <div class="board-lines" role="group" aria-label="Machine resources">
+          <p><span class="res-name" data-copy="run.res.cpu">CPU</span> <span id="res-cpu-text" class="num"></span></p>
+          <p><span class="res-name" data-copy="run.res.mem">Memory</span> <span id="res-mem-text" class="num"></span></p>
+        </div>
+        <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
+        <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
+        <div class="control-rail" role="group" aria-label="Run controls">
+          <button type="button" class="btn btn-primary" id="run-play" disabled>Play</button>
+          <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
+          <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
+          <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
+          <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span> <output id="run-speed-out">1</output></label>
+          <input id="run-speed" type="range" min="1" max="200" value="1">
+          <p id="run-status" class="status" role="status">idle</p>
+        </div>
+        <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
+        <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
+      </section>
+
+      <section class="module log" aria-labelledby="log-title">
+        <h3 id="log-title" class="tab" data-copy="run.why">Why</h3>
         <p id="whylog-empty" class="empty">Each decision is explained here once the run starts.</p>
         <p id="whylog-filter" class="empty" hidden></p>
-        <button type="button" class="btn" id="whylog-clear" hidden data-copy="run.why.all">Show all jobs</button>
+        <button type="button" class="btn btn-small" id="whylog-clear" hidden data-copy="run.why.all">Show all jobs</button>
         <ol id="whylog-list" class="why-list"></ol>
-      </aside>
+      </section>
     </main>
 
-    <footer id="app-footer" class="card panel-bottom" aria-label="Metrics" hidden>
-      <h2 data-copy="run.metrics">How it went</h2>
+    <footer id="app-footer" class="module" aria-labelledby="metrics-title" hidden>
+      <h3 id="metrics-title" class="tab" data-copy="run.metrics">How it went</h3>
       <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
       <ul id="metrics-list" class="metrics-list"></ul>
     </footer>
@@ -194,20 +221,6 @@
       <p id="ra-error" class="field-error" role="alert" hidden></p>
     </details>
 
-    <div class="dock material" role="group" aria-label="Run controls">
-      <div class="player-buttons">
-        <button type="button" class="btn" id="run-play" disabled>Play</button>
-        <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
-        <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
-        <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
-      </div>
-      <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span>: <output id="run-speed-out">1</output></label>
-      <input id="run-speed" type="range" min="1" max="200" value="1">
-      <p id="run-status" class="status" role="status">idle</p>
-      <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
-      <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
-      <p id="run-error" class="field-error" role="alert" hidden></p>
-    </div>
     <p class="next-row"><button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
   </section>
 
