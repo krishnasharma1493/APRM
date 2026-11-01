@@ -3,8 +3,9 @@
 # Targets (PRD section 3):
 #   make            release build of the console program: build/aprm
 #   make debug      -g and -DAPRM_DEBUG (invariant checks after every step)
-#   make sanitize   debug + AddressSanitizer + UBSan; also runs the C tests
-#   make test       builds and runs every tests/c/test_*.c; stops at the first failure
+#   make sanitize   debug + AddressSanitizer + UBSan; also runs the C tests and the CLI tests
+#   make test       builds and runs every tests/c/test_*.c (stops at the first failure), then
+#                   the console program tests: golden cases and exit codes (K-12)
 #   make wasm       runs wasm/build.sh: web/vendor/aprm.js (needs emcc, see docs/TOOLCHAIN.md)
 #   make clean      removes build/ and nothing else
 #
@@ -47,7 +48,7 @@ TEST_SRC  := $(sort $(wildcard tests/c/test_*.c))
 TEST_BIN  := $(patsubst tests/c/%.c,$(OBJDIR)/tests/%,$(TEST_SRC))
 HAVE_CLI  := $(wildcard cli/main.c)
 
-.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run
+.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test
 
 all:
 	@$(MAKE) --no-print-directory MODE=release cli-build
@@ -58,10 +59,12 @@ debug:
 sanitize:
 	@$(MAKE) --no-print-directory MODE=sanitize cli-build
 	@$(MAKE) --no-print-directory MODE=sanitize tests-run
+	@$(MAKE) --no-print-directory MODE=sanitize cli-test
 
 # Tests always run with debug checks on.
 test:
 	@$(MAKE) --no-print-directory MODE=debug tests-run
+	@$(MAKE) --no-print-directory MODE=debug cli-test
 
 wasm:
 	@sh wasm/build.sh
@@ -90,6 +93,13 @@ tests-run: tests-build
 	  echo "== $$t"; $(RUNNER) $$t || { echo "FAILED: $$t"; exit 1; }; \
 	done
 	@echo "all C tests passed ($(MODE))"
+
+# Console program tests (K-12): the golden cases and every exit code, run
+# against the binary of the current MODE. Skipped with a note if there is no CLI.
+cli-test: cli-build
+	@if [ -x "$(BIN)" ]; then \
+	  APRM_BIN=$(BIN) sh tests/cases/run_golden.sh && APRM_BIN=$(BIN) sh tests/cli/run_cli_tests.sh; \
+	else echo "cli-test: no console program to test"; fi
 
 $(OBJDIR)/tests/%: tests/c/%.c $(CORE_OBJ)
 	@mkdir -p $(dir $@)

@@ -114,6 +114,16 @@ int csv_read_jobs(const char *text, size_t len, int64_t max_jobs,
                   Job **out, int64_t *n, CsvError *err);
 
 /*
+ * The 1-based line number of data row `index` (0-based, in file order) that
+ * csv_read_jobs returned: index + 2. This holds because the reader accepts no
+ * blank or comment lines and the header is line 1, so row i is always the
+ * (i + 2)th line. The console program uses it to say "(line N)" when
+ * sim_add_job rejects job i (D54). Pure, O(1); index must be >= 0 and below
+ * INT64_MAX - 1.
+ */
+int64_t csv_job_line(int64_t index);
+
+/*
  * Appends CSV_RESULTS_HEADER and one line per row to out, each line ending in
  * "\n". The values are printed as given. rows may be NULL only when n is 0;
  * n must be >= 0. Output is deterministic and byte-identical on every
