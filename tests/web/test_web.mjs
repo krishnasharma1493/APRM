@@ -76,6 +76,18 @@ test('grep-safety: no innerHTML, eval, new Function, inline handlers, modules, f
   }
 });
 
+test('every stylesheet has balanced braces (a stray one silently drops the next rule)', () => {
+  for (const f of ['css/tokens.css', 'css/components.css', 'css/style.css']) {
+    let depth = 0;
+    for (const ch of read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/"[^"]*"/g, '')) {
+      if (ch === '{') depth++;
+      if (ch === '}') depth--;
+      assert.ok(depth >= 0, f + ': a closing brace with nothing to close');
+    }
+    assert.equal(depth, 0, f + ': unclosed brace');
+  }
+});
+
 test('no hard-coded colours outside the :root variable blocks', () => {
   const css = read('css/style.css');
   const outside = css.replace(/:root\s*\{[^}]*\}/g, '');

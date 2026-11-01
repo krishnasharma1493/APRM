@@ -56,6 +56,13 @@ try {
     check(`${width}px Compare: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
   }
 
+  // 1a. on a phone every Compare number is shown, inside its row, next to its label
+  await load(375);
+  await ev(`document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); document.querySelector('[data-mode-button="compare"]').click(); document.getElementById('compare-start').click(); true`);
+  for (let i = 0; i < 100 && (await ev(`APRM.compare.snapshot().status`)) !== 'done'; i++) await sleep(100);
+  const cells = await ev(`(function(){ const box = document.querySelector('#compare-table-wrap').getBoundingClientRect(); const out = []; for (const td of document.querySelectorAll('#compare-body td')) { const r = document.createRange(); r.selectNodeContents(td); const b = r.getBoundingClientRect(); out.push({ t: td.textContent, ok: b.width > 0 && b.left >= box.left && b.right <= box.right }); } return out; })()`);
+  check('375px Compare: every number is on screen inside the table', cells.length >= 14 && cells.every((c) => c.ok), cells.filter((c) => !c.ok).map((c) => c.t).join(' | ') || cells.length + ' cells');
+
   // 1b. on a phone the new-job row and Add job can be reached, and the top bar stays inside the screen
   await load(375);
   await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.getElementById('add-submit').scrollIntoView({ block: 'center' }); true`);
