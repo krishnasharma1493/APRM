@@ -471,3 +471,33 @@ def test_real_data_title_has_no_sample_note(monkeypatch, tmp_path) -> None:
     fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, str(d), str(tmp_path / "o"))
     assert "SAMPLE" not in fig.axes[0].get_title()
     plt.close(fig)
+
+
+def test_band_equals_ci_low_to_ci_high(monkeypatch, tmp_path) -> None:
+    """The shaded band of each policy runs exactly from ci_low to ci_high."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e1_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e1_avg_wait, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    assert len(ax.collections) >= 6
+    bands = [c for c in ax.collections if c.get_paths() and len(c.get_paths()[0].vertices) > 4
+             and c.get_alpha() is not None]
+    assert len(bands) == 6
+    for band, policy in zip(bands, rows["policy"].unique()):
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        verts = band.get_paths()[0].vertices
+        ys = sorted(set(verts[:, 1]))
+        assert min(ys) == mine["avg_wait_ci_low"].min()
+        assert max(ys) == mine["avg_wait_ci_high"].max()
+        n = len(mine)
+        # fill_between path: low values going right, then high values going back.
+        assert list(verts[1:n + 1, 1]) == list(mine["avg_wait_ci_low"])
+        assert sorted(verts[n + 2:2 * n + 2, 1]) == sorted(mine["avg_wait_ci_high"])
+    plt.close(fig)
+
+
+def test_cdf_is_a_step_curve_with_post(monkeypatch, tmp_path) -> None:
+    """The CDF uses steps-post: the jump happens at each wait value."""
+    fig = _catch_figure(monkeypatch, pf.plot_e2_wait_cdf, SAMPLE_DIR, str(tmp_path))
+    for line in fig.axes[0].get_lines():
+        assert line.get_drawstyle() == "steps-post"
+    plt.close(fig)
