@@ -38,6 +38,7 @@
   function perform(action) {
     var st = APRM.store ? APRM.store.get() : null;
     if (!st || st.mode !== 'run' || !APRM.player) { return false; }
+    if (action !== 'clear' && typeof APRM.player.ensureRun === 'function' && !APRM.player.ensureRun()) { return true; }
     var snap = APRM.player.snapshot();
     if (action === 'toggle') {
       if (snap.status === 'playing') { APRM.player.pause(); } else { APRM.player.play(); }
