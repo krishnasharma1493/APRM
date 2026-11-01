@@ -1,0 +1,468 @@
+"""Invariant property checker for APRM (issue K-16).
+
+Python never schedules.  This module looks at what the console program wrote
+(`results.csv`) and checks, from the outside, the invariants of PRD section 4
+that are visible in the file:
+
+  * every input id appears exactly once in the results, and nothing extra;
+  * start >= arrival;  finish - start == duration;
+  * wait == start - arrival,  turnaround == finish - arrival;
+  * the copied columns (arrival, priority, cpu, mem) equal the input;
+  * rows are sorted by id (a results.csv convention of engine.h and the golden
+    files, not a PRD section 4 invariant);
+  * resources: at every moment, the cpu and memory sums of the running jobs
+    do not exceed the capacities.  A job runs on [start, finish): a finish and
+    a start at the same tick are NOT an overlap (the engine handles finishes
+    first at one tick).
+
+`check_greedy_fill_postcondition` is a separate check for policies that use
+greedy fill (fcfs).  Aging order and starvation checks belong to K-29.
+
+Usage:
+    python tools/check_properties.py --runs 10000 [--policy fcfs] [--seed0 1]
+        [--jobs 4] [--binary build/aprm]
+Exit code 0 = no violation, 1 = at least one violation, 2 = usage / run error.
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+import config
+import gen_workload
+import run_experiments
+
+RESULT_COLUMNS = run_experiments.RESULT_COLUMNS
+INPUT_COLUMNS = ["id", "arrival", "duration", "cpu", "mem", "priority"]
+# Policies for which the greedy-fill post-condition is checked.  The check is
+# valid for every policy that uses the shared greedy fill (fcfs, priority, sjf,
+# aging) but never for reserve or knapsack.  K-19 widens this to
+# ("fcfs", "priority", "sjf", "aging") once those policies run.
+GREEDY_FILL_POLICIES = ("fcfs",)
+MAX_MESSAGES_PER_CHECK = 5        # keep reports short: first few offenders only
+
+
+_BOUND = 2 ** 53  # largest magnitude accepted: far inside int64, exact as a float
+
+
+def _ints(df: pd.DataFrame, cols: list[str], name: str, out: list[str]) -> dict[str, np.ndarray] | None:
+    """Return the columns of df as int64 arrays, or None (and a message) if impossible.
+
+    A column must be numeric (strings and booleans are rejected), finite, whole
+    and within +-2**53, so nothing overflows or wraps around later.
+    """
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        out.append(f"{name}: missing column(s) {', '.join(missing)}")
+        return None
+    arrays: dict[str, np.ndarray] = {}
+    for c in cols:
+        col = df[c]
+        if len(col) and (pd.api.types.is_bool_dtype(col) or not pd.api.types.is_numeric_dtype(col)):
+            out.append(f"{name}: column {c} is not numeric (strings, booleans or huge integers)")
+            return None
+        f = col.to_numpy(dtype=float)
+        if not np.all(np.isfinite(f)) or not np.all(np.mod(f, 1) == 0):
+            out.append(f"{name}: column {c} has a missing or non-integer value")
+            return None
+        if np.any(np.abs(f) > _BOUND):
+            out.append(f"{name}: column {c} has a value outside the supported range (+-2**53)")
+            return None
+        arrays[c] = f.astype(np.int64)
+    return arrays
+
+
+def _input_limits(j: dict[str, np.ndarray]) -> list[str]:
+    """Messages for input cells outside the PRD section 3 limits, and duplicated input ids."""
+    msgs: list[str] = []
+    for col, lo, hi in (("arrival", 0, config.MAX_ARRIVAL), ("duration", 1, config.MAX_DURATION),
+                        ("cpu", 1, _BOUND), ("mem", 1, _BOUND),
+                        ("priority", config.PRIORITY_MIN, config.PRIORITY_MAX)):
+        bad = j["id"][(j[col] < lo) | (j[col] > hi)]
+        if len(bad):
+            msgs.append(f"input {col} outside the PRD limits {lo}..{hi}: id {_some(bad)}")
+    uniq, counts = np.unique(j["id"], return_counts=True)
+    if np.any(counts > 1):
+        msgs.append(f"duplicated id in the input jobs: {_some(uniq[counts > 1])}")
+    return msgs
+
+
+def _some(ids: np.ndarray, limit: int = MAX_MESSAGES_PER_CHECK) -> str:
+    """Format the first few ids of a violation list."""
+    shown = ", ".join(str(int(i)) for i in ids[:limit])
+    more = f" (+{len(ids) - limit} more)" if len(ids) > limit else ""
+    return shown + more
+
+
+def _joined(jobs: pd.DataFrame, results: pd.DataFrame) -> pd.DataFrame | None:
+    """Rows of results whose id is in jobs (first occurrence), with input columns attached.
+
+    Columns of the input get the suffix _in.  Returns None if columns are unusable.
+    """
+    sink: list[str] = []
+    if _ints(jobs, INPUT_COLUMNS, "jobs", sink) is None \
+            or _ints(results, RESULT_COLUMNS, "results", sink) is None:
+        return None
+    res = results[RESULT_COLUMNS].astype("int64").drop_duplicates(subset="id", keep="first")
+    inp = jobs[INPUT_COLUMNS].astype("int64").drop_duplicates(subset="id", keep="first")
+    return res.merge(inp.add_suffix("_in").rename(columns={"id_in": "id"}), on="id", how="inner")
+
+
+def check_results(jobs: pd.DataFrame, results: pd.DataFrame, cpu_cap: int, mem_cap: int) -> list[str]:
+    """Return a list of violation messages (empty = pass).
+
+    jobs has the jobs.csv columns (id, arrival, duration, cpu, mem, priority),
+    results the results.csv columns (PRD section 5), cap values are the machine.
+    Time O((n + m) log(n + m)) for n input jobs and m result rows; no loops
+    over rows in Python.  Checks that cannot be made because earlier ones show
+    the frame is unusable (missing columns, non-integers) are skipped, with
+    the reason in the messages.
+    """
+    msgs: list[str] = []
+    if _ints(jobs, INPUT_COLUMNS, "jobs", msgs) is None:
+        return msgs
+    r = _ints(results, RESULT_COLUMNS, "results", msgs)
+    if r is None:
+        return msgs
+    j = _ints(jobs, INPUT_COLUMNS, "jobs", msgs)
+    assert j is not None
+    msgs.extend(_input_limits(j))
+
+    # --- ids: exactly once each, nothing extra, sorted ---------------------
+    rid = r["id"]
+    uniq, counts = np.unique(rid, return_counts=True)
+    dup = uniq[counts > 1]
+    if len(dup):
+        msgs.append(f"duplicated id in results (listed more than once): {_some(dup)}")
+    missing = np.setdiff1d(j["id"], rid)
+    if len(missing):
+        msgs.append(f"lost job: id in input but not in results: {_some(missing)}")
+    extra = np.setdiff1d(rid, j["id"])
+    if len(extra):
+        msgs.append(f"extra job: id in results but not in input: {_some(extra)}")
+    unsorted_at = np.nonzero(np.diff(rid) < 0)[0]
+    if len(unsorted_at):
+        msgs.append(f"rows not sorted by id: row {int(unsorted_at[0]) + 2} "
+                    f"(id {int(rid[unsorted_at[0] + 1])}) comes after id {int(rid[unsorted_at[0]])}")
+
+    # --- per-row checks against the input ----------------------------------
+    jn = _joined(jobs, results)
+    if jn is not None and len(jn):
+        ids = jn["id"].to_numpy()
+        start, finish = jn["start"].to_numpy(), jn["finish"].to_numpy()
+        early = ids[start < jn["arrival_in"].to_numpy()]
+        if len(early):
+            msgs.append(f"early start (start < arrival): id {_some(early)}")
+        bad_dur = ids[(finish - start) != jn["duration_in"].to_numpy()]
+        if len(bad_dur):
+            msgs.append(f"wrong duration (finish - start != duration): id {_some(bad_dur)}")
+        bad_wait = ids[jn["wait"].to_numpy() != start - jn["arrival"].to_numpy()]
+        if len(bad_wait):
+            msgs.append(f"wrong wait (wait != start - arrival): id {_some(bad_wait)}")
+        bad_turn = ids[jn["turnaround"].to_numpy() != finish - jn["arrival"].to_numpy()]
+        if len(bad_turn):
+            msgs.append(f"wrong turnaround (turnaround != finish - arrival): id {_some(bad_turn)}")
+        for col in ("arrival", "priority", "cpu", "mem"):
+            changed = ids[jn[col].to_numpy() != jn[col + "_in"].to_numpy()]
+            if len(changed):
+                msgs.append(f"changed {col}: results differ from input for id {_some(changed)}")
+
+        # --- resources -----------------------------------------------------
+        msgs.extend(_overuse(jn, cpu_cap, mem_cap))
+    return msgs
+
+
+def _profile(start: np.ndarray, finish: np.ndarray, cpu: np.ndarray, mem: np.ndarray
+             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Usage after all events of each distinct event time.
+
+    Returns (times, used_cpu, used_mem), times sorted ascending and distinct;
+    used_x[i] is the sum of x over jobs with start <= times[i] < finish.  That is
+    the state after "finishes first, then starts" at that tick; the states in
+    between never exceed it (finishes only lower it), so checking it is enough.
+    Time O(n log n).  Integers only (int64): no float sums.
+    """
+    times = np.concatenate([start, finish])
+    d_cpu = np.concatenate([cpu, -cpu])
+    d_mem = np.concatenate([mem, -mem])
+    uniq, inverse = np.unique(times, return_inverse=True)
+    net_cpu = np.zeros(len(uniq), dtype=np.int64)
+    net_mem = np.zeros(len(uniq), dtype=np.int64)
+    np.add.at(net_cpu, inverse, d_cpu)
+    np.add.at(net_mem, inverse, d_mem)
+    return uniq, np.cumsum(net_cpu), np.cumsum(net_mem)
+
+
+def _overuse(jn: pd.DataFrame, cpu_cap: int, mem_cap: int) -> list[str]:
+    """Resource sweep over the joined rows (cpu and mem from the INPUT, times from results)."""
+    msgs: list[str] = []
+    ok = jn["finish"].to_numpy() > jn["start"].to_numpy()  # empty/negative spans never run
+    start = jn["start"].to_numpy()[ok]
+    finish = jn["finish"].to_numpy()[ok]
+    cpu = jn["cpu_in"].to_numpy()[ok]
+    mem = jn["mem_in"].to_numpy()[ok]
+    if not len(start):
+        return msgs
+    times, used_cpu, used_mem = _profile(start, finish, cpu, mem)
+    for name, used, cap in (("cpu", used_cpu, cpu_cap), ("memory", used_mem, mem_cap)):
+        over = np.nonzero(used > cap)[0]
+        if len(over):
+            i = int(over[0])
+            msgs.append(f"{name} overuse: {int(used[i])} > capacity {cap} at time {int(times[i])} "
+                        f"({len(over)} event time(s) over)")
+    return msgs
+
+
+def check_greedy_fill_postcondition(jobs: pd.DataFrame, results: pd.DataFrame,
+                                    cpu_cap: int, mem_cap: int) -> list[str]:
+    """Check that greedy fill leaves no waiting job that fits, at every event tick.
+
+    Exact definition.  Let T be the set of times that are an arrival, a start or
+    a finish.  For t in T, running(t) = jobs with start <= t < finish (this
+    includes jobs that start exactly at t and excludes jobs finishing at t),
+    free(t) = capacity - sum over running(t), and waiting(t) = jobs with
+    arrival <= t < start (arrived, and not started at or before t).  The engine
+    handles tick t as finishes, arrivals, then a greedy-fill pass that starts
+    every waiting job that fits and sets the others aside; a job set aside
+    cannot fit later in the same pass because free resources only shrink.
+    So at the end of tick t no job in waiting(t) may satisfy
+    cpu <= free_cpu(t) and mem <= free_mem(t).  Between event ticks nothing
+    changes (free grows only at finishes, waiting grows only at arrivals), so
+    checking T is enough.  Jobs are not checked for order: that is the policy's
+    business (FCFS order is not checkable here).  The check applies to fcfs,
+    priority, sjf and aging (they share the greedy fill) and never to reserve
+    or knapsack (reservation / knapsack choice); the runner lists the policies
+    in GREEDY_FILL_POLICIES (fcfs only until K-19).
+
+    Needs usable ids: only result rows whose id is in the input are looked at.
+    Time O((n + m) log(n + m) + sum of the waiting spans in event ticks).
+    """
+    jn = _joined(jobs, results)
+    if jn is None or not len(jn):
+        return []
+    ok = jn["finish"].to_numpy() > jn["start"].to_numpy()
+    start, finish = jn["start"].to_numpy(), jn["finish"].to_numpy()
+    cpu, mem = jn["cpu_in"].to_numpy(), jn["mem_in"].to_numpy()
+    arrival = jn["arrival_in"].to_numpy()
+    ids = jn["id"].to_numpy()
+
+    times, used_cpu, used_mem = _profile(start[ok], finish[ok], cpu[ok], mem[ok])
+    # Event ticks: add arrivals (a tick with only an arrival has no profile entry).
+    ticks = np.union1d(times, arrival)
+    pos = np.searchsorted(times, ticks, side="right") - 1  # last profile entry <= tick
+    zero = np.zeros(1, dtype=np.int64)
+    free_cpu = cpu_cap - np.concatenate([zero, used_cpu])[pos + 1]
+    free_mem = mem_cap - np.concatenate([zero, used_mem])[pos + 1]
+
+    msgs: list[str] = []
+    lo = np.searchsorted(ticks, arrival, side="left")    # first tick >= arrival
+    hi = np.searchsorted(ticks, start, side="left")      # ticks < start
+    for k in range(len(ids)):
+        if hi[k] <= lo[k]:
+            continue
+        sl = slice(lo[k], hi[k])
+        fit = (free_cpu[sl] >= cpu[k]) & (free_mem[sl] >= mem[k])
+        if fit.any():
+            t = int(ticks[lo[k] + int(np.argmax(fit))])
+            msgs.append(f"greedy fill left job {int(ids[k])} waiting although it fits at time {t} "
+                        f"(arrival {int(arrival[k])}, start {int(start[k])})")
+            if len(msgs) >= MAX_MESSAGES_PER_CHECK:
+                break
+    return msgs
+
+
+# ---------------------------------------------------------------------------
+# Random runs
+# ---------------------------------------------------------------------------
+# Machines: (cpu, mem) pairs from tiny to large; the first is the PRD default.
+_MACHINES = [(16, 32768), (1, 1), (1, 1000), (2, 2), (3, 100), (4, 4096), (5, 5),
+             (8, 8192), (64, 262144), (7, 1000003), (1000, 1_000_000)]
+_COUNTS = [1, 2, 3, 5, 10, 20, 50, 100, 300]
+_RATES = [0.05, 0.2, 1.0, 5.0, 1000.0]  # 1000: nearly every arrival ties at tick 0
+
+
+def _scaled(lo_frac: float, hi_frac: float, cap: int) -> tuple[int, int]:
+    """Inclusive integer range [lo_frac*cap, hi_frac*cap] clipped into [1, cap]."""
+    lo = min(cap, max(1, int(round(lo_frac * cap))))
+    hi = min(cap, max(lo, int(round(hi_frac * cap))))
+    return lo, hi
+
+
+def make_scenario(seed: int) -> dict[str, Any]:
+    """Build the random workload and machine of one run; same seed, same scenario.
+
+    Mix of shapes: machine size, job count, arrival rate (ties at high rate),
+    size classes that include duration 1, jobs that exactly fill the machine,
+    tiny jobs, long jobs and (in some runs) a family workload on the default
+    machine.  Returns {"jobs": list of dict, "cpu": int, "mem": int, "label": str}.
+    """
+    rng = np.random.default_rng([seed, 16])
+    if rng.random() < 0.15:  # an experiment family on the default machine
+        exp = str(rng.choice(["E1", "E2", "E3", "E5", "E6"]))
+        setting = {"E1": "heavy", "E2": "medium", "E3": "uniform", "E5": "20", "E6": "7"}[exp]
+        p = gen_workload.family_params(exp, setting, int(seed))
+        if exp != "E6":
+            p["n_jobs"] = int(rng.choice([20, 60, 150]))
+        jobs = gen_workload.generate(p["n_jobs"], p["seed"], p["arrival_rate"], p["size_mix"],
+                                     p["priority_dist"], p["cpu_cap"], p["mem_cap"])
+        return {"jobs": jobs, "cpu": p["cpu_cap"], "mem": p["mem_cap"], "label": f"family {exp}/{setting}"}
+    cpu, mem = _MACHINES[int(rng.integers(len(_MACHINES)))]
+    n = int(rng.choice(_COUNTS))
+    rate = float(rng.choice(_RATES))
+    classes = {
+        "unit": {"duration": (1, 1), "cpu": (1, 1), "mem": (1, 1)},
+        "tiny": {"duration": (1, 3), "cpu": _scaled(0.0, 0.2, cpu), "mem": _scaled(0.0, 0.2, mem)},
+        "mid": {"duration": (1, 30), "cpu": _scaled(0.1, 0.6, cpu), "mem": _scaled(0.1, 0.6, mem)},
+        "fill": {"duration": (1, 10), "cpu": (cpu, cpu), "mem": (mem, mem)},  # exactly fills the machine
+        "wide": {"duration": (1, 10), "cpu": (cpu, cpu), "mem": _scaled(0.0, 0.3, mem)},   # all cpu, little mem
+        "fat": {"duration": (1, 10), "cpu": _scaled(0.0, 0.3, cpu), "mem": (mem, mem)},    # all mem, few cpu
+        "long": {"duration": (50, 300), "cpu": _scaled(0.2, 0.5, cpu), "mem": _scaled(0.2, 0.5, mem)},
+    }
+    picked = [str(k) for k in rng.choice(list(classes), size=int(rng.integers(1, 5)), replace=False)]
+    weights = rng.random(len(picked)) + 0.1
+    weights = weights / weights.sum()
+    mix = {k: dict(p=float(w), **classes[k]) for k, w in zip(picked, weights)}
+    mix[picked[-1]]["p"] = float(1.0 - sum(mix[k]["p"] for k in picked[:-1]))  # sums to 1 exactly
+    prio = [0.1] * 10 if rng.random() < 0.5 else [1.0] + [0.0] * 9
+    jobs = gen_workload.generate(n, int(seed), rate, mix, prio, cpu, mem)
+    late = ""
+    rng2 = np.random.default_rng([seed, 17])  # separate stream: other scenarios stay as they were
+    if rng2.random() < 0.1:  # large times: arrivals near the PRD limit, durations up to the limit
+        shift = config.MAX_ARRIVAL - max(j["arrival"] for j in jobs) - int(rng2.integers(0, 5))
+        for j in jobs:
+            j["arrival"] += shift
+            if rng2.random() < 0.3:
+                j["duration"] = int(rng2.integers(1, config.MAX_DURATION + 1))
+        late = " late"
+    return {"jobs": jobs, "cpu": cpu, "mem": mem,
+            "label": f"n={n} machine={cpu}x{mem} rate={rate} classes={'+'.join(picked)}{late}"}
+
+
+def run_one_seed(seed: int, policy: str, binary: str, keep_dir: str | None = None) -> dict[str, Any]:
+    """Generate the scenario of `seed`, run the console program, check the results.
+
+    Returns {"seed", "policy", "status", "violations", "label"} where status is
+    "ok", "violation", or "not_implemented" (the engine lacks the policy).
+    A genuine console-program failure is reported as a violation, not hidden.
+    With keep_dir the input and results are kept in <keep_dir>/<policy>-<seed>.
+    """
+    sc = make_scenario(seed)
+    rec: dict[str, Any] = {"seed": seed, "policy": policy, "label": sc["label"],
+                           "status": "ok", "violations": []}
+    with tempfile.TemporaryDirectory(prefix="aprm_prop_") as tmp:
+        folder = Path(keep_dir) / f"{policy}-{seed}" if keep_dir else Path(tmp) / "run"
+        folder.mkdir(parents=True, exist_ok=True)
+        jobs_csv = folder / "jobs.csv"
+        gen_workload.write_jobs_csv(sc["jobs"], str(jobs_csv), {"seed": seed, "label": sc["label"]})
+        try:
+            res = run_experiments.run_one(
+                binary, str(jobs_csv), policy, str(folder),
+                ["--cpu", str(sc["cpu"]), "--mem", str(sc["mem"])],
+                context={"seed": seed})
+        except run_experiments.PolicyNotImplemented:
+            rec["status"] = "not_implemented"
+            return rec
+        except run_experiments.RunError as err:
+            rec["status"] = "violation"
+            rec["violations"] = [f"console program failed: {err}"]
+            return rec
+        jobs = pd.read_csv(jobs_csv)
+        try:
+            results = pd.read_csv(res["paths"]["results"])
+        except Exception as err:  # empty, non-UTF8, malformed or missing: a finding, not a crash
+            rec["status"] = "violation"
+            rec["violations"] = [f"results.csv unreadable: {type(err).__name__}: {str(err)[:200]}"]
+            return rec
+    try:
+        msgs = check_results(jobs, results, sc["cpu"], sc["mem"])
+        if policy in GREEDY_FILL_POLICIES:
+            msgs += check_greedy_fill_postcondition(jobs, results, sc["cpu"], sc["mem"])
+    except Exception as err:  # a checker crash must name its seed too
+        msgs = [f"checker crashed: {type(err).__name__}: {str(err)[:200]}"]
+    if msgs:
+        rec["status"] = "violation"
+        rec["violations"] = msgs
+    return rec
+
+
+def random_runs(n_runs: int, seed0: int, policies: tuple[str, ...] | list[str] = ("fcfs",),
+                binary: str = "build/aprm", jobs: int = 1, keep_dir: str | None = None) -> dict[str, Any]:
+    """Run seeds seed0 .. seed0+n_runs-1 for every policy and check each run.
+
+    Returns {"runs": executed run count, "ok": int, "not_implemented": [policy],
+    "violations": [{"seed", "policy", "label", "messages"}], "seconds": float}.
+    A policy the engine does not implement is skipped (listed, not a failure).
+    Results do not depend on `jobs` (threads that only wait for subprocesses).
+    """
+    began = time.monotonic()
+    skipped: list[str] = []
+    out: dict[str, Any] = {"runs": 0, "ok": 0, "not_implemented": skipped, "violations": []}
+    for policy in policies:
+        seeds = range(seed0, seed0 + n_runs)
+        if run_one_seed(seed0, policy, binary, keep_dir)["status"] == "not_implemented":
+            skipped.append(policy)  # probe one run first: do not run thousands for nothing
+            continue
+        if jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+                recs = list(pool.map(lambda s: run_one_seed(s, policy, binary, keep_dir), seeds))
+        else:
+            recs = [run_one_seed(s, policy, binary, keep_dir) for s in seeds]
+        for rec in recs:
+            out["runs"] += 1
+            if rec["status"] == "ok":
+                out["ok"] += 1
+            else:
+                out["violations"].append({"seed": rec["seed"], "policy": policy,
+                                          "label": rec["label"], "messages": rec["violations"]})
+    out["seconds"] = time.monotonic() - began
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point; returns 0 (pass), 1 (violation) or 2 (usage / setup error)."""
+    ap = argparse.ArgumentParser(description="Check APRM invariants over random runs of build/aprm.")
+    ap.add_argument("--runs", type=int, default=1000, help="random workloads per policy")
+    ap.add_argument("--policy", default="fcfs", help="comma-separated policies (default fcfs)")
+    ap.add_argument("--seed0", type=int, default=1, help="first seed (a run is reproduced by its seed)")
+    ap.add_argument("--jobs", type=int, default=1, help="parallel runs (default 1)")
+    ap.add_argument("--binary", default=config.APRM_BINARY, help="console program")
+    ap.add_argument("--keep", help="folder to keep jobs.csv and results.csv of every run in")
+    args = ap.parse_args(argv)
+    if args.runs < 1 or args.jobs < 1 or args.seed0 < 0:
+        print("check_properties: --runs and --jobs must be >= 1 and --seed0 >= 0", file=sys.stderr)
+        return 2
+    if not Path(args.binary).is_file():
+        print(f"check_properties: {args.binary} not found (run `make` first)", file=sys.stderr)
+        return 2
+    pols = [p.strip() for p in args.policy.split(",") if p.strip()]
+    out = random_runs(args.runs, args.seed0, pols, args.binary, args.jobs, args.keep)
+    for pol in out["not_implemented"]:
+        print(f"policy {pol}: not implemented in the engine yet; skipped")
+    for v in out["violations"][:20]:
+        print(f"VIOLATION policy={v['policy']} seed={v['seed']} ({v['label']})")
+        for m in v["messages"]:
+            print(f"    {m}")
+        print(f"    reproduce: python tools/check_properties.py --runs 1 --seed0 {v['seed']} "
+              f"--policy {v['policy']} --keep results/repro")
+    if len(out["violations"]) > 20:
+        print(f"... and {len(out['violations']) - 20} more runs with violations")
+    if out["runs"] == 0:
+        print("check_properties: WARNING: no run was executed (every policy is not implemented "
+              "or nothing was requested); this is not a pass", file=sys.stderr)
+        return 2
+    print(f"{out['runs']} runs checked, {out['ok']} ok, {len(out['violations'])} with violations, "
+          f"{out['seconds']:.1f} s (seed0={args.seed0}, policies={','.join(pols)})")
+    return 1 if out["violations"] else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
