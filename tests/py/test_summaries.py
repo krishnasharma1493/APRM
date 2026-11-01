@@ -200,14 +200,16 @@ def test_e2_summary_and_cdf(tmp_path) -> None:
     assert set(cdf.x_value) == {config.LOADS["light"]}
 
 
+@pytest.mark.filterwarnings("ignore:no runs under raw/E2")
 def test_e2_prefers_own_tree_else_uses_e1(tmp_path) -> None:
     root = e1_tree(tmp_path)
     assert sm.source_tree("E2", root) == "E1"     # same workloads and policies: reuse E1 runs
-    for k in (1, 2, 3):
-        write_run(root, "E2", "light", "fcfs", k, job_set(0, 100))
+    for st in config.LOAD_ORDER:
+        for k in (1, 2, 3):
+            write_run(root, "E2", st, "fcfs", k, job_set(0, 100))
     assert sm.source_tree("E2", root) == "E2"
     table, _ = sm.summarize_e2(root, TEST_T)
-    assert table.iloc[0].max_wait_mean == 100.0
+    assert set(table.max_wait_mean) == {100.0}
 
 
 def test_e3_nseeds_counts_only_seeds_with_level(tmp_path) -> None:
@@ -365,3 +367,44 @@ def test_e3_default_table_accepts_29_but_e1_does_not(tmp_path) -> None:
         write_run(root, "E3", "uniform", "aging", k, job_set(k, 2 * k))
     table = sm.summarize_e3(root)                       # default table, no override
     assert set(table.n_seeds) == {29}
+
+
+E3_TABLE_LITERAL = {20: 2.093, 21: 2.086, 22: 2.080, 23: 2.074, 24: 2.069, 25: 2.064,
+                    26: 2.060, 27: 2.056, 28: 2.052, 29: 2.048, 30: 2.045}  # D67 (NIST table)
+
+
+def test_e3_table_pinned_entry_by_entry() -> None:
+    assert sm.T_975_E3 == E3_TABLE_LITERAL
+    assert sm.T_975 == {30: 2.045, 50: 2.010}
+    for n, t in E3_TABLE_LITERAL.items():
+        assert sm.t_value(n, sm.T_975_E3) == t
+
+
+def test_setting_column_uses_summary_label(tmp_path) -> None:
+    root = e1_tree(tmp_path)
+    assert list(sm.summarize_e1(root, TEST_T).setting) == [config.summary_label("E1", "light")]
+    _, cdf = sm.summarize_e2(root, TEST_T)
+    assert set(cdf.setting) == {config.summary_label("E2", "light")}
+
+
+def test_e2_fallback_warns(tmp_path) -> None:
+    root = e1_tree(tmp_path)
+    with pytest.warns(UserWarning, match="raw/E1"):
+        sm.summarize_e2(root, TEST_T)
+
+
+def test_incomplete_own_e2_tree_raises(tmp_path) -> None:
+    root = e1_tree(tmp_path)
+    for k in (1, 2, 3):
+        write_run(root, "E2", "light", "fcfs", k, job_set(0, 100))   # medium and heavy missing
+    with pytest.raises(ValueError, match="incomplete"):
+        sm.summarize_e2(root, TEST_T)
+
+
+def test_e1_null_in_one_seed_raises_not_drops(tmp_path) -> None:
+    root = e1_tree(tmp_path)
+    import shutil
+    shutil.rmtree(root / "E1" / "light" / "fcfs" / "3")
+    write_run(root, "E1", "light", "fcfs", 3, [])         # seed 3: no finished job, avg_wait null
+    with pytest.raises(ValueError, match="avg_wait"):
+        sm.summarize_e1(root, TEST_T)

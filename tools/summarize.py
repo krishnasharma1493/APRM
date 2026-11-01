@@ -21,6 +21,7 @@ import argparse
 import json
 import math
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,7 @@ T_975: dict[int, float] = {30: 2.045, 50: 2.010}
 # and same numerical check as above (df 19..28, rounded to 3 decimals).  E1/E2 still
 # accept only 30 (and tests / E6 only 50): this extension is E3's alone.
 T_975_E3: dict[int, float] = {
-    **T_975, 20: 2.093, 21: 2.086, 22: 2.080, 23: 2.074, 24: 2.069,
+    30: 2.045, 20: 2.093, 21: 2.086, 22: 2.080, 23: 2.074, 24: 2.069,
     25: 2.064, 26: 2.060, 27: 2.056, 28: 2.052, 29: 2.048}
 
 TOL = 1e-9  # PRD section 10: recomputed metrics match the C metrics JSON within 1e-9
@@ -216,6 +217,8 @@ def source_tree(experiment: str, raw: str | Path) -> str:
     """
     exp = experiment.upper()
     if exp == "E2" and not any((Path(raw) / "E2").glob("*/*/*/run.json")):
+        warnings.warn("no runs under raw/E2: E2 is summarised from the raw/E1 runs "
+                      "(same workloads and policies)", stacklevel=2)
         return "E1"
     return exp
 
@@ -248,10 +251,21 @@ def collect_runs(experiment: str, raw: str | Path) -> dict[tuple[str, str], list
             runs = [(seed, load_run(sdir)) for seed, sdir in sorted(seeds)]
             if runs:
                 out[(setting, policy)] = runs
+    if out and exp_is_own_e2(experiment, tree):
+        missing = [st for st in config.EXPERIMENT_SETTINGS["E2"]
+                   if not any(k[0] == st for k in out)]
+        if missing:
+            raise ValueError(f"raw/E2 is incomplete: no usable runs for {', '.join(missing)}; "
+                             f"finish `run_experiments.py --experiment E2` or delete raw/E2 to reuse E1")
     if not out:
         raise ValueError(f"no runs found for {experiment.upper()} under {base}; "
                          f"run `python tools/run_experiments.py --experiment {tree}` first")
     return out
+
+
+def exp_is_own_e2(experiment: str, tree: str) -> bool:
+    """True if experiment is E2 and it reads its own raw/E2 folder (not the E1 fallback)."""
+    return experiment.upper() == "E2" and tree == "E2"
 
 
 def _read_status(path: Path) -> str | None:
@@ -291,7 +305,7 @@ def _summarize_load(experiment: str, metrics: list[str], raw: str | Path,
     for (setting, policy), runs in collect_runs(experiment, raw).items():
         where = f"{experiment} {setting}/{policy}"
         stats = [mean_ci(_metric_values(runs, m, where), table) for m in metrics]
-        rows.append(_row(experiment, setting, _setting_x(experiment, setting), policy,
+        rows.append(_row(experiment, config.summary_label(experiment, setting), _setting_x(experiment, setting), policy,
                          len(runs), stats))
     return pd.DataFrame(rows, columns=SUMMARY_COLUMNS[f"{experiment.lower()}_summary.csv"])
 
@@ -314,7 +328,7 @@ def summarize_e2(raw: str | Path,
         for seed, run in runs:
             res = run["results"].sort_values("id")
             parts.append(pd.DataFrame({
-                "experiment": "E2", "setting": setting, "x_value": _setting_x("E2", setting),
+                "experiment": "E2", "setting": config.summary_label("E2", setting), "x_value": _setting_x("E2", setting),
                 "policy": policy, "seed": seed, "job_id": res["id"].to_numpy(),
                 "wait": res["wait"].to_numpy()}))
     cdf = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(
@@ -327,7 +341,7 @@ def summarize_e3(raw: str | Path, table: dict[int, float] | None = None) -> pd.D
 
     For a level, a seed counts only if that level had at least one finished job
     (its avg_wait_by_priority entry is not null, D62); n_seeds is that count.  A
-    level with no job in any seed gets no row.  n must have a t value (T_975_E3: 20..30 or 50).
+    level with no job in any seed gets no row.  n must have a t value (T_975_E3: 20..30).
     """
     rows = []
     table = T_975_E3 if table is None else table
@@ -342,7 +356,7 @@ def summarize_e3(raw: str | Path, table: dict[int, float] | None = None) -> pd.D
                 stats = mean_ci(vals, table)
             except ValueError as err:
                 raise ValueError(f"E3 {setting}/{policy} priority {level}: {err}") from err
-            rows.append(_row("E3", setting, level, policy, len(vals), [stats]))
+            rows.append(_row("E3", config.summary_label("E3", setting), level, policy, len(vals), [stats]))
     return pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e3_summary.csv"])
 
 
