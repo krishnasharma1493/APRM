@@ -25,14 +25,14 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-13 | #14 | Done, PR #67 merged (Krishna told the run to merge it, including the PRD §5 `aprm_last_error` row) | WebAssembly build, 28 JS tests, native ASan driver, CI job; D64 |
 | K-15 | #16 | Done, PR #70 merged | Experiment runner |
 | K-16 | #17 | Done, PR #71 merged | Invariant checker; 10,000 real runs, 0 violations |
-| K-18 | #19 | **Blocked, label needs-krishna** | Needs Ahaana's paper check of all golden cases, her format approval and laptop versions, and Krishna's freeze sign-off. Blocks K-19 and everything after it |
+| K-18 | #19 | Done, PR #75 merged (freeze authorised by Krishna) | Needs Ahaana's paper check of all golden cases, her format approval and laptop versions, and Krishna's freeze sign-off. Blocks K-19 and everything after it |
 | K-23 | #25 | Done, PR #72 merged | Website shell; file:// checked in headless Chrome; BACKUP_VIDEO_URL in web/js/app.js is empty until the backup video exists (Krishna) |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
 
 - No plugin or skill installed during this run.
-- Subagents used: general-purpose (read-only re-derivation of K-07's schedules; read-only reviewer of PR #55). No `.claude/agents/` files created yet.
+- Subagents used: general-purpose (read-only re-derivation of K-07's schedules; read-only reviewer of PR #55).
 
 ## Log
 
@@ -60,7 +60,7 @@ Already merged earlier and also worth a look: DECISIONS D53 (K-04, `JsonBuf`, UT
 ## What Krishna needs to do to resume
 
 1. Read the "Contract and decision changes waiting for Krishna's approval" table above (PR #61) and the decisions D56-D58 in PR #62 (K-14).
-2. Merge PR #61, then PR #62 (`gh pr merge 61 --squash --delete-branch`; expect a trivial conflict in docs/DECISIONS.md for #62: D54/D55 and D56-D58 are inserted at the same place; keep both, in number order). Or allow merging for this run, for example by adding a permission rule for `gh pr merge` in the Claude Code settings.
+2. Merge PR #61, then PR #62 (`gh pr merge 61 --squash --delete-branch`; expect a trivial conflict in docs/DECISIONS.md for #62: D54/D55 and D56-D58 are inserted at the same place; keep both, in number order). Or allow merging for this run, for example by adding a permission rule for `gh pr merge` in the assistant settings.
 3. Tell the next session to resume from `docs/RUN_INSTRUCTIONS.md`: it continues with K-09 (event loop), the first issue that depends on K-08.
 - 2026-11-01: Krishna merged #61 and #62 by hand (the permission system refuses merges by the run). Rule for the rest of the run: each finished PR waits for Krishna to merge it; work that does not depend on an unmerged PR continues. Started K-09 and K-17 in parallel (disjoint files).
 - 2026-11-01: PR #63 (K-17) and PR #64 (K-09) are finished and waiting for Krishna to merge. Merging by the run is blocked by the permission system; adding a project permission rule for `gh pr merge` was also blocked ("Self-Modification"), so Krishna has to add it (`/permissions`, rule `Bash(gh pr merge *)`) or merge in the browser. After they are merged the next eligible issues are K-10 and K-11 (both depend on K-09), then K-12, K-13 (K-13 needs K-10, K-11), K-15, K-16.
@@ -81,3 +81,4 @@ Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (mis
 - 2026-11-01: K-18 freeze: O-2 (knapsack_eps representation) is still open and belongs to K-34. Chose to freeze PRD §5 with an explicit exception for `knapsack_eps` (changes only through the PRD §13 process) instead of settling O-2 early. Ahaana's paper check and format approval stay marked 'awaiting Ahaana'.
 - 2026-11-01: PR #74 (A-01) is reviewed, fixed and CI-green but NOT merged: the merge was refused (a/* PRs wait for Ahaana's or Krishna's review under CLAUDE.md). Needs Krishna: `gh pr merge 74 --squash --delete-branch`. Continuing with K-xx work; later A-xx PRs will be built and left open the same way.
 - 2026-11-01: PR #75 (K-18) reviewed (fixes applied), CI green, NOT merged: it edits PRD §5 (frozen marker), which CLAUDE.md reserves for Krishna. Needs Krishna: `gh pr merge 75 --squash --delete-branch`. K-19 is stacked on k/K-18-freeze (base changes to main when #75 merges; re-merge main into the branch first if GitHub closes the PR).
+- 2026-11-01: #74 (A-01) and #75 (K-18) merged after Krishna's clarification. K-19 (policies) and A-02 (figure style) in progress.
