@@ -5,11 +5,12 @@ ones exist in results/summaries/). It never runs experiments, never calls the
 C program and never computes statistics: the CSV already holds the means and
 the confidence-interval bounds.
 
-Usage:  python tools/plot_figures.py [--input DIR] [--out DIR]
+Usage:  python tools/plot_figures.py [--input DIR] [--output DIR]
 """
 
 import argparse
 import os
+import sys
 
 import matplotlib
 
@@ -342,38 +343,85 @@ def plot_e5_max_wait(summary_dir: str, out_dir: str) -> str:
     return save_figure(fig, "e5_max_wait", out_dir)[0]
 
 
-def run_all(summary_dir: str, out_dir: str) -> list:
-    """Draw every figure from summary_dir into out_dir; return the PNG paths."""
-    # The list of figure functions, in report order.
-    functions = [
-        plot_e1_avg_wait,
-        plot_e2_max_wait,
-        plot_e2_wait_cdf,
-        plot_e3_wait_by_priority,
-        plot_e5_max_wait,
-    ]
+# Every figure: (function, the summary file it needs). In report order.
+# This is the one list that run_all walks; to add a figure, add one line here.
+FIGURES = [
+    (plot_e1_avg_wait, "e1_summary.csv"),
+    (plot_e2_max_wait, "e2_summary.csv"),
+    (plot_e2_wait_cdf, "e2_wait_cdf.csv"),
+    (plot_e3_wait_by_priority, "e3_summary.csv"),
+    (plot_e5_max_wait, "e5_summary.csv"),
+]
 
-    # Call each one and collect the PNG paths.
+
+def run_all(summary_dir: str, out_dir: str) -> list:
+    """Draw every figure whose summary file exists; return the PNG paths."""
     paths = []
-    for function in functions:
+    for function, file_name in FIGURES:
+        # A missing summary file is the one thing we skip, and we say so.
+        # (We test for the file instead of catching errors, so a real
+        # mistake inside a figure is never hidden.)
+        if not os.path.isfile(os.path.join(summary_dir, file_name)):
+            print("Skipping " + function.__name__ + ": " + file_name
+                  + " not found in " + summary_dir)
+            continue
+        # Draw the figure and keep its PNG path.
         paths.append(function(summary_dir, out_dir))
     return paths
 
 
-if __name__ == "__main__":
+def main(input_dir: str = "results/summaries",
+         output_dir: str = "docs/report/figures") -> list:
+    """Draw every available figure; return every PNG and PDF path written."""
+    # The input folder must exist; a typo here should not look like "no data".
+    if not os.path.isdir(input_dir):
+        raise FileNotFoundError("Input folder not found: " + input_dir)
+
+    # Draw the figures that have data, then list the PDF next to each PNG.
+    written = []
+    for png in run_all(input_dir, output_dir):
+        written.append(png)
+        written.append(png[:-4] + ".pdf")
+    return written
+
+
+def read_options(argv: list = None):
+    """Read --input and --output (alias --out) from the command line."""
     # Find the repository root (this file lives in <root>/tools/).
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # Two settings: where to read summaries, where to write figures.
-    # Switching to real data is one change: --input results/summaries
+    # Real data is one change: --input results/summaries
     parser = argparse.ArgumentParser(description="Draw the report figures.")
     parser.add_argument("--input", default=os.path.join(root, "data", "sample_summaries"),
                         help="folder with the summary CSV files")
-    parser.add_argument("--out", default=os.path.join(root, "docs", "report", "figures"),
-                        help="folder for the PNG and PDF files")
-    args = parser.parse_args()
+    parser.add_argument("--output", "--out", dest="output",
+                        default=os.path.join(root, "docs", "report", "figures"),
+                        help="folder for the PNG and PDF files (--out also works)")
+    return parser.parse_args(argv)
+
+
+def cli(argv: list = None) -> int:
+    """Run from the command line; return the exit status (0 = success)."""
+    args = read_options(argv)
+
+    # A missing input folder is a usage error: message on stderr, status 2.
+    if not os.path.isdir(args.input):
+        print("error: input folder not found: " + args.input, file=sys.stderr)
+        return 2
 
     # Draw everything and print where each picture went.
-    for png in run_all(args.input, args.out):
-        print(png)
-        print(png[:-4] + ".pdf")
+    written = main(args.input, args.output)
+    for path in written:
+        print(path)
+
+    # Fail only when nothing at all could be drawn.
+    if len(written) == 0:
+        print("error: no figures were drawn (no summary files found in "
+              + args.input + ")", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(cli())

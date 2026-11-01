@@ -607,3 +607,139 @@ def test_run_all_includes_e5(tmp_path: Path) -> None:
     names = [Path(p).name for p in pf.run_all(SAMPLE_DIR, str(tmp_path))]
     assert names[-1] == "e5_max_wait.png"
     assert (tmp_path / "e5_max_wait.pdf").is_file()
+
+
+# ---------------------------------------------------------------------------
+# A-05: one command for every figure (main and the command line)
+# ---------------------------------------------------------------------------
+
+# Every file main must write for the sample data, listed explicitly.
+EXPECTED_FILES = [
+    "e1_avg_wait.png",
+    "e1_avg_wait.pdf",
+    "e2_max_wait.png",
+    "e2_max_wait.pdf",
+    "e2_wait_cdf.png",
+    "e2_wait_cdf.pdf",
+    "e3_wait_by_priority.png",
+    "e3_wait_by_priority.pdf",
+    "e5_max_wait.png",
+    "e5_max_wait.pdf",
+]
+
+SCRIPT = str(ROOT / "tools" / "plot_figures.py")
+
+
+def _copy_sample(tmp_path: Path, leave_out: str = "") -> str:
+    """Copy the sample CSVs into tmp_path/in, leaving out one file; return the folder."""
+    import shutil
+
+    folder = tmp_path / "in"
+    folder.mkdir()
+    for csv_file in Path(SAMPLE_DIR).glob("*.csv"):
+        if csv_file.name != leave_out:
+            shutil.copy(csv_file, folder / csv_file.name)
+    return str(folder)
+
+
+def _run_script(args: list, cwd: Path):
+    """Run the script as a command in cwd; return the finished process."""
+    import subprocess
+
+    return subprocess.run(
+        [sys.executable, SCRIPT] + args,
+        capture_output=True, text=True, cwd=str(cwd), check=False,
+    )
+
+
+def test_all_figures_sample(tmp_path: Path) -> None:
+    """main on the sample data writes every expected PNG and PDF, and returns them."""
+    out = tmp_path / "figs"
+    written = pf.main(SAMPLE_DIR, str(out))
+    assert sorted(p.name for p in out.iterdir()) == sorted(EXPECTED_FILES)
+    assert sorted(Path(p).name for p in written) == sorted(EXPECTED_FILES)
+    for name in EXPECTED_FILES:
+        assert (out / name).stat().st_size > 0
+
+
+def test_missing_summary_is_skipped_with_message(tmp_path: Path, capsys) -> None:
+    """Without e3_summary.csv: E3 skipped with a message, the other figures drawn."""
+    folder = _copy_sample(tmp_path, "e3_summary.csv")
+    out = tmp_path / "figs"
+    written = pf.main(folder, str(out))
+    text = capsys.readouterr().out
+    assert "e3_summary.csv" in text
+    assert "skipping" in text.lower()
+    names = sorted(Path(p).name for p in written)
+    expected = sorted(n for n in EXPECTED_FILES if not n.startswith("e3_"))
+    assert names == expected
+    assert sorted(p.name for p in out.iterdir()) == expected
+
+
+def test_nothing_drawn_when_every_file_missing(tmp_path: Path) -> None:
+    """An existing but empty input folder draws nothing: main returns []."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert pf.main(str(empty), str(tmp_path / "figs")) == []
+
+
+def test_other_errors_are_not_hidden(tmp_path: Path) -> None:
+    """A summary with a missing column is a real error, not a skip."""
+    folder = _copy_sample(tmp_path)
+    path = Path(folder) / "e1_summary.csv"
+    rows = pd.read_csv(path).drop(columns=["avg_wait_mean"])
+    rows.to_csv(path, index=False)
+    with pytest.raises(Exception):
+        pf.main(folder, str(tmp_path / "figs"))
+
+
+def test_missing_input_folder_raises(tmp_path: Path) -> None:
+    """An input folder that does not exist is a clear error."""
+    with pytest.raises(FileNotFoundError, match="nope"):
+        pf.main(str(tmp_path / "nope"), str(tmp_path / "figs"))
+
+
+def test_cli_output_and_out_both_work(tmp_path: Path) -> None:
+    """--output and its older alias --out write the same files."""
+    for flag in ["--output", "--out"]:
+        out = tmp_path / ("figs" + flag.strip("-"))
+        proc = _run_script(["--input", SAMPLE_DIR, flag, str(out)], tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        assert sorted(p.name for p in out.iterdir()) == sorted(EXPECTED_FILES)
+
+
+def test_cli_unknown_option_is_an_error(tmp_path: Path) -> None:
+    """An option the script does not know stops it with a non-zero status."""
+    proc = _run_script(["--bogus", "1"], tmp_path)
+    assert proc.returncode != 0
+    assert "unrecognized" in proc.stderr
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_cli_missing_input_folder_is_an_error(tmp_path: Path) -> None:
+    """A missing input folder gives a message and a non-zero status, no files."""
+    proc = _run_script(["--input", str(tmp_path / "nope"), "--output", str(tmp_path / "o")], tmp_path)
+    assert proc.returncode != 0
+    assert "nope" in proc.stderr
+    assert not (tmp_path / "o").exists()
+
+
+def test_cli_exit_status_only_fails_when_nothing_drawn(tmp_path: Path) -> None:
+    """Partial success exits 0; an empty folder exits non-zero."""
+    partial = _copy_sample(tmp_path, "e5_summary.csv")
+    ok = _run_script(["--input", partial, "--output", str(tmp_path / "a")], tmp_path)
+    assert ok.returncode == 0
+    assert "e5_summary.csv" in ok.stdout
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    bad = _run_script(["--input", str(empty), "--output", str(tmp_path / "b")], tmp_path)
+    assert bad.returncode != 0
+
+
+def test_cli_writes_only_inside_output_folder(tmp_path: Path) -> None:
+    """The working folder holds nothing new except the chosen output folder."""
+    work = tmp_path / "work"
+    work.mkdir()
+    proc = _run_script(["--input", SAMPLE_DIR, "--output", "figs"], work)
+    assert proc.returncode == 0, proc.stderr
+    assert [p.name for p in work.iterdir()] == ["figs"]
