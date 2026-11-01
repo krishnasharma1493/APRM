@@ -14,6 +14,7 @@ APRM_BINARY = "build/aprm"          # the console program, built by `make`
 RESULTS_DIR = "results"             # git-ignored output folder
 WORKLOAD_DIR = "results/workloads"  # generated jobs.csv files and sidecars
 SUMMARY_DIR = "results/summaries"   # summary CSVs (PRD section 5)
+RAW_DIR = "results/raw"             # one folder per (experiment, setting, policy, seed)
 
 # ---------------------------------------------------------------------------
 # Machine (PRD section 3 defaults) and PRD section 3 limits
@@ -116,3 +117,46 @@ E6_SEED_BASE = 1000   # instance i of size n uses seed 1000 * n + i, i = 0..49
 E6_SIZE = {"p": 1.0, "duration": (1, 10), "cpu": (2, 10), "mem": (4096, 20480)}
 # One class, sized so that two to three jobs fit at once and the order matters.
 E6_POLICIES = E1_POLICIES  # all implemented policies, as in PRD section 5
+
+# ---------------------------------------------------------------------------
+# Experiment grid for the runner (K-15): setting folder names and policies.
+# ---------------------------------------------------------------------------
+QUICK_SEEDS = 2        # --quick: the first 2 seeds of every setting (CI smoke run)
+RUN_TIMEOUT_S = 600    # one console-program run; 300 jobs take milliseconds, so
+                       # this only stops a hang
+E4_SETTINGS = [f"alpha_{a}" for a in E4_ALPHA_MILLI]  # folder names; alpha is passed as --alpha-milli
+EXPERIMENT_SETTINGS = {
+    "E1": LOAD_ORDER,
+    "E2": LOAD_ORDER,
+    "E3": PRIORITY_MIX_ORDER,
+    "E4": E4_SETTINGS,
+    "E5": [str(p) for p in E5_BIGMEM_PCT],
+    "E6": [str(n) for n in E6_JOB_COUNTS],
+}
+EXPERIMENT_POLICIES = {
+    "E1": E1_POLICIES,
+    "E2": E1_POLICIES,
+    "E3": E3_POLICIES,
+    "E4": E4_POLICIES,
+    "E5": E5_POLICIES,
+    "E6": E6_POLICIES,
+}
+
+
+def summary_label(experiment: str, setting: str) -> str:
+    """Map a raw-folder setting name to the PRD section 5 summary `setting` label.
+
+    E1, E2, E3: the name itself (light, uniform, ...).  E4 `alpha_<n>` ->
+    `alpha_milli=<n>`; E5 `<n>` -> `big_mem_pct=<n>`; E6 `<n>` -> `n_jobs=<n>`.
+    Raises ValueError for an unknown experiment or setting.
+    """
+    exp = experiment.upper()
+    if exp not in EXPERIMENT_SETTINGS or setting not in EXPERIMENT_SETTINGS[exp]:
+        raise ValueError(f"unknown setting {setting!r} for {experiment!r}")
+    if exp == "E4":
+        return "alpha_milli=" + setting.split("_", 1)[1]
+    if exp == "E5":
+        return "big_mem_pct=" + setting
+    if exp == "E6":
+        return "n_jobs=" + setting
+    return setting

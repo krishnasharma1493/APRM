@@ -59,6 +59,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - name: Build the console program (the K-15 tests run build/aprm)
+        run: make
       - name: Create venv and install requirements
         run: |
           python -m venv .venv
@@ -67,7 +69,7 @@ jobs:
         run: |
           # pytest exit code 5 means "no tests collected": treated as a pass until tests exist.
           set +e
-          .venv/bin/python -m pytest tests/py
+          .venv/bin/python -m pytest tests/py -v -rs
           code=$?
           if [ "$code" -eq 5 ]; then echo "no tests collected (exit 5): treated as pass"; exit 0; fi
           exit "$code"
