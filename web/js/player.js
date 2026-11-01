@@ -81,9 +81,20 @@
   }
 
   /* "field: message" the way the editor shows engine errors. */
+  var SETTING_FIELDS = ['alpha_milli', 'reserve_threshold', 'knapsack_eps'];
+
+  /* A setting is wrong: open More settings, where it can be fixed, and say so before the engine's sentence. */
+  function settingsWords(sentence) {
+    var more = byId('run-more');
+    if (more) { more.open = true; }
+    return copyText('run.error.settings', '', { why: sentence }) || sentence;
+  }
+
   function errorMessage(err) {
     var m = err && err.message ? err.message : String(err);
-    return err && err.field ? err.field + ': ' + m : m;
+    if (err && SETTING_FIELDS.indexOf(err.field) >= 0) { return settingsWords(m); }
+    /* The engine's sentence usually starts with the field already: do not say it twice. */
+    return err && err.field && m.indexOf(err.field) !== 0 ? err.field + ': ' + m : m;
   }
 
   /* ---------- handle management ---------- */
@@ -658,7 +669,7 @@
 
   function onStart() {
     var bad = readSettings();
-    if (bad) { showMessage('run-error', bad); return; }
+    if (bad) { showMessage('run-error', settingsWords(bad)); return; }
     start();
   }
 

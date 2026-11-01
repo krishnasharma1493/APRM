@@ -218,7 +218,7 @@ test('engine error on create is shown next to the Run button, nothing leaks', ()
   p.fe.failCreate = true;
   assert.equal(p.A.player.start(), false);
   assert.equal(p.A.player.snapshot().status, 'error');
-  assert.equal(p.doc.byId['run-error'].textContent, 'cpu: cpu must be 1 to 1000000.');
+  assert.equal(p.doc.byId['run-error'].textContent, 'cpu must be 1 to 1000000.');
   assert.equal(p.doc.byId['run-error'].hidden, false);
   assert.equal(p.fe.live.size, 0);
 });
@@ -442,6 +442,20 @@ test('run page: the resource strip and the settings line show the engine numbers
   assert.equal(p.doc.byId['res-mem-text'].textContent, want('mem', st.cap.mem - st.free.mem));
   const s = p.A.store.get().settings;
   assert.equal(p.doc.byId['run-settings-summary'].textContent, 'Settings: \u03b1 = ' + s.alphaMilli + ', T = ' + s.threshold + ', \u03b5 = ' + s.eps);
+});
+
+test('a bad setting names the problem once and opens More settings', () => {
+  const p = ready({ totalSteps: 10 });
+  p.doc.byId['run-alpha'].value = 'abc';
+  p.doc.byId['run-start'].click();
+  assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be a whole number.');
+  assert.equal(p.doc.byId['run-more'].open, true);
+  p.doc.byId['run-alpha'].value = '100';
+  p.A.wasm.create = () => { const e = new Error('alpha_milli must be 0 to 10000.'); e.field = 'alpha_milli'; throw e; };
+  p.doc.byId['run-more'].open = false;
+  p.doc.byId['run-start'].click();
+  assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be 0 to 10000.');
+  assert.equal(p.doc.byId['run-more'].open, true);
 });
 
 test('a new job list or machine ends the old run, so Run never shows a stale board', () => {

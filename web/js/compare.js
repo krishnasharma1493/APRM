@@ -130,7 +130,7 @@
 
   function errorMessage(err) {
     var m = err && err.message ? err.message : String(err);
-    return err && err.field ? err.field + ': ' + m : m;
+    return err && err.field && m.indexOf(err.field) !== 0 ? err.field + ': ' + m : m;
   }
 
   /* Words from copy.js, with a fallback when copy.js is not loaded. */

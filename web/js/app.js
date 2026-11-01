@@ -33,7 +33,7 @@
   function showError(target, err) {
     clear(target);
     var text = err && err.message ? err.message : String(err);
-    if (err && err.field) { text = err.field + ': ' + text; }
+    if (err && err.field && text.indexOf(err.field) !== 0) { text = err.field + ': ' + text; }
     target.textContent = text;
     target.hidden = false;
     target.setAttribute('role', 'alert');
