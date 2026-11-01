@@ -32,7 +32,11 @@ done
 $CC $FLAGS $RENAME -c "$H/oom_inject.c" -o "$B/oom/oom_inject.o"
 $CC -std=c11 -g $SAN -c "$H/fi_alloc.c" -o "$B/oom/fi_alloc.o"
 $CC $SAN "$B"/oom/*.o -o "$B/oom_inject"
-"$B/oom_inject" | tail -3
+# Output goes to a file first: a pipe into tail would hide a crash (no pipefail in sh).
+if ! "$B/oom_inject" > "$B/oom_inject.log" 2>&1; then
+  tail -30 "$B/oom_inject.log"; echo "hardening: oom_inject FAILED"; exit 1
+fi
+tail -3 "$B/oom_inject.log"
 
 # 3. stress: every eventlog_push inside core/ must succeed (checked by a wrapper)
 for f in core/*.c; do
