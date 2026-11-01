@@ -24,7 +24,7 @@ const WIDTH = widthAt > 0 ? Number(process.argv[widthAt + 1]) : 1440;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PRESETS = ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case'];
-const SCHEDULERS = ['fcfs', 'priority', 'sjf', 'aging', 'aging_reserve'];
+const SCHEDULERS = ['fcfs', 'priority', 'sjf', 'aging', 'aging_reserve', 'knapsack'];
 
 const profile = mkdtempSync(join(tmpdir(), 'aprm-matrix-'));
 const port = 9100 + Math.floor(Math.random() * 150);
@@ -144,8 +144,8 @@ async function main() {
       });
     }
   }
-  await row('Run', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120, PR #95', async () => { await load(); return ev(`document.querySelector('#run-policy option[value="knapsack"]').disabled`); });
-  await row('Compare', 'Knapsack option', 'open the list', 'Greyed out until K-34 lands', 'PR #120, PR #95', async () => ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`));
+  await row('Run', 'Knapsack option', 'open the list', 'Can be chosen', 'K-34, PR #95', async () => { await load(); return (await ev(`document.querySelector('#run-policy option[value="knapsack"]').disabled`)) === false; });
+  await row('Compare', 'Knapsack option', 'open the list', 'Can be ticked', 'K-34, PR #95', async () => (await ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`)) === false);
 
   // --- Run controls in order
   await load(); await preset('heavy_load'); await step('run');
@@ -169,7 +169,7 @@ async function main() {
   await row('Run', 'Step', 'from the first screen', 'Starts and takes one event', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-step'); return (await snap('events')) === 1; });
   await row('Run', 'Space', 'from the first screen', 'Starts and plays', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await ev(`document.activeElement.blur(); true`); await key(' ', 'Space', 32); return ['playing', 'finished'].includes(await snap('status')); });
   await row('Run', 'New example', 'loaded while a run exists', 'Old run ends; no stale board', 'K-50 #122', async () => { await load(); await preset('tiny_case'); await step('run'); await click('run-start'); await click('run-step'); await step('build'); await preset('big_job_trap'); await step('run'); return (await snap('status')) === 'idle' && !(await hidden('canvas-empty')); });
-  for (const [id, value, good, why] of [['run-alpha', '99999', '100', /alpha_milli must be 0 to 10000/], ['run-alpha', 'abc', '100', /whole number/], ['run-threshold', '-1', '50', /reserve_threshold must be/], ['run-eps', '5', '0.1', /knapsack_eps must be/]]) {
+  for (const [id, value, good, why] of [['run-alpha', '99999', '100', /alpha_milli must be 0 to 10000/], ['run-alpha', 'abc', '100', /whole number/], ['run-threshold', '-1', '50', /reserve_threshold must be/], ['run-eps', '5', '0.1', /epsilon must be 0\.01 to 1/], ['run-eps', '0.1234', '0.1', /at most 3 decimals/]]) {
     await row('Run', 'More settings', id + ' = ' + value, 'Plain message; More settings opens; Run works after fixing it', 'PRD 3, K-50 #124', async () => {
       await load(); await preset('tiny_case'); await step('run');
       await ev(`document.getElementById('${id}').value = '${value}'; true`); await click('run-start');
@@ -210,12 +210,12 @@ async function main() {
 
   // --- Compare
   for (const p of PRESETS) {
-    await row('Compare', 'All five schedulers', p, 'Table, boards, verdict or tie, exact line', 'BLUEPRINT 5', async () => {
+    await row('Compare', 'All six schedulers', p, 'Table, boards, verdict or tie, exact line', 'BLUEPRINT 5', async () => {
       await load(); await preset(p); await step('compare');
       await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
       if (!(await waitFor(`APRM.compare.snapshot().status === 'done'`))) { return [false, 'not done']; }
       const n = await ev(`document.querySelectorAll('#compare-body tr').length`), b = await ev(`document.querySelectorAll('#compare-timelines canvas').length`);
-      return [n === 5 && b === 5 && (await text('compare-exact')).length > 0, (await text('compare-verdict')) + ' ' + (await text('compare-exact'))];
+      return [n === 6 && b === 6 && (await text('compare-exact')).length > 0, (await text('compare-verdict')) + ' ' + (await text('compare-exact'))];
     });
   }
   await row('Compare', 'Charts disclosure', 'open', 'Four charts drawn from the bundled library', 'PRD 8', async () => { await ev(`document.querySelector('.compare-more summary').click(); true`); await sleep(150); return (await ev(`APRM.compare.chartState()`)) === 'loaded' && (await ev(`document.querySelectorAll('#compare-charts canvas').length`)) === 4; });
@@ -225,7 +225,7 @@ async function main() {
     await row('Build', 'Share', 'copy link, open it', 'Same case loads', 'BLUEPRINT 5', async () => { await load(); await preset('tiny_case'); await ev(`document.querySelector('#more-ways').open = true; true`); await click('share-copy'); const link = await ev(`document.getElementById('share-link').value`); const h = link.slice(link.indexOf('#')); await load(h); return (await ev(`APRM.store.get().jobs.length`)) === 8; });
     await row('Build', 'URL hash', 'corrupt', 'Plain message, page works', 'PRD 8', async () => { await load('#aprm1=!!!!'); return [!(await hidden('share-error')), await text('share-error')]; });
     await row('Build', 'URL hash', 'oversized', 'Refused as too long', 'PRD 8', async () => { await load('#aprm1=' + 'A'.repeat(20000)); return [/too long/.test(await text('share-error')), (await text('share-error')).slice(0, 80)]; });
-    await row('Build', 'URL hash', 'names knapsack', 'Falls back; Run still works', 'PR #98', async () => { await load(); const h = await ev(`APRM.share.encode({ machine: { cpu: 4, mem: 1024 }, settings: { alphaMilli: 100, threshold: 50, eps: 0.1 }, policies: ['knapsack'], jobs: [{ id: 1, arrival: 0, duration: 1, cpu: 1, mem: 1, priority: 1 }] }).hash`); await load(h); await step('run'); await click('run-start'); await click('run-jump'); return finished(); });
+    await row('Build', 'URL hash', 'names knapsack', 'Knapsack kept; Run works', 'PR #98, K-34', async () => { await load(); const h = await ev(`APRM.share.encode({ machine: { cpu: 4, mem: 1024 }, settings: { alphaMilli: 100, threshold: 50, eps: 0.1 }, policies: ['knapsack'], jobs: [{ id: 1, arrival: 0, duration: 1, cpu: 1, mem: 1, priority: 1 }] }).hash`); await load(h); await step('run'); await click('run-start'); await click('run-jump'); await finished(); return ev(`APRM.store.get().policies.indexOf('knapsack') !== -1 && document.getElementById('run-policy').value === 'knapsack'`); });
   }
 
   // --- The website against the console program, row by row
@@ -236,13 +236,14 @@ async function main() {
     for (const p of PRESETS) {
       await load(); await preset(p); await step('compare');
       const cfg = await ev(`JSON.stringify(APRM.presets.find('${p}'))`); const c = JSON.parse(cfg);
+      const eps = await ev(`APRM.store.get().settings.eps`);
       await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
       await waitFor(`APRM.compare.snapshot().status === 'done'`);
       const cols = JSON.parse(await ev(`JSON.stringify(APRM.compare.snapshot().columns)`));
       for (const col of cols) {
         await row('Engine', 'Website = console program', col.policy + ' on ' + p, 'Every job: same start and finish; same makespan', 'K-50 step 4', async () => {
           const csv = join(profile, p + '-' + col.policy + '.csv');
-          const r = spawnSync(aprm, ['--policy', col.policy === 'aging_reserve' ? 'reserve' : col.policy, '--in', join(root, 'data', 'presets', p + '.csv'), '--out', csv, '--cpu', String(c.cpu_cap), '--mem', String(c.mem_cap), '--alpha-milli', String(c.alpha_milli), '--threshold', String(c.threshold)], { encoding: 'utf8' });
+          const r = spawnSync(aprm, ['--policy', col.policy === 'aging_reserve' ? 'reserve' : col.policy, '--in', join(root, 'data', 'presets', p + '.csv'), '--out', csv, '--cpu', String(c.cpu_cap), '--mem', String(c.mem_cap), '--alpha-milli', String(c.alpha_milli), '--threshold', String(c.threshold), '--eps', String(eps)], { encoding: 'utf8' });
           if (r.status !== 0) { return [false, 'console program: ' + r.stderr]; }
           const lines = readFileSync(csv, 'utf8').trim().split('\n').slice(1).map((l) => l.split(',').map(Number));
           const web = {}; for (const w of col.rows) { web[w.id] = w; }
