@@ -137,3 +137,16 @@ html[data-details="off"] .detail-only { display: none; }
 .dock input[type="range"] { width: 8rem; }
 .why-list li::before { content: attr(data-kind-label); font-weight: 600; color: var(--accent); margin-right: var(--s-2); }
 html[data-details="on"] .why-list li::after { content: " [" attr(data-kind) "]"; color: var(--muted); font-size: var(--fs-caption); }
+
+/* Compare page */
+.compare-setup { margin-top: var(--s-3); }
+.compare-policies { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-6); margin: var(--s-2) 0; }
+.compare-policies label { display: inline-flex; align-items: center; gap: var(--s-1); }
+.verdict { font-size: var(--fs-section); line-height: var(--lh-section); letter-spacing: var(--ls-section); font-weight: var(--fw-section); margin: var(--s-4) 0; max-width: 46rem; }
+td.best { font-weight: 650; color: var(--accent); }
+td.best::after { content: " " attr(data-best); font-size: var(--fs-caption); font-weight: 600; letter-spacing: var(--ls-caption); }
+.compare-table td { text-align: right; }
+.compare-fig figcaption { color: var(--muted); font-size: var(--fs-caption); margin-bottom: var(--s-1); }
+
+/* The page rules in style.css style every button inside a panel; the primary button must still win. */
+.panel .btn-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }

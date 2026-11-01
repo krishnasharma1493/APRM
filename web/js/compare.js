@@ -132,9 +132,21 @@
     return err && err.field ? err.field + ': ' + m : m;
   }
 
+  /* Words from copy.js, with a fallback when copy.js is not loaded. */
+  function words(key, fallback, vars) {
+    var C = APRM.copy;
+    if (!C || !C.has(key)) { return fallback; }
+    return vars ? C.fill(key, vars) : C.get(key);
+  }
+
+  /* Short plain name with the technical term beside it, for table rows, timelines and charts. */
   function labelOf(name) {
-    for (var i = 0; i < POLICIES.length; i++) { if (POLICIES[i].name === name) { return POLICIES[i].label; } }
-    return name;
+    return words('short.' + name, name);
+  }
+
+  /* The longer plain name used in the picker. */
+  function pickerLabel(p) {
+    return words('policy.' + p.name, p.label) + (p.available ? '' : words('policy.knapsack.soon', ' (not implemented yet)'));
   }
 
   /* ---------- handles ---------- */
@@ -215,13 +227,13 @@
     var st = APRM.store.get();
     if (st.jobs.length === 0) {
       status = 'idle';
-      errorText = 'There are no jobs. Add some in Build mode first.';
+      errorText = words('compare.error.nojobs', 'There are no jobs. Add some in Build mode first.');
       render();
       return false;
     }
     if (selected.length < MIN_POLICIES) {
       status = 'idle';
-      errorText = 'Tick at least two schedulers to compare.';
+      errorText = words('compare.error.pick', 'Tick at least two schedulers to compare.');
       render();
       return false;
     }
@@ -279,6 +291,46 @@
     if (allDone) { finish(); } else { renderStatus(); scheduleSlice(t); }
   }
 
+  var EXACT_MAX_JOBS = 9;
+
+  /* The exact solver's answer for the same jobs: {totalWait} on success, {tooBig: true} above 9
+   * jobs, {error: text} if the engine refused. The exact solver minimises total wait (PRD section 5).
+   * Called before the handles are destroyed. Never throws. */
+  function readExact(handle, nJobs) {
+    if (nJobs > EXACT_MAX_JOBS) { return { tooBig: true }; }
+    try {
+      var r = APRM.wasm.exact(handle);
+      if (r && typeof r.total_wait === 'number') { return { totalWait: r.total_wait }; }
+      return { error: 'no answer' };
+    } catch (e) {
+      return { error: errorMessage(e) };
+    }
+  }
+
+  /* Total wait of one column: the sum of (start - arrival) over the engine's result rows. O(rows). */
+  function totalWait(col) {
+    var arrival = {};
+    for (var i = 0; i < model.jobs.length; i++) { arrival[model.jobs[i].id] = model.jobs[i].arrival; }
+    var sum = 0;
+    for (var k = 0; k < col.rows.length; k++) { sum += col.rows[k].start - arrival[col.rows[k].id]; }
+    return sum;
+  }
+
+  /* The exact line: the best possible total wait and how far each scheduler is above it. */
+  function exactText() {
+    var ex = model ? model.exact : null;
+    if (!ex) { return ''; }
+    if (ex.tooBig) { return words('compare.exact.big', 'The exact best order is only worked out for 9 jobs or fewer.'); }
+    if (ex.error) { return words('compare.exact.failed', 'The exact best order could not be worked out: ' + ex.error, { why: ex.error }); }
+    var out = words('compare.exact.line', 'Exact best order: total wait ' + ex.totalWait + '.', { t: ex.totalWait });
+    for (var c = 0; c < model.columns.length; c++) {
+      var d = totalWait(model.columns[c]) - ex.totalWait;
+      var nm = labelOf(model.columns[c].policy);
+      out += ' ' + (d === 0 ? words('compare.exact.same', nm + ' matches it.', { name: nm }) : words('compare.exact.gap', nm + ' is ' + d + ' above it.', { name: nm, d: d }));
+    }
+    return out;
+  }
+
   /* Read every answer, then destroy every handle (always). */
   function finish() {
     var columns = [];
@@ -294,6 +346,7 @@
       fail(err);
       return;
     }
+    model.exact = readExact(columns.length > 0 ? runs[0].handle : 0, model.jobs.length);
     destroyAll();
     model.columns = columns;
     model.tmax = tmax;
@@ -315,6 +368,42 @@
     return c;
   }
 
+  /* Lower is better for waits, turnaround, weighted completion and makespan; higher for utilization. */
+  var HIGHER_IS_BETTER = { util_cpu: true, util_mem: true };
+
+  /* True when value v is the best of that metric among the columns, and the columns differ.
+   * The word "Best" is shown by CSS from data-best, so the cell text stays the engine's number. O(columns). */
+  function isBest(key, v) {
+    if (typeof v !== 'number' || model === null) { return false; }
+    var vals = [];
+    for (var i = 0; i < model.columns.length; i++) {
+      var x = model.columns[i].metrics[key];
+      if (typeof x === 'number') { vals.push(x); }
+    }
+    if (vals.length < 2) { return false; }
+    var best = HIGHER_IS_BETTER[key] ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
+    var worst = HIGHER_IS_BETTER[key] ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+    return best !== worst && v === best;
+  }
+
+  /* One or two sentences from the makespans the engine reported: who finished first and how much
+   * longer the slowest took. Names only; no scheduling happens here. Returns '' when no run finished anything. */
+  function verdictText() {
+    var cols = model ? model.columns : [];
+    var ok = cols.filter(function (c) { return typeof c.metrics.makespan === 'number'; });
+    if (ok.length < 2) { return ''; }
+    var best = Math.min.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
+    var worst = Math.max.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
+    var winners = ok.filter(function (c) { return c.metrics.makespan === best; });
+    var names = winners.map(function (c) { return labelOf(c.policy); });
+    var line;
+    if (winners.length === ok.length) { return words('compare.verdict.tie', names.join(', ') + ' tied at tick ' + best + '.', { names: names.join(' and '), t: best }); }
+    if (winners.length === 1) { line = words('compare.verdict.best', names[0] + ' finished first, at tick ' + best + '.', { name: names[0], t: best }); }
+    else { line = words('compare.verdict.tie', names.join(', ') + ' tied for first at tick ' + best + '.', { names: names.join(' and '), t: best }); }
+    var slow = ok.filter(function (c) { return c.metrics.makespan === worst; })[0];
+    return line + ' ' + words('compare.verdict.later', labelOf(slow.policy) + ' took ' + (worst - best) + ' ticks longer.', { name: labelOf(slow.policy), d: worst - best });
+  }
+
   /* The metrics table: one row per policy. Always drawn when a run is done. */
   function drawTable() {
     var body = byId('compare-body');
@@ -326,8 +415,8 @@
     if (wrap) { wrap.hidden = !show; }
     if (!show) { return; }
     var hr = document.createElement('tr');
-    hr.appendChild(cell('th', 'Scheduler'));
-    for (var m = 0; m < METRIC_COLUMNS.length; m++) { hr.appendChild(cell('th', METRIC_COLUMNS[m][1])); }
+    hr.appendChild(cell('th', words('compare.col.scheduler', 'Scheduler')));
+    for (var m = 0; m < METRIC_COLUMNS.length; m++) { hr.appendChild(cell('th', words('metric.' + METRIC_COLUMNS[m][0], METRIC_COLUMNS[m][1]))); }
     head.appendChild(hr);
     for (var c = 0; c < model.columns.length; c++) {
       var col = model.columns[c];
@@ -336,7 +425,12 @@
       tr.appendChild(cell('th', labelOf(col.policy)));
       for (var k = 0; k < METRIC_COLUMNS.length; k++) {
         var v = col.metrics[METRIC_COLUMNS[k][0]];
-        tr.appendChild(cell('td', metricText(v), (v === null || v === undefined) ? 'na' : ''));
+        var td = cell('td', metricText(v), (v === null || v === undefined) ? 'na' : '');
+        if (isBest(METRIC_COLUMNS[k][0], v)) {
+          td.setAttribute('data-best', words('compare.best', 'Best'));
+          td.setAttribute('class', (td.getAttribute('class') ? td.getAttribute('class') + ' ' : '') + 'best');
+        }
+        tr.appendChild(td);
       }
       body.appendChild(tr);
     }
@@ -401,14 +495,14 @@
       var fig = document.createElement('figure');
       fig.setAttribute('class', 'compare-fig');
       var cap = document.createElement('figcaption');
-      cap.textContent = labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')';
+      cap.textContent = words('compare.timeline.cap', labelOf(col.policy) + ' (makespan ' + metricText(col.metrics.makespan) + ')', { name: labelOf(col.policy), t: metricText(col.metrics.makespan) });
       var cv = document.createElement('canvas');
       cv.setAttribute('width', '420');
       cv.width = 420;
       cv.height = 240;
       cv.setAttribute('height', '240');
       cv.setAttribute('role', 'img');
-      cv.setAttribute('aria-label', 'Timeline of every job under ' + labelOf(col.policy));
+      cv.setAttribute('aria-label', words('compare.timeline.aria', 'Timeline of every job under ' + labelOf(col.policy), { name: labelOf(col.policy) }));
       fig.appendChild(cap);
       fig.appendChild(cv);
       box.appendChild(fig);
@@ -425,12 +519,12 @@
     if (!box || !note) { return; }
     if (status !== 'done' || model === null) { note.hidden = true; return; }
     if (typeof window.Chart !== 'function' && chartLoad === 'loading') {
-      note.textContent = 'Chart.js is still loading. The table above has the numbers; the charts appear when it arrives.';
+      note.textContent = words('compare.chart.loading', 'Chart.js is still loading. The table above has the numbers; the charts appear when it arrives.');
       note.hidden = false;
       return;
     }
     if (typeof window.Chart !== 'function') {
-      note.textContent = 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.';
+      note.textContent = words('compare.chart.failed', 'Charts are unavailable because Chart.js could not be loaded (no network, or the file was blocked). The table above has the same numbers.');
       note.hidden = false;
       return;
     }
@@ -440,12 +534,12 @@
       for (var m = 0; m < CHART_METRICS.length; m++) {
         var key = CHART_METRICS[m];
         var title = '';
-        for (var t = 0; t < METRIC_COLUMNS.length; t++) { if (METRIC_COLUMNS[t][0] === key) { title = METRIC_COLUMNS[t][1]; } }
+        for (var t = 0; t < METRIC_COLUMNS.length; t++) { if (METRIC_COLUMNS[t][0] === key) { title = words('metric.' + key, METRIC_COLUMNS[t][1]); } }
         var holder = document.createElement('div');
         holder.setAttribute('class', 'compare-chart');
         var cv = document.createElement('canvas');
         cv.setAttribute('role', 'img');
-        cv.setAttribute('aria-label', 'Bar chart of ' + title + ' per scheduler');
+        cv.setAttribute('aria-label', words('compare.chart.aria', 'Bar chart of ' + title + ' per scheduler', { title: title }));
         holder.appendChild(cv);
         box.appendChild(holder);
         var data = model.columns.map(function (c) { var v = c.metrics[key]; return (typeof v === 'number') ? v : null; });
@@ -466,21 +560,21 @@
     } catch (e) {
       destroyCharts();
       clear(box);
-      note.textContent = 'Charts could not be drawn (' + (e && e.message ? e.message : 'unknown problem') + '). The table above has the same numbers.';
+      note.textContent = words('compare.chart.error', 'Charts could not be drawn. The table above has the same numbers.', { why: (e && e.message ? e.message : 'unknown problem') });
       note.hidden = false;
     }
   }
 
   function renderStatus() {
-    var line = 'Idle. Tick two or more schedulers and press Compare.';
+    var line = words('compare.status.idle', 'Idle. Tick two or more schedulers and press Compare.');
     if (status === 'running') {
       var events = 0;
       for (var i = 0; i < runs.length; i++) { events += runs[i].events; }
-      line = 'Running ' + runs.length + ' schedulers on the same jobs: ' + events + ' events so far.';
+      line = words('compare.status.running', 'Running ' + runs.length + ' schedulers: ' + events + ' events so far.', { n: runs.length, events: events });
     } else if (status === 'done') {
-      line = 'Done: ' + model.columns.length + ' schedulers on ' + model.jobs.length + ' jobs.' + (stale ? ' The jobs or settings changed since; press Compare again.' : '');
+      line = words('compare.status.done', 'Done.', { n: model.columns.length, jobs: model.jobs.length }) + (stale ? words('compare.status.stale', ' The jobs or settings changed since; press Compare again.') : '');
     } else if (status === 'error') {
-      line = 'The comparison stopped.';
+      line = words('compare.status.error', 'The comparison stopped.');
     }
     text('compare-status', line);
   }
@@ -502,7 +596,13 @@
     var exact = byId('compare-exact');
     if (exact) {
       exact.hidden = status !== 'done';
-      exact.textContent = 'Exact optimum (9 jobs or fewer): not available yet. This row is added by a later issue (K-33); no value is shown rather than a made-up one.';
+      exact.textContent = status === 'done' ? exactText() : '';
+    }
+    var verdict = byId('compare-verdict');
+    if (verdict) {
+      var v = status === 'done' ? verdictText() : '';
+      verdict.textContent = v;
+      verdict.hidden = v === '';
     }
     updateButtons();
   }
@@ -533,7 +633,7 @@
           });
         }
         label.appendChild(input);
-        label.appendChild(document.createTextNode(' ' + p.label));
+        label.appendChild(document.createTextNode(' ' + pickerLabel(p)));
         box.appendChild(label);
       });
     }

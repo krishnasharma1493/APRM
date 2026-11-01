@@ -119,9 +119,9 @@ try {
   const note = (await ev(`document.getElementById('compare-chart-note').hidden`)) ? '(hidden)' : await ev(`__h.text('compare-chart-note')`);
   const chartState = await ev(`APRM.compare.chartState()`);
   console.log('     chart state: ' + chartState + '; note: ' + note);
-  check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not be loaded|unavailable/i.test(note || '')), chartState);
-  if (offline) { check('offline: Chart.js did not load, table fallback message shown', chartState === 'failed' && /Charts are unavailable/.test(note || '')); }
-  check('row 4: exact-optimum row says not available yet (K-33 not built)', /not available yet/.test(await ev(`__h.text('compare-exact')`)));
+  check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
+  if (offline) { check('offline: Chart.js did not load, table fallback message shown', chartState === 'failed' && /could not load/.test(note || '')); }
+  check('row 4: exact-optimum row shows the exact best order', /Exact best order/.test(await ev(`__h.text('compare-exact')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log
   await ev(`__h.loadPreset('memory_hog'); true`);
