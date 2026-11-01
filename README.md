@@ -128,7 +128,7 @@ Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Input and o
 
 **Website**
 
-Run `make wasm`, then double-click `web/index.html` (or open it from your browser with File > Open). It works offline from the folder; no server is needed. The page shows "Engine ready" when the engine loaded.
+Run `make wasm && make web`, then double-click `web/dist/index.html` (or open it from your browser with File > Open). It is one file with everything inside, so it works offline and needs no server. The page shows "Engine ready" when the engine loaded.
 
 **Optional: GitHub Pages copy**
 
