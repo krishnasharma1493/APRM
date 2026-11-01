@@ -21,8 +21,8 @@ Everything else in CLAUDE.md still applies: hard rules, coding standards, the ve
 ## Skills, plugins and tools
 
 - Before starting, list the skills, plugins, MCP servers and subagent types available to you, and use any that fit a task (for example a GitHub integration, a C or testing skill, a frontend design skill).
-- If a task would clearly benefit from a skill or plugin that is not installed, you may install it only from Anthropic's official sources or a well-known official marketplace. Never install unverified third-party plugins or anything that asks for credentials. Log every installation in docs/PROGRESS.md.
-- You may create project subagents in .claude/agents/ (commit them), for example:
+- If a task would clearly benefit from a skill or plugin that is not installed, you may install it only from the tool vendor's official sources or a well-known official marketplace. Never install unverified third-party plugins or anything that asks for credentials. Log every installation in docs/PROGRESS.md.
+- You may create project subagents in the assistant's project agents folder (commit them), for example:
   - c-implementer: C11 core work following PRD §5, §6 and BLUEPRINT §3;
   - web-implementer: classic scripts on window.APRM, PRD §7–§8;
   - python-implementer: tools/ and tests/py/;
@@ -35,7 +35,7 @@ Before each round, run `gh issue list --state open` and read docs/PROGRESS.md (c
 
 Eligible issues:
 1. Krishna's issues (K-xx) whose dependencies are all closed, in backlog order.
-2. An Ahaana issue (A-xx) is eligible ONLY if an eligible or upcoming K-xx issue depends on it. Note in its PR: "Done by Claude Code because it blocked K-xx."
+2. An Ahaana issue (A-xx) is eligible ONLY if an eligible or upcoming K-xx issue depends on it. Note in its PR: "Done by the assistant because it blocked K-xx."
 3. Never take an Ahaana issue that blocks nothing of Krishna's. Leave it open for her.
 4. Skip the Gate tracker issues. When all issues in a gate are closed, tick the tracker's boxes, run the gate check from the milestone description, close the tracker and push the tag gate-N.
 5. Stay in the earliest gate that still has eligible work. Move to a later gate only when everything left in the earlier gate is blocked or skipped.
@@ -108,7 +108,7 @@ Golden cases: write them as the issue says, mark
 
 ## Orchestrator notes (not part of the original text)
 
-- Commit messages and PR bodies carry no Claude co-author or "Generated with" lines. Krishna's standing rule (2026-10-31) overrides any default attribution.
+- Commit messages and PR bodies carry no AI tool name, co-author trailer or "Generated with" line. Krishna's standing rule: no AI name anywhere in the repo.
 - The cut-off sentence is not guessed. Until Krishna supplies the rest, a golden case is written as its issue says but is never merged without Ahaana's recorded paper check; its PR stays a draft labelled `needs-krishna`.
 
 ---
@@ -117,7 +117,7 @@ Golden cases: write them as the issue says, mark
 
 Scope: do EVERY open issue in backlog and gate order, including Ahaana's (A-xx) issues. Use parallel subagents in worktrees as described above.
 
-**Ahaana's issues (A-xx):** write the code as the issue's section 12 says (simple Python, pandas and matplotlib only, short functions, a comment on every block, reading only summary CSVs). Add the label `done-by-claude`. For each, add a section to `docs/AHAANA_GUIDE.md` that teaches the code: what each function does, how to run it, how to read each figure, and 3 small exercises. Leave her as owner.
+**Ahaana's issues (A-xx):** write the code as the issue's section 12 says (simple Python, pandas and matplotlib only, short functions, a comment on every block, reading only summary CSVs). Add the label `done-by-assistant`. For each, add a section to `docs/AHAANA_GUIDE.md` that teaches the code: what each function does, how to run it, how to read each figure, and 3 small exercises. Leave her as owner.
 
 **Special issues:** K-18: try to resolve it (emsdk installs without sudo; verify versions from official sources); if something truly needs a human, do every other part and list the exact commands under "Needs Krishna" in docs/PROGRESS.md. K-31: simulate a fresh clone in a temp folder following only the README; record steps, time and problems; fix the README. K-32: do everything except recording (checklist, `docs/DEMO_SCRIPT.md`, offline check), leave the recording under "Needs Krishna" and keep the issue open with a comment. Golden cases stay marked "awaiting Ahaana's paper check"; that does not block merging.
 
@@ -142,6 +142,6 @@ On stopping: write the reason on the first line of `docs/PROGRESS.md`; for condi
 ### Merge conditions (clarified by Krishna, 2026-11-01)
 
 - The only issue allowed to change PRD §5 is K-18 (contract freeze). Any later change needs Krishna.
-- `a/*` PRs auto-merge under the same conditions as `k/*` PRs: reviewer subagent approval plus green checks. Keep the `done-by-claude` label and the `docs/AHAANA_GUIDE.md` section.
+- `a/*` PRs auto-merge under the same conditions as `k/*` PRs: reviewer subagent approval plus green checks. Keep the `done-by-assistant` label and the `docs/AHAANA_GUIDE.md` section.
 - Avoid stacking on unmerged PRs. Merge first, then branch from the updated main, unless waiting would leave every subagent idle. When a stacked branch's base merges, merge main into the branch (or rebase), re-run its checks, then continue.
 - Do not delete a base branch while another PR is stacked on it; retarget the dependent PR to main first (GitHub closes PRs whose base branch is deleted).

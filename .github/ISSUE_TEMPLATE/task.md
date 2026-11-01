@@ -58,7 +58,7 @@ The idea, invariants, time and space complexity, why this design over alternativ
 ## 11. Pitfalls
 -
 
-## 12. Claude Code prompt
+## 12. Assistant prompt
 ```
 Read CLAUDE.md, then this issue (#<number>) in full.
 ```
@@ -70,4 +70,4 @@ Read CLAUDE.md, then this issue (#<number>) in full.
 - [ ] No new compiler warnings
 - [ ] PR filled in from the template, with the plain-English explanation
 - [ ] docs/AI_USE.md updated
-- [ ] Reviewed and merged by a human
+- [ ] CI green, PR squash-merged and issue closed
