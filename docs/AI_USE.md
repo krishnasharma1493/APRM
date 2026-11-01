@@ -48,3 +48,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-47 | Website redesign 5: layout, keyboard and media-preference checks (tests/demo/check_layout_cdp.mjs), file-input overflow fix, meter animated with transform, DESIGN.md, final screenshots; PRD §10 checklist rehearsal re-run | K-47 PR (#104) | to confirm |
 | 2026-11-02 | Krishna | K-48 | Website: day and night button (store theme, top-bar button, saved choice, redraw of canvas and charts); tests and browser check extended | K-48 PR (#110) | to confirm |
 | 2026-11-02 | Krishna | K-49 | PR 1: website rule change (D76) in CLAUDE.md, PRD, BLUEPRINT, DESIGN.md, PRODUCT.md; K-49 issue and backlog entry | K-49 PR 1 (#113), issue #112 | to confirm |
+| 2026-11-02 | Krishna | K-49 | PR 2: planning-board direction contract (Impeccable seed f916d9cf, chosen by Krishna), PRODUCT.md jobs and viva questions, ranked findings | K-49 PR 2, issue #112 | to confirm |
