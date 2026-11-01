@@ -496,6 +496,14 @@ test('build: empty state, machine summary and the add-job lead-in', () => {
   assert.equal(el('add-error-lead').hidden, true);
 });
 
+test('build: the job limit shows with Show details and updates at once', () => {
+  const { A, el } = page();
+  A.presets.load('tiny_case');
+  assert.equal(el('table-summary').textContent, '8 jobs');
+  A.store.setDetails(true);
+  assert.match(el('table-summary').textContent, /^8 jobs \(limit \d+\)$/);
+});
+
 test('build: every tile also reaches the toast with the plain title; generator and export toast too', () => {
   const { A, el } = page();
   const seen = [];

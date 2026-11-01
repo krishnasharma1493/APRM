@@ -64,7 +64,15 @@
     'col.mem': 'Memory (MB)',
     'col.priority': 'Priority (higher runs first)',
     'col.problem': 'Problem',
+    'short.col.id': 'Job',
+    'short.col.arrival': 'Arrives',
+    'short.col.duration': 'Runs for',
+    'short.col.cpu': 'Cores',
+    'short.col.mem': 'Memory (MB)',
+    'short.col.priority': 'Priority',
     'job.add': 'Add job',
+    'job.new': 'New job',
+    'build.count.limit': ' (limit {n})',
     'job.add.lead': 'Can’t add this job.',
     'toast.loaded': 'Loaded “{name}”.',
     'toast.generated': 'Replaced your jobs with {n} random ones.',
@@ -220,6 +228,8 @@
     var scope = root || document;
     var els = scope.querySelectorAll('[data-copy]');
     for (var i = 0; i < els.length; i++) { els[i].textContent = get(els[i].getAttribute('data-copy')); }
+    var cells = scope.querySelectorAll('[data-copy-attr]');
+    for (var c = 0; c < cells.length; c++) { cells[c].setAttribute('data-label', get(cells[c].getAttribute('data-copy-attr'))); }
     var labelled = scope.querySelectorAll('[data-copy-label]');
     for (var j = 0; j < labelled.length; j++) { labelled[j].setAttribute('aria-label', get(labelled[j].getAttribute('data-copy-label'))); }
   }

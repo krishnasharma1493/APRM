@@ -17,15 +17,17 @@
       <button type="button" data-mode-button="run" aria-pressed="false" data-copy="step.run">2 Run</button>
       <button type="button" data-mode-button="compare" aria-pressed="false" data-copy="step.compare">3 Compare</button>
     </div>
-    <label class="switch" for="details-switch">
-      <input id="details-switch" type="checkbox" aria-describedby="details-hint">
-      <span class="track" aria-hidden="true"></span>
-      <span data-copy="details.label">Show details</span>
-    </label>
-    <p id="details-hint" class="hint" data-copy="details.hint">Shows exact numbers, scores and log kinds.</p>
-    <button type="button" class="btn" id="theme-toggle" data-copy="theme.night" aria-describedby="theme-hint">Night mode</button>
-    <span id="theme-hint" class="visually-hidden" data-copy="theme.hint"></span>
-    <p id="engine-status" class="status" role="status" aria-live="polite" data-copy="engine.loading">Starting the engine&hellip;</p>
+    <div class="view-controls">
+      <p id="engine-status" class="status" role="status" aria-live="polite" data-state="loading" data-copy="engine.loading">Starting the engine&hellip;</p>
+      <label class="switch" for="details-switch">
+        <input id="details-switch" type="checkbox" aria-describedby="details-hint">
+        <span class="track" aria-hidden="true"></span>
+        <span data-copy="details.label">Show details</span>
+      </label>
+      <span id="details-hint" class="visually-hidden" data-copy="details.hint"></span>
+      <button type="button" class="btn btn-small" id="theme-toggle" data-copy="theme.night" aria-describedby="theme-hint">Night mode</button>
+      <span id="theme-hint" class="visually-hidden" data-copy="theme.hint"></span>
+    </div>
   </header>
 
   <div id="engine-error" class="error-box" role="alert" hidden></div>
@@ -41,8 +43,10 @@
     <p id="preset-desc" class="empty" hidden></p>
 
     <h3 data-copy="build.jobs">Your jobs</h3>
-    <p id="machine-summary" class="hint"></p>
-    <p id="table-summary" class="empty"></p>
+    <div class="jobs-meta">
+      <p id="table-summary"></p>
+      <p id="machine-summary"></p>
+    </div>
     <p id="table-empty" class="empty" data-copy="build.empty">No jobs yet. Add one, or start with an example.</p>
     <div class="table-wrap">
       <table class="job-table">
@@ -50,19 +54,20 @@
           <tr>
             <th data-copy="col.id"></th><th data-copy="col.arrival"></th><th data-copy="col.duration"></th>
             <th data-copy="col.cpu"></th><th data-copy="col.mem"></th><th data-copy="col.priority"></th>
-            <th data-copy="col.problem"></th><th></th>
+            <th><span class="visually-hidden" data-copy="col.problem"></span></th><th></th>
           </tr>
         </thead>
         <tbody id="job-body"></tbody>
         <tfoot>
-          <tr>
-            <td><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
-            <td><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
-            <td><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
-            <td><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
-            <td><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
-            <td><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
-            <td colspan="2"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
+          <tr class="new-head"><td colspan="8" data-copy="job.new">New job</td></tr>
+          <tr class="new-row">
+            <td data-copy-attr="short.col.id"><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
+            <td data-copy-attr="short.col.arrival"><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
+            <td data-copy-attr="short.col.duration"><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
+            <td data-copy-attr="short.col.cpu"><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
+            <td data-copy-attr="short.col.mem"><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
+            <td data-copy-attr="short.col.priority"><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
+            <td colspan="2" class="row-actions"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
           </tr>
         </tfoot>
       </table>
