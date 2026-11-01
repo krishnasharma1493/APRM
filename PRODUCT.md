@@ -21,7 +21,7 @@ Primary: an examiner at the viva of an ADA course project, watching a laptop dem
 - Is the website really running your C code? (The engine is the WebAssembly build; the page only shows what it returns.)
 - Can a job starve? (Aging against aging with reservation on the memory hog: the reserved job's spot and start time.)
 - Is your scheduler optimal? (Compare shows the exact best order and each scheduler's gap for nine jobs or fewer.)
-- Doesn't aging change every priority each tick? (Show details: the live score the engine reports.)
+- Doesn't aging change every priority each tick? (Run with aging: every waiting job's live score rises at the same rate, so the waiting order, the fixed heap key, does not change.)
 
 ## Product Purpose
 APRM (Adaptive Priority Resource Manager) is an online, non-preemptive job scheduler for one machine with CPU and memory. The website runs the same C code as the console program and shows how different schedulers choose jobs. Success: in one minute a viewer sees why schedulers differ, and can inspect that every number matches the engine exactly.

@@ -16,11 +16,11 @@ Constraints: engine numbers and sentences unchanged; offline from `file://`; lig
 
 THESIS: The machine is a planning board the engine fills, card by card; it refuses the dashboard of cards, charts and sidebars.
 
-OWN-WORLD: enamel board ground (#F2F3F1), white slot grid ruled in hairlines, job magnets in the ten job hues with stamped numbers and hatching, a teal "now" rail, red, amber and green status stamps, a small header tab on every module.
+OWN-WORLD: enamel board ground, white slot grid in hairlines, job magnets in the ten job hues with stamped numbers and hatching, a teal "now" rail, red, amber and green stamps.
 
-STORY: The examiner sees jobs wait in the tray, the engine place each card into the CPU and memory lanes, reads its reason in the shift log, then compares two boards.
+STORY: Jobs wait in the tray; the engine places each card into the CPU and memory lanes; the shift log gives its reason; two boards compare.
 
-FIRST VIEWPORT: Run: the board in the centre, about 60% wide (CPU lane over memory lane over one time axis); the tray on the left in score order; the shift log on the right; one control rail under the board with Play as the primary action.
+FIRST VIEWPORT: Run: the board centre, about 60% wide (CPU lane over memory lane over one time axis); tray left in engine order; shift log right; one control rail under the board, Play primary.
 
 FORM: Production Planning Board, position 4 of 7, seed f916d9cf. Signature interaction: a card travels from the tray to its slot when the engine starts it (snaps under reduced motion).
 
