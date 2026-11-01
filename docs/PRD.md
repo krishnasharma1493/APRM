@@ -87,7 +87,7 @@ User accounts, servers, databases, cloud deployment beyond a static page, real o
 | A6 | Jobs cannot be paused or moved once started | Matches the synopsis and the research model |
 | A7 | Every simulation is deterministic: same input and settings, same result, on every machine | Makes testing, conformance and demos repeatable |
 | A8 | All workloads are synthetic, generated with recorded seeds | Any graph can be regenerated exactly |
-| A9 | The primary demo runs from the laptop: the built `index.html` opens with a double-click (`file://`), with everything bundled (scripts, styles, fonts, presets data, engine), so no local server or network is needed. The GitHub Pages link is a bonus copy | Venue networks fail; a local file does not. Browsers block ES modules and `fetch` from `file://`, so neither is used |
+| A9 | The primary demo runs from the laptop: the built `index.html` opens with a double-click (`file://`), with everything bundled (scripts, styles, fonts, presets data, engine), so no local server or network is needed. The GitHub Pages link is a bonus copy | Venue networks fail; a local file does not. Browsers block ES module loading and `fetch` from `file://`, so the build inlines every module and nothing is fetched at runtime |
 
 ### Success metrics
 
@@ -568,7 +568,7 @@ Threads, signal handling, file locking and fuzzing infrastructure. The core is s
 
 ## 7. Frontend architecture
 
-The website is plain JavaScript around the WebAssembly engine. It builds inputs and draws outputs; it never decides which job runs. Owner: Krishna. Feature spec: `BLUEPRINT.md` §5.
+The website is bundled JavaScript around the WebAssembly engine (D76). It builds inputs and draws outputs; it never decides which job runs. Owner: Krishna. Feature spec: `BLUEPRINT.md` §5.
 
 **Loading model (D76).** The site is built by `make web` into a bundle that opens from `file://` with no network: scripts, styles, self-hosted fonts, the presets data and the WebAssembly engine are all included, and nothing is fetched at runtime. ES modules and a framework may be used in the source. The scripts listed below are the current modules; K-49 may restructure them, and this table is updated with it.
 
@@ -620,7 +620,8 @@ The website has no accounts or stored data, so the risks are bad input from file
 - [ ] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
 - [ ] No runtime network request: every library and font is bundled (K-49 moves Chart.js from the CDN into the bundle). Until then the only external request is Chart.js, pinned with an integrity hash, with a table fallback.
 - [x] No `eval`, no `new Function`, no inline event-handler attributes.
-- [x] The built page works from `file://` with the network off (no `fetch` of local files, nothing loaded from a server); dependencies verified per the version safety rule, lockfile committed.
+- [x] `web/index.html` works from `file://` today: no `fetch`, nothing loaded from a server.
+- [ ] The built page (`make web`) works from `file://` with the network off; dependencies verified per the version safety rule, lockfile committed (K-49 PR 3).
 - [x] A failed WebAssembly load shows a clear error state, never a blank page.
 - [x] Long runs cannot freeze the tab: steps per frame are capped, and "jump to end" runs in slices.
 - [x] Nothing is stored in the browser beyond optional user preferences (theme, speed), wrapped in `try/catch`.
