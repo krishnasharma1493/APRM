@@ -510,3 +510,261 @@ def test_e5_end_to_end_tiny_grid(tmp_path) -> None:
     check_ci_order(out / "e5_summary.csv")
     # no big-memory jobs: reservation never triggers, both policies are identical
     assert e5[0]["max_wait_mean"] == e5[1]["max_wait_mean"]
+
+
+# ---- E4 (K-35) --------------------------------------------------------------
+def e4_jobs(k: int) -> list[tuple]:
+    """Seed k: high jobs (priority 8, 9) wait 2k and 4k; low jobs (1, 2) wait 10k and 5k.
+
+    Priorities 5 (wait 100) and 3 (wait 999) belong to no group and must be ignored.
+    Tuple: (id, arrival, start, finish, priority, cpu, mem), all arriving at 0.
+    """
+    waits = [(0, 8, 2 * k), (1, 9, 4 * k), (2, 5, 100), (3, 1, 10 * k), (4, 2, 5 * k), (5, 3, 999)]
+    return [(i, 0, w, w + 1, pr, 1, 1) for i, pr, w in waits]
+
+
+def e4_tree(root: Path) -> Path:
+    """Three seeds of alpha_milli = 100 (folder alpha_100) and three of alpha_0."""
+    for k in (1, 2, 3):
+        write_run(root, "E4", "alpha_100", "aging", k, e4_jobs(k))
+        write_run(root, "E4", "alpha_0", "aging", k, e4_jobs(2 * k))
+    return root
+
+
+def test_e4_group_definitions() -> None:
+    assert config.E4_HIGH_PRIORITIES == (7, 9) and config.E4_LOW_PRIORITIES == (0, 2)  # D57
+    import pandas as pd
+    res = pd.DataFrame({"priority": [6, 7, 9, 3, 0, 2], "wait": [50, 4, 8, 60, 3, 9]})
+    # high = priorities 7 and 9 (waits 4, 8): mean 6; low = 0 and 2 (waits 3, 9): max 9
+    assert sm.e4_group_values(res) == (6.0, 9.0)
+    with pytest.raises(ValueError, match="no job"):
+        sm.e4_group_values(res[~res["priority"].isin([7, 9])])
+
+
+def test_e4_hand_computed(tmp_path) -> None:
+    table = sm.summarize_e4(e4_tree(tmp_path), TEST_T)
+    assert list(table.columns) == header(SAMPLES / "e4_summary.csv")
+    # config order: alpha 0 before 100
+    assert list(table.setting) == ["alpha_milli=0", "alpha_milli=100"]
+    assert list(table.x_value) == [0.0, 0.1] and set(table.policy) == {"aging"}
+    assert set(table.n_seeds) == {3} and set(table.experiment) == {"E4"}
+    a100 = table.iloc[1]
+    half = 4.303 / math.sqrt(3)
+    # high means 3k = 3, 6, 9: mean 6, s = 3.  low max 10k = 10, 20, 30: mean 20, s = 10.
+    assert a100.high_prio_avg_wait_mean == 6.0
+    assert a100.high_prio_avg_wait_ci_high - 6.0 == pytest.approx(3 * half, abs=1e-6)
+    assert a100.low_prio_max_wait_mean == 20.0
+    assert a100.low_prio_max_wait_ci_low == pytest.approx(20.0 - 10 * half, abs=1e-6)
+    a0 = table.iloc[0]
+    assert a0.high_prio_avg_wait_mean == 12.0 and a0.low_prio_max_wait_mean == 40.0  # seeds doubled
+
+
+def test_e4_needs_30_seeds(tmp_path) -> None:
+    with pytest.raises(ValueError, match="no Student-t value"):
+        sm.summarize_e4(e4_tree(tmp_path))
+    root = tmp_path / "full"
+    for k in range(1, 31):
+        write_run(root, "E4", "alpha_200", "aging", k, e4_jobs(1))
+    r = sm.summarize_e4(root).iloc[0]
+    assert r.n_seeds == 30 and r.high_prio_avg_wait_mean == 3.0 and r.high_prio_avg_wait_ci_low == 3.0
+
+
+def test_e4_files_written(tmp_path) -> None:
+    out = tmp_path / "out"
+    written = sm.summarize(["E4"], e4_tree(tmp_path / "raw"), out, TEST_T)
+    assert [p.name for p in written] == ["e4_summary.csv"]
+    assert header(out / "e4_summary.csv") == header(SAMPLES / "e4_summary.csv")
+    check_ci_order(out / "e4_summary.csv")
+    assert rows(out / "e4_summary.csv")[1]["x_value"] == "0.1"
+
+
+# ---- E6 (K-35) --------------------------------------------------------------
+# Exact optimum of every hand instance: job 2 (duration 2) first, then job 1
+# (duration 3): waits 0 and 2 (total wait 2), turnarounds 2 and 5 (total 7).
+OPT_JOBS = [(1, 0, 2, 5, 1, 4, 100), (2, 0, 0, 2, 1, 4, 100)]
+
+
+def fcfs_jobs(k: int) -> list[tuple]:
+    """Job 1 first (wait 0), job 2 after it plus k idle ticks: total wait 3 + k, turnaround 8 + k."""
+    return [(1, 0, 0, 3, 1, 4, 100), (2, 0, 3 + k, 5 + k, 1, 4, 100)]
+
+
+def e6_tree(root: Path, per_count: int = 3, scheduler: str = "fcfs") -> Path:
+    """Every size 6..9 with per_count instances: exact, fcfs (ratio (8+k)/7) and sjf (= exact)."""
+    for n in config.E6_JOB_COUNTS:
+        for k in range(per_count):
+            seed = config.E6_SEED_BASE * n + k
+            write_run(root, "E6", str(n), "exact", seed, OPT_JOBS)
+            write_run(root, "E6", str(n), scheduler, seed, fcfs_jobs(k % 3))
+            write_run(root, "E6", str(n), "sjf", seed, OPT_JOBS)
+    return root
+
+
+def test_e6_row_definitions() -> None:
+    row = sm.e6_row(7, 1004, "fcfs", (8, 3), (7, 2))
+    assert row["turnaround_ratio"] == pytest.approx(8 / 7)   # turnaround, not wait (3 / 2 = 1.5 would be wrong)
+    assert row["wait_gap"] == 1 and row["total_wait"] == 3 and row["opt_total_wait"] == 2
+    assert (row["total_turnaround"], row["opt_total_turnaround"]) == (8, 7)
+    # optimum waits 0: the turnaround ratio is still defined (D40)
+    zero = sm.e6_row(6, 6000, "fcfs", (10, 4), (6, 0))
+    assert zero["turnaround_ratio"] == pytest.approx(10 / 6) and zero["wait_gap"] == 4
+    same = sm.e6_row(6, 6000, "sjf", (6, 0), (6, 0))
+    assert same["turnaround_ratio"] == 1.0 and same["wait_gap"] == 0
+
+
+def test_e6_row_rejects_beaten_optimum_and_zero_denominator() -> None:
+    with pytest.raises(ValueError, match="beaten"):
+        sm.e6_row(6, 6000, "fcfs", (6, 1), (7, 2))        # better than the "optimum"
+    with pytest.raises(ValueError, match="beaten"):
+        sm.e6_row(6, 6000, "fcfs", (8, 1), (7, 2))        # wait below the optimum's wait
+    with pytest.raises(ValueError, match="not positive"):
+        sm.e6_row(6, 6000, "fcfs", (3, 0), (0, 0))
+
+
+def test_e6_hand_computed(tmp_path) -> None:
+    summary, ratios = sm.summarize_e6(e6_tree(tmp_path), TEST_T)
+    assert list(summary.columns) == header(SAMPLES / "e6_summary.csv")
+    assert list(ratios.columns) == header(SAMPLES / "e6_ratios.csv")
+    # order: n ascending, then config policy order (fcfs before sjf); no priority/aging/... runs
+    assert [(r.setting, r.policy) for r in summary.itertuples()][:4] == [
+        ("n_jobs=6", "fcfs"), ("n_jobs=6", "sjf"), ("n_jobs=7", "fcfs"), ("n_jobs=7", "sjf")]
+    assert list(summary.x_value[::2]) == [6, 7, 8, 9] and set(summary.n_seeds) == {3}
+    fcfs = summary.iloc[0]
+    half = 4.303 / math.sqrt(3)
+    # ratios 8/7, 9/7, 10/7: mean 9/7, s = 1/7.  Gaps 1, 2, 3: mean 2, s = 1.
+    assert fcfs.turnaround_ratio_mean == pytest.approx(9 / 7, abs=1e-9)
+    assert fcfs.turnaround_ratio_ci_high == pytest.approx(9 / 7 + half / 7, abs=1e-8)
+    assert fcfs.wait_gap_mean == 2.0
+    assert fcfs.wait_gap_ci_low == pytest.approx(2.0 - half, abs=1e-8)
+    sjf = summary.iloc[1]
+    assert sjf.turnaround_ratio_mean == 1.0 and sjf.wait_gap_ci_high == 0.0
+    first = ratios.iloc[0]
+    assert (first.n_jobs, first.instance_seed, first.policy) == (6, 6000, "fcfs")
+    assert (first.total_turnaround, first.opt_total_turnaround, first.total_wait,
+            first.opt_total_wait, first.wait_gap) == (8, 7, 3, 2, 1)
+    assert first.turnaround_ratio == "1.142857"          # six decimals, PRD section 5
+
+
+def test_e6_t_constant_for_50_instances(tmp_path) -> None:
+    """The production table: 50 instances per size use t = 2.010; 3 instances are an error."""
+    with pytest.raises(ValueError, match="no Student-t value"):
+        sm.summarize_e6(e6_tree(tmp_path / "small"))
+    summary, ratios = sm.summarize_e6(e6_tree(tmp_path / "full", per_count=50))
+    assert len(ratios) == 4 * 50 * 2 and set(summary.n_seeds) == {50}
+    r = summary.iloc[0]                                    # fcfs, n = 6: gaps cycle 1, 2, 3
+    gaps = [1 + k % 3 for k in range(50)]
+    mean = sum(gaps) / 50
+    s = math.sqrt(sum((g - mean) ** 2 for g in gaps) / 49)
+    assert r.wait_gap_mean == pytest.approx(mean, abs=1e-9)
+    assert r.wait_gap_ci_high - mean == pytest.approx(2.010 * s / math.sqrt(50), abs=1e-8)
+
+
+def test_e6_no_instance_skipped(tmp_path) -> None:
+    root = e6_tree(tmp_path)
+    import shutil
+    shutil.rmtree(root / "E6" / "8" / "fcfs" / "8001")      # one policy run missing
+    with pytest.raises(ValueError, match="skipped"):
+        sm.collect_e6(root)
+    write_run(root, "E6", "8", "fcfs", 8001, fcfs_jobs(1))   # put it back
+    shutil.rmtree(root / "E6" / "9" / "exact")                # all optima of a size missing
+    with pytest.raises(ValueError, match="no exact runs"):
+        sm.collect_e6(root)
+
+
+def test_e6_beaten_optimum_is_an_error(tmp_path) -> None:
+    root = e6_tree(tmp_path)
+    folder = root / "E6" / "6" / "sjf" / "6001"
+    for f in folder.iterdir():
+        f.unlink()
+    folder.rmdir()
+    # a "scheduler" that waits 0 in total: better than the optimum (total wait 2)
+    write_run(root, "E6", "6", "sjf", 6001, [(1, 0, 0, 3, 1, 4, 100), (2, 0, 0, 2, 1, 4, 100)])
+    with pytest.raises(ValueError, match="beaten"):
+        sm.collect_e6(root)
+
+
+def test_e6_files_written(tmp_path) -> None:
+    out = tmp_path / "out"
+    written = sm.summarize(["E6"], e6_tree(tmp_path / "raw"), out, TEST_T)
+    assert [p.name for p in written] == ["e6_summary.csv", "e6_ratios.csv"]
+    assert header(out / "e6_summary.csv") == header(SAMPLES / "e6_summary.csv")
+    assert header(out / "e6_ratios.csv") == header(SAMPLES / "e6_ratios.csv")
+    check_ci_order(out / "e6_summary.csv")
+    assert rows(out / "e6_ratios.csv")[0]["turnaround_ratio"] == "1.142857"
+    assert rows(out / "e6_summary.csv")[0]["setting"] == "n_jobs=6"
+
+
+def test_e4_e6_columns_match_samples() -> None:
+    assert sm.SUMMARY_COLUMNS["e4_summary.csv"] == header(SAMPLES / "e4_summary.csv")
+    assert sm.SUMMARY_COLUMNS["e6_summary.csv"] == header(SAMPLES / "e6_summary.csv")
+    assert sm.SUMMARY_COLUMNS["e6_ratios.csv"] == header(SAMPLES / "e6_ratios.csv")
+
+
+@needs_cli
+def test_e4_end_to_end_tiny_grid(tmp_path) -> None:
+    raw, out = tmp_path / "raw", tmp_path / "out"
+    rx.execute_grid("E4", True, out=str(raw))
+    sm.summarize(["E4"], raw, out, {2: 12.706})
+    e4 = rows(out / "e4_summary.csv")
+    assert [r["setting"] for r in e4] == [f"alpha_milli={a}" for a in config.E4_ALPHA_MILLI]
+    assert [float(r["x_value"]) for r in e4] == [a / 1000 for a in config.E4_ALPHA_MILLI]
+    assert all(r["n_seeds"] == "2" and r["policy"] == "aging" for r in e4)
+    assert header(out / "e4_summary.csv") == header(SAMPLES / "e4_summary.csv")
+    check_ci_order(out / "e4_summary.csv")
+
+
+@needs_cli
+def test_e6_end_to_end_tiny_grid_with_exact(tmp_path) -> None:
+    """Two instances per size, every policy plus --exact through build/aprm, then summarise."""
+    raw, out = tmp_path / "raw", tmp_path / "out"
+    recs = rx.execute_grid("E6", True, out=str(raw))
+    assert sum(r["cell"][2] == "exact" for r in recs) == 4 * 2
+    assert all(r["status"] in ("ok", "not_implemented") for r in recs)
+    sm.summarize(["E6"], raw, out, {2: 12.706})
+    ratios, summary = rows(out / "e6_ratios.csv"), rows(out / "e6_summary.csv")
+    policies = {r["policy"] for r in ratios}
+    assert {"fcfs", "priority", "sjf", "aging", "reserve"} <= policies
+    assert len(ratios) == 4 * 2 * len(policies) and len(summary) == 4 * len(policies)
+    assert all(float(r["turnaround_ratio"]) >= 1 and int(r["wait_gap"]) >= 0 for r in ratios)
+    assert all(int(r["total_turnaround"]) - int(r["total_wait"]) ==
+               int(r["opt_total_turnaround"]) - int(r["opt_total_wait"]) for r in ratios)  # same durations
+    assert all(len(r["turnaround_ratio"].split(".")[1]) == 6 for r in ratios)
+    check_ci_order(out / "e6_summary.csv")
+    again = rx.execute_grid("E6", True, out=str(raw))
+    assert {r["status"] for r in again} <= {"skipped", "not_implemented"}   # exact runs resume too
+
+
+@needs_cli
+def test_exact_only_and_policy_only_selection(tmp_path) -> None:
+    raw = str(tmp_path / "raw")
+    only = rx.execute_grid("E6", True, out=raw, policies=["exact"], settings=["6"])
+    assert [r["cell"][2] for r in only] == ["exact", "exact"]
+    other = rx.execute_grid("E6", True, out=raw, policies=["fcfs"], settings=["6"])
+    assert [r["cell"][2] for r in other] == ["fcfs", "fcfs"]
+
+
+# ---- real files, when a full run exists (results/ is git-ignored) -------------
+REAL_SUMMARIES = ROOT / "results" / "summaries"
+needs_real = pytest.mark.skipif(not (REAL_SUMMARIES / "e6_ratios.csv").exists(),
+                                reason="no real results/summaries/e6_ratios.csv (run E6 first)")
+
+
+@needs_real
+def test_e4_e6_columns() -> None:
+    for name in ("e4_summary.csv", "e6_summary.csv", "e6_ratios.csv"):
+        assert header(REAL_SUMMARIES / name) == header(SAMPLES / name)
+
+
+@needs_real
+def test_wait_gap_nonneg() -> None:
+    for r in rows(REAL_SUMMARIES / "e6_ratios.csv"):
+        assert int(r["wait_gap"]) >= 0 and float(r["turnaround_ratio"]) >= 1.0
+
+
+@needs_real
+def test_e6_count() -> None:
+    data = rows(REAL_SUMMARIES / "e6_ratios.csv")
+    policies = {r["policy"] for r in data}
+    assert len(data) == 200 * len(policies)
+    for p in policies:
+        assert len({(r["n_jobs"], r["instance_seed"]) for r in data if r["policy"] == p}) == 200

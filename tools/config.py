@@ -117,6 +117,11 @@ E6_SEED_BASE = 1000   # instance i of size n uses seed 1000 * n + i, i = 0..49
 E6_SIZE = {"p": 1.0, "duration": (1, 10), "cpu": (2, 10), "mem": (4096, 20480)}
 # One class, sized so that two to three jobs fit at once and the order matters.
 E6_POLICIES = E1_POLICIES  # all implemented policies, as in PRD section 5
+E6_EXACT = "exact"  # pseudo-policy name of the exact solver's run folders (aprm --exact)
+EXACT_CHECK_POLICIES = E6_POLICIES
+# The one list the "exact never beaten" check (PRD section 10) runs.  A policy the
+# engine does not implement yet (knapsack until K-34) answers exit 4 and is skipped
+# and reported, so adding a policy to E1_POLICIES is the only change needed later.
 
 # ---------------------------------------------------------------------------
 # Experiment grid for the runner (K-15): setting folder names and policies.
