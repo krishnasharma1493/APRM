@@ -473,6 +473,39 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
       assert.ok(rows.includes('Time until everything finished (makespan): ' + String(snap.metrics.makespan)), name + ': exact makespan');
     }
   });
+
+  test('real engine: Compare table, verdict and exact line equal the engine for tiny_case', async () => {
+    const createAprm = require(vendor);
+    const page = loadPage({ createAprm });
+    await tick(); await tick();
+    const A = page.APRM;
+    A.presets.load('tiny_case');
+    A.store.setMode('compare');
+    A.compare.setSelected(['fcfs', 'sjf', 'aging']);
+    const queue = [];
+    A.compare.setScheduler({ later: (fn) => queue.push(fn), timeout: () => 0, cancelLater: () => {}, cancelTimeout: () => {} });
+    assert.equal(A.compare.start(), true);
+    while (queue.length) queue.shift()();
+    const snap = A.compare.snapshot();
+    assert.equal(snap.status, 'done');
+    const rows = page.doc.byId['compare-body'].children;
+    assert.equal(rows.length, 3);
+    snap.columns.forEach((col, i) => {
+      const cells = rows[i].children.map((c) => c.textContent);
+      const m = col.metrics;
+      assert.equal(cells[5], String(m.makespan), col.policy + ' makespan');
+      assert.equal(cells[1], Number.isInteger(m.avg_wait) ? String(m.avg_wait) : m.avg_wait.toFixed(3), col.policy + ' avg wait');
+    });
+    // the exact line: total wait from a fresh engine handle on the same jobs
+    const st = A.store.get();
+    const w = A.wasm;
+    const h = w.create(st.machine.cpu, st.machine.mem, 'fcfs', st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
+    for (const j of st.jobs) w.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
+    const ex = w.exact(h); w.destroy(h);
+    assert.ok(page.doc.byId['compare-exact'].textContent.startsWith('Exact best order (up to 9 jobs): total wait ' + ex.total_wait + '.'));
+    const best = Math.min(...snap.columns.map((c) => c.metrics.makespan));
+    assert.ok(page.doc.byId['compare-verdict'].hidden || page.doc.byId['compare-verdict'].textContent.includes('tick ' + best), 'verdict names the best makespan');
+  });
 } else {
   console.log('note: web/vendor/aprm.js not built (run `make wasm`); real-engine test skipped');
 }

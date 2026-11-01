@@ -50,7 +50,7 @@ test('every defined key is used somewhere (no dead copy)', () => {
     const m = k.match(/^preset\.([a-z_]+)\.(title|hint)$/);
     if (m) return all.includes("'preset.'") && presets.includes('"name": "' + m[1] + '"');
     // keys built as 'prefix.' + name: the prefix literal must appear in the page code
-    const prefix = k.match(/^(policy|metric|kind|status)\./);
+    const prefix = k.match(/^(policy|metric|kind|status|short)\./);
     return !!prefix && all.includes("'" + prefix[1] + ".'");
   };
   for (const k of keys) assert.ok(all.includes('"' + k + '"') || all.includes("'" + k + "'") || dynamic(k), 'unused copy key: ' + k);
