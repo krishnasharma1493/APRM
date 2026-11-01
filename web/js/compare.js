@@ -324,8 +324,9 @@
     if (ex.error) { return words('compare.exact.failed', 'The exact best order could not be worked out: ' + ex.error, { why: ex.error }); }
     var out = words('compare.exact.line', 'Exact best order: total wait ' + ex.totalWait + '.', { t: ex.totalWait });
     for (var c = 0; c < model.columns.length; c++) {
-      var d = totalWait(model.columns[c]) - ex.totalWait;
       var nm = labelOf(model.columns[c].policy);
+      if (model.columns[c].rows.length !== model.jobs.length) { out += ' ' + words('compare.exact.partial', nm + ' did not finish every job, so its gap is not shown.', { name: nm }); continue; }
+      var d = totalWait(model.columns[c]) - ex.totalWait;
       out += ' ' + (d === 0 ? words('compare.exact.same', nm + ' matches it.', { name: nm }) : words('compare.exact.gap', nm + ' is ' + d + ' above it.', { name: nm, d: d }));
     }
     return out;
@@ -346,6 +347,7 @@
       fail(err);
       return;
     }
+    /* The solver depends only on the jobs, so any handle (here the first, already run to the end) gives the same answer. */
     model.exact = readExact(columns.length > 0 ? runs[0].handle : 0, model.jobs.length);
     destroyAll();
     model.columns = columns;
@@ -391,17 +393,20 @@
   function verdictText() {
     var cols = model ? model.columns : [];
     var ok = cols.filter(function (c) { return typeof c.metrics.makespan === 'number'; });
-    if (ok.length < 2) { return ''; }
+    if (ok.length < 2 || ok.length < cols.length) { return ''; }   /* a column with no value: say nothing rather than guess */
     var best = Math.min.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
     var worst = Math.max.apply(null, ok.map(function (c) { return c.metrics.makespan; }));
     var winners = ok.filter(function (c) { return c.metrics.makespan === best; });
     var names = winners.map(function (c) { return labelOf(c.policy); });
+    var joined = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
     var line;
-    if (winners.length === ok.length) { return words('compare.verdict.tie', names.join(', ') + ' tied at tick ' + best + '.', { names: names.join(' and '), t: best }); }
+    if (winners.length === ok.length) { return words('compare.verdict.tie', names.join(', ') + ' tied at tick ' + best + '.', { names: joined, t: best }); }
     if (winners.length === 1) { line = words('compare.verdict.best', names[0] + ' finished first, at tick ' + best + '.', { name: names[0], t: best }); }
-    else { line = words('compare.verdict.tie', names.join(', ') + ' tied for first at tick ' + best + '.', { names: names.join(' and '), t: best }); }
-    var slow = ok.filter(function (c) { return c.metrics.makespan === worst; })[0];
-    return line + ' ' + words('compare.verdict.later', labelOf(slow.policy) + ' took ' + (worst - best) + ' ticks longer.', { name: labelOf(slow.policy), d: worst - best });
+    else { line = words('compare.verdict.tie', joined + ' tied for first at tick ' + best + '.', { names: joined, t: best }); }
+    var slows = ok.filter(function (c) { return c.metrics.makespan === worst; }).map(function (c) { return labelOf(c.policy); });
+    var slowName = slows.length > 1 ? slows.slice(0, -1).join(', ') + ' and ' + slows[slows.length - 1] : slows[0];
+    var gap = worst - best;
+    return line + ' ' + words('compare.verdict.later', slowName + ' took ' + gap + ' ticks longer.', { name: slowName, d: gap, ticks: gap === 1 ? 'tick' : 'ticks' });
   }
 
   /* The metrics table: one row per policy. Always drawn when a run is done. */

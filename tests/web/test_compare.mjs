@@ -381,6 +381,16 @@ test('verdict: a tie is named, and more than nine jobs skips the exact solver', 
   assert.equal(p.el('compare-exact').textContent, 'The exact best order is only worked out for 9 jobs or fewer.');
 });
 
+test('verdict: no sentence when one column has no makespan; plural names; singular tick', () => {
+  const m = (makespan) => ({ avg_wait: 1, max_wait: 1, avg_turnaround: 1, weighted_completion: 1, makespan, util_cpu: 0.5, util_mem: 0.5 });
+  let p = ready({ metricsFor: (policy) => (policy === 'fcfs' ? m(null) : m(10)) });
+  p.A.compare.setSelected(['fcfs', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-verdict').hidden, true);
+  p = ready({ metricsFor: (policy) => (policy === 'aging' ? m(10) : m(11)) });
+  p.A.compare.setSelected(['fcfs', 'sjf', 'aging']); p.A.compare.start(); p.sched.drain();
+  assert.equal(p.el('compare-verdict').textContent, 'Aging finished everything first, at tick 10. First come, first served (FCFS) and Shortest job first (SJF) took 1 tick longer.');
+});
+
 test('timelines: one canvas per policy, drawn with the same time scale', () => {
   const p = ready();
   p.A.compare.setSelected(['fcfs', 'sjf', 'aging']);
