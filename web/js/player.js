@@ -193,6 +193,7 @@
     drawMetrics();
     highlightJobList();
     updateButtons();
+    if (status !== 'playing') { refreshAddForm(); }
   }
 
   function updateButtons() {
@@ -472,6 +473,14 @@
     for (var i = 0; i < jobs.length; i++) { if (jobs[i].id > m) { m = jobs[i].id; } }
     if (idEl) { idEl.value = String(m + 1); }
     if (arrEl) { arrEl.value = String(run && run.state ? run.state.now + 1 : 0); }
+  }
+
+  /* Keep the add form's defaults current (next unused id, arrival = now + 1)
+   * unless the user is typing in it. Called from render() when not playing. */
+  function refreshAddForm() {
+    var a = typeof document !== 'undefined' ? document.activeElement : null;
+    if (a && typeof a.id === 'string' && a.id.indexOf('ra-') === 0) { return; }
+    prepareAddForm();
   }
 
   var mounted = false;

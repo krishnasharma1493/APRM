@@ -395,6 +395,27 @@ test('adding a job after the run finished re-opens it', () => {
   assert.equal(P.snapshot().status, 'paused');
 });
 
+test('add form defaults follow the run: arrival = now + 1 and an unused id after start, step, pause, reset', () => {
+  const p = ready({ totalSteps: 50 });
+  const P = p.A.player;
+  const form = () => [p.doc.byId['ra-id'].value, p.doc.byId['ra-arrival'].value];
+  P.start();
+  assert.deepEqual(plain(form()), ['4', '1']);          // jobs 1..3, now 0
+  P.stepOnce(); P.stepOnce();
+  assert.deepEqual(plain(form()), ['4', '3']);
+  P.setSpeed(2); P.play(); p.sched.runFrame(); P.pause();
+  assert.deepEqual(plain(form()), ['4', String(P.snapshot().state.now + 1)]);
+  p.A.player.addJobMidRun({ id: 4, arrival: 9, duration: 1, cpu: 1, mem: 1, priority: 0 });
+  assert.equal(p.doc.byId['ra-id'].value, '5');
+  p.doc.activeElement = p.doc.byId['ra-arrival'];       // user typing: not overwritten
+  p.doc.byId['ra-arrival'].value = '77';
+  P.stepOnce();
+  assert.equal(p.doc.byId['ra-arrival'].value, '77');
+  p.doc.activeElement = null;
+  P.reset();
+  assert.deepEqual(plain(form()), ['5', '0']);
+});
+
 test('metrics are shown from the engine, null as n/a', () => {
   const p = ready();
   p.A.player.start(); p.A.player.setSpeed(6); p.A.player.play(); p.sched.runFrame();
