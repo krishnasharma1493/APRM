@@ -24,7 +24,7 @@ CLI = ROOT / "build" / "aprm"
 needs_cli = pytest.mark.skipif(not CLI.exists(), reason="build/aprm not found: run `make` first")
 NAMES = ["big_job_trap", "priority_starvation", "memory_hog", "sjf_starvation",
          "heavy_load", "tiny_case"]
-POLICIES = ["fcfs", "priority", "sjf", "aging"]  # implemented so far; reserve/knapsack later
+POLICIES = ["fcfs", "priority", "sjf", "aging"]  # the four the presets are checked under
 JS_PATH = ROOT / "web" / "js" / "presets_data.js"
 CSV_DIR = ROOT / "data" / "presets"
 

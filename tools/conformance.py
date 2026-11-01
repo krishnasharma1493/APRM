@@ -34,8 +34,7 @@ import gen_workload
 ROOT = Path(__file__).resolve().parents[1]
 CONSOLE = config.APRM_BINARY
 WASM_RUNNER = ROOT / "wasm" / "run_wasm.mjs"
-# knapsack (K-34) is not implemented yet: add it here when it is.
-POLICIES = ["fcfs", "priority", "sjf", "aging", "reserve"]
+POLICIES = ["fcfs", "priority", "sjf", "aging", "reserve", "knapsack"]
 TIMEOUT_S = 120.0
 
 # Machines: the default one plus small ones (full-machine jobs, tight packing).

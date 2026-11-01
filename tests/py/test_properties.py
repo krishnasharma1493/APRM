@@ -332,9 +332,27 @@ def test_random_runs_reserve():
 
 
 @needs_cli
-def test_unimplemented_policy_is_skipped_not_failed():
-    out = cp.random_runs(3, 1, ("knapsack",), str(REAL))
-    assert out["violations"] == [] and out["not_implemented"] == ["knapsack"] and out["runs"] == 0
+def test_random_runs_knapsack():
+    """K-34: knapsack passes the generic checks and the window rule (not the greedy post-condition)."""
+    out = cp.random_runs(200, 1, ("knapsack",), str(REAL), jobs=4)
+    assert out["violations"] == [], out["violations"][:3]
+    assert out["not_implemented"] == [] and out["runs"] == 200 and out["ok"] == 200
+
+
+def test_unimplemented_policy_is_skipped_not_failed(tmp_path):
+    out = cp.random_runs(3, 1, ("sjf",), fake(tmp_path, "clean"))  # the fake engine only builds fcfs
+    assert out["violations"] == [] and out["not_implemented"] == ["sjf"] and out["runs"] == 0
+
+
+def test_knapsack_window_rule():
+    """A job may not start before the first power of two >= max(arrival, duration)."""
+    jobs = pd.DataFrame({"id": [1, 2, 3], "arrival": [0, 600, 0], "duration": [1, 1, 5],
+                         "cpu": [1, 1, 1], "mem": [1, 1, 1], "priority": [0, 0, 0]})
+    good = mk_results(jobs, {1: 1, 2: 1024, 3: 8})
+    assert cp.check_knapsack_windows(jobs, good) == []
+    assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 0, 2: 1024, 3: 8})), "job 1")
+    assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 1, 2: 600, 3: 8})), "job 2")
+    assert has(cp.check_knapsack_windows(jobs, mk_results(jobs, {1: 1, 2: 1024, 3: 5})), "job 3")
 
 
 @needs_cli
