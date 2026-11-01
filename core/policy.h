@@ -2,8 +2,9 @@
  * policy.h: how a policy orders waiting jobs (BLUEPRINT 3.2, issue K-09).
  *
  * A policy is a compare function: it says which of two waiting jobs is
- * served first. FCFS (K-09), static priority, SJF and adaptive aging (K-19)
- * are built; reservation and knapsack come later. Pure functions: no state,
+ * served first. FCFS (K-09), static priority, SJF, adaptive aging (K-19) and
+ * aging with a reservation (K-26, the same order as aging) are built; knapsack
+ * comes later. Pure functions: no state,
  * no I/O, integers only (no floating point in any decision, D13).
  *
  * Aging (BLUEPRINT 3.3) keeps a fixed integer key per job, computed once at

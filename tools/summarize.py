@@ -1,18 +1,18 @@
-"""Summary statistics for experiments E1-E3 (issue K-20).
+"""Summary statistics for experiments E1-E3 (issue K-20) and E5 (issue K-28).
 
 Reads the raw run tree written by tools/run_experiments.py
 
     <raw>/<experiment>/<setting>/<policy>/<seed>/{results.csv, metrics.json, run.json}
 
 and writes the PRD section 5 "Summary CSV formats" files into the summary folder:
-e1_summary.csv, e2_summary.csv, e2_wait_cdf.csv and e3_summary.csv.  Python never
+e1_summary.csv, e2_summary.csv, e2_wait_cdf.csv, e3_summary.csv and e5_summary.csv.  Python never
 schedules: every number here comes from results.csv / metrics.json of the C program.
 
 The unit of statistics is the seed: each run gives one value per metric, and the
 mean and the Student-t 95% interval are taken over seeds (never over pooled jobs).
 
 Usage:
-    python tools/summarize.py --experiments E1 E2 E3 [--raw results/raw] [--out results/summaries]
+    python tools/summarize.py --experiments E1 E2 E3 E5 [--raw results/raw] [--out results/summaries]
 """
 
 from __future__ import annotations
@@ -360,6 +360,22 @@ def summarize_e3(raw: str | Path, table: dict[int, float] | None = None) -> pd.D
     return pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e3_summary.csv"])
 
 
+def summarize_e5(raw: str | Path, table: dict[int, float] | None = None) -> pd.DataFrame:
+    """E5: max_wait and avg_wait per (big-memory share, policy) with 95% intervals.
+
+    One row per (share, policy) that has usable runs, in config order (shares
+    ascending, aging then reserve); x_value is the share in percent.  Needs 30
+    seeds per cell (T_975); a null metric in any seed raises (D62).  O(total jobs).
+    """
+    rows = []
+    for (setting, policy), runs in collect_runs("E5", raw).items():
+        where = f"E5 {setting}/{policy}"
+        stats = [mean_ci(_metric_values(runs, m, where), table) for m in ("max_wait", "avg_wait")]
+        rows.append(_row("E5", config.summary_label("E5", setting), int(setting), policy,
+                         len(runs), stats))
+    return pd.DataFrame(rows, columns=SUMMARY_COLUMNS["e5_summary.csv"])
+
+
 # ---------------------------------------------------------------------------
 # Writing
 # ---------------------------------------------------------------------------
@@ -371,10 +387,10 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
 
 def summarize(experiments: list[str], raw: str | Path, out: str | Path,
               table: dict[int, float] | None = None) -> list[Path]:
-    """Write the summary files of the given experiments (E1, E2, E3); return their paths.
+    """Write the summary files of the given experiments (E1, E2, E3, E5); return their paths.
 
-    E1 -> e1_summary.csv; E2 -> e2_summary.csv and e2_wait_cdf.csv; E3 -> e3_summary.csv.
-    ValueError for an unknown experiment (E4-E6 belong to K-28 / K-35) or bad data.
+    E1 -> e1_summary.csv; E2 -> e2_summary.csv and e2_wait_cdf.csv; E3 -> e3_summary.csv;
+    E5 -> e5_summary.csv.  ValueError for an unknown experiment (E4, E6 belong to K-35) or bad data.
     """
     outdir = Path(out)
     written: list[Path] = []
@@ -386,8 +402,10 @@ def summarize(experiments: list[str], raw: str | Path, out: str | Path,
             files = {"e2_summary.csv": summary, "e2_wait_cdf.csv": cdf}
         elif exp == "E3":
             files = {"e3_summary.csv": summarize_e3(raw, table)}
+        elif exp == "E5":
+            files = {"e5_summary.csv": summarize_e5(raw, table)}
         else:
-            raise ValueError(f"summarize.py handles E1, E2 and E3 only, not {exp}")
+            raise ValueError(f"summarize.py handles E1, E2, E3 and E5 only, not {exp}")
         for name, df in files.items():
             write_csv(df, outdir / name)
             written.append(outdir / name)
@@ -397,7 +415,7 @@ def summarize(experiments: list[str], raw: str | Path, out: str | Path,
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point; returns the exit code (0 ok, 1 error)."""
     ap = argparse.ArgumentParser(description="Summarise APRM experiments E1-E3 into summary CSVs.")
-    ap.add_argument("--experiments", nargs="+", default=["E1", "E2", "E3"], help="E1 E2 E3")
+    ap.add_argument("--experiments", nargs="+", default=["E1", "E2", "E3"], help="E1 E2 E3 E5")
     ap.add_argument("--raw", default=config.RAW_DIR, help="raw results folder")
     ap.add_argument("--out", default=config.SUMMARY_DIR, help="summary folder")
     args = ap.parse_args(argv)

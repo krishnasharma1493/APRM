@@ -71,7 +71,7 @@ static void test_fcfs_compare_for_table(void)
     CHECK(policy_compare_for(POL_PRIORITY) == policy_priority_compare);
     CHECK(policy_compare_for(POL_SJF) == policy_sjf_compare);
     CHECK(policy_compare_for(POL_AGING) != NULL);
-    CHECK(policy_compare_for(POL_AGING_RESERVE) == NULL);   /* K-26 */
+    CHECK(policy_compare_for(POL_AGING_RESERVE) == policy_aging_compare);   /* K-26: aging order */
     CHECK(policy_compare_for(POL_KNAPSACK) == NULL);        /* K-34 */
 }
 

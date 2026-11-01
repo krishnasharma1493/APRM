@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 const M = await require(join(root, 'web', 'vendor', 'aprm.js'))();
 
 const FCFS = 0, PRIORITY = 1, SJF = 2, AGING = 3, AGING_RESERVE = 4, KNAPSACK = 5;
-const BUILT = ['fcfs', 'priority', 'sjf', 'aging'];   // reserve (K-26) and knapsack (K-34) are not built yet
+const BUILT = ['fcfs', 'priority', 'sjf', 'aging', 'reserve'];   // knapsack (K-34) is not built yet
 const MAXSAFE = 2 ** 53;
 let passed = 0;
 const tests = [];
@@ -181,7 +181,7 @@ test('LIMIT_REACHED at 5000 jobs', () => {
 });
 
 test('step and run_until: not-implemented policy, number check, D59 clock', () => {
-  const h = mk(AGING_RESERVE);
+  const h = mk(KNAPSACK);
   assert.equal(M._aprm_step(h), -1);
   expectErr(h, -1);
   assert.match(lastErr(h).error.message, /not implemented/);
@@ -200,6 +200,23 @@ test('step and run_until: not-implemented policy, number check, D59 clock', () =
   assert.equal(M._aprm_step(g), 1);
   assert.equal(json(M._aprm_state(g)).data.now, 5);
   assert.equal(M._aprm_destroy(g), 0);
+});
+
+test('reserve policy: state JSON carries the reservation, cleared at the shadow time (memory_hog)', () => {
+  const h = M._aprm_create(16, 32768, AGING_RESERVE, 100, 10, 0.1);
+  for (const [id, arr, dur, cpu, mem, pri] of [[1, 0, 10, 2, 8000, 1], [2, 1, 4, 4, 30000, 5], [3, 6, 10, 2, 8000, 1],
+                                               [4, 11, 10, 2, 8000, 1], [5, 17, 10, 2, 8000, 1], [6, 22, 10, 2, 8000, 1]])
+    assert.equal(add(h, id, arr, dur, cpu, mem, pri), 0);
+  assert.equal(M._aprm_run_until(h, 10), 0);
+  assert.equal(json(M._aprm_state(h)).data.reservation, null);
+  assert.equal(M._aprm_run_until(h, 11), 0);
+  assert.deepEqual(json(M._aprm_state(h)).data.reservation, { id: 2, shadow_time: 16 });
+  assert.equal(M._aprm_run_until(h, 16), 0);
+  assert.equal(json(M._aprm_state(h)).data.reservation, null);
+  assert.equal(runAll(h), 0);
+  const starts = Object.fromEntries(json(M._aprm_results(h)).data.map((r) => [r.id, r.start]));
+  assert.equal(starts[2], 16);
+  assert.equal(M._aprm_destroy(h), 0);
 });
 
 test('aprm_exact is an error envelope until K-33', () => {
@@ -387,10 +404,10 @@ for (const [name, policy, g] of goldens) {
     }
   });
 }
-test('golden cases for policies not built yet (reserve, knapsack) are skipped', () => {
+test('golden cases for policies not built yet (knapsack) are skipped', () => {
   const others = readdirSync(casesDir).filter((f) => /\.expected\.csv$/.test(f) && !BUILT.includes(f.split('.')[1]));
   console.log(`  skipped ${others.length} golden files of policies not built yet`);
-  const run = spawnSync('node', [runner, '--policy', 'reserve', '--in', join(casesDir, 'sjf_order.csv')]);
+  const run = spawnSync('node', [runner, '--policy', 'knapsack', '--in', join(casesDir, 'sjf_order.csv')]);
   assert.equal(run.status, 4);
 });
 
@@ -481,7 +498,7 @@ test('run_wasm.mjs exit codes', () => {
   assert.equal(r(['--in', join(casesDir, 'capacity_reject.csv')]), 3);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv'), '--cpu', '0']), 1);
   assert.equal(r(['--in', join(casesDir, 'fcfs_basic.csv')]), 0);
-  assert.equal(r(['--policy', 'reserve', '--in', join(casesDir, 'fcfs_basic.csv')]), 4);
+  assert.equal(r(['--policy', 'knapsack', '--in', join(casesDir, 'fcfs_basic.csv')]), 4);
 });
 
 if (existsSync(cli)) console.log('build/aprm found: golden cases also compared with the console program');
