@@ -22,6 +22,7 @@
     settings: { alphaMilli: 100, threshold: 50, eps: 0.1, speed: 1 },
     mode: 'build',
     details: false,
+    theme: 'light',
     engine: { status: 'loading', error: '' }
   };
 
@@ -51,6 +52,7 @@
       },
       mode: state.mode,
       details: state.details,
+      theme: state.theme,
       engine: { status: state.engine.status, error: state.engine.error }
     };
   }
@@ -106,6 +108,13 @@
     return v;
   }
 
+  /* Day ('light') or night ('dark'). Anything else is ignored. Returns the current theme. */
+  function setTheme(theme) {
+    if (theme !== 'light' && theme !== 'dark') { return state.theme; }
+    if (state.theme !== theme) { state.theme = theme; notify('theme'); }
+    return state.theme;
+  }
+
   /* status: 'loading', 'ready' or 'error'; error: text shown in the error state. */
   function setEngine(status, error) {
     if (['loading', 'ready', 'error'].indexOf(status) < 0) { return false; }
@@ -124,6 +133,7 @@
     setSettings: setSettings,
     setMode: setMode,
     setDetails: setDetails,
+    setTheme: setTheme,
     setEngine: setEngine
   };
 })();

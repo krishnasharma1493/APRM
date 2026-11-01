@@ -383,6 +383,25 @@ test('shell: one step at a time, Next buttons move on, Show details switch works
   assert.equal(APRM.store.get().details, false);
 });
 
+test('theme: store accepts light and dark only; the button flips data-theme and its label, storage may be blocked', async () => {
+  const { doc, APRM } = loadPage({ createAprm: () => Promise.resolve(fakeModule()) });
+  await tick(); await tick();
+  let seen = 0;
+  APRM.store.subscribe((st, changed) => { if (changed === 'theme') seen++; });
+  assert.equal(APRM.store.get().theme, 'light');
+  assert.equal(APRM.store.setTheme('purple'), 'light');
+  assert.equal(seen, 0, 'an unknown theme is ignored');
+  const btn = doc.byId['theme-toggle'];
+  assert.equal(btn.textContent, 'Night mode');
+  btn.click();                                           // window.localStorage is undefined here: must not throw
+  assert.equal(APRM.store.get().theme, 'dark');
+  assert.equal(btn.textContent, 'Day mode');
+  assert.equal(seen, 1);
+  btn.click();
+  assert.equal(APRM.store.get().theme, 'light');
+  assert.equal(btn.textContent, 'Night mode');
+});
+
 test('app: wasm missing shows the error state with a message, not a blank page', async () => {
   const { doc } = loadPage({});                                  // no createAprm
   await tick(); await tick();

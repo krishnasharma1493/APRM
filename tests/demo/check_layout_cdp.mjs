@@ -92,6 +92,20 @@ try {
   check('Space starts playing on the Run step', ['playing', 'finished'].includes(await ev(`APRM.player.snapshot().status`)));
   await key(' ', 'Space', 32);
 
+  // 3b. the day and night button changes the page colours and survives a reload
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  await load(1280);
+  const day = await ev(`getComputedStyle(document.body).backgroundColor`);
+  await ev(`document.getElementById('theme-toggle').click(); true`);
+  const night = await ev(`getComputedStyle(document.body).backgroundColor`);
+  check('day and night button: the page background changes', day === 'rgb(242, 243, 241)' && night === 'rgb(18, 21, 19)', day + ' -> ' + night);
+  check('the button now offers day mode', (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Day mode');
+  await send('Page.navigate', { url: pathToFileURL(page).href });
+  for (let i = 0; i < 100 && !(await ev(`(document.getElementById('engine-status')||{}).textContent === 'Engine ready'`)); i++) await sleep(100);
+  check('the choice is remembered after a reload', (await ev(`getComputedStyle(document.body).backgroundColor`)) === 'rgb(18, 21, 19)');
+  await ev(`localStorage.removeItem('aprm.theme'); true`);
+  await load(1280);                                   // back to the system (day) look for the checks below
+
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.card')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
