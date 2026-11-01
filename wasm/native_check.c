@@ -98,7 +98,16 @@ int main(void)
     CHECK(HAS(aprm_results(a), "\"finish\":3"));
     CHECK(HAS(aprm_metrics(a), "\"makespan\":3"));
     CHECK(HAS(aprm_log(a, 0), "\"kind\":\"START\""));
-    CHECK(HAS(aprm_exact(a), "not built yet"));
+    CHECK(HAS(aprm_exact(a), "\"total_wait\":"));      /* K-33: success envelope */
+    CHECK(HAS(aprm_exact(a), "\"schedule\":[{"));
+    CHECK(HAS(aprm_exact(a), "\"ok\":true"));
+    {
+        int c = aprm_create(4, 100, 0, 100, 50, 0.1), k;
+        for (k = 0; k < 10; k++) CHECK(aprm_add_job(c, k, 0, 1, 1, 1, 0) == 0);
+        CHECK(HAS(aprm_exact(c), "\"code\":-9"));
+        CHECK(HAS(aprm_exact(c), "Exact solver supports up to 9 jobs."));
+        CHECK(aprm_destroy(c) == 0);
+    }
     CHECK(aprm_reset(a) == 0);
     CHECK(HAS(aprm_last_error(a), "\"data\":null"));
     CHECK(aprm_run_until(a, P53 * 2) == -2);
