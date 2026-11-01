@@ -302,7 +302,7 @@ test('an invalid link leaves the old case alone and shows the reason; a good one
   const before = caseOf(q.A);
   q.hashchange(encodeText(q.A, HEAD + '\n1,0,5,2,100,10\n'));
   assert.equal(q.el('share-error').hidden, false);
-  assert.match(q.el('share-error').textContent, /priority must be 0 to 9/);
+  assert.match(q.el('share-error').textContent, /column priority: must be 0 to 9/);
   assert.deepEqual(caseOf(q.A), before);
   q.hashchange(encodeText(q.A, HEAD + '\n7,0,5,2,100,1\n'));
   assert.equal(q.el('share-error').hidden, true);
@@ -329,13 +329,13 @@ test('fuzz: random strings and mutations of valid hashes never throw; result is 
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=+/%#.,;:{}"\'\\ \n\u0000ÿ☃';
   const check = (h) => {
     let d;
-    assert.doesNotThrow(() => { d = A.share.decode(h); }, JSON.stringify(h).slice(0, 80));
+    assert.doesNotThrow(() => { d = A.share.decode(h); }, String(JSON.stringify(h)).slice(0, 80));
     assert.ok(d && typeof d.ok === 'boolean');
     if (d.ok && !d.empty) {
       const c = d.case;
       assert.equal(E.capacityProblem('cpu', c.machine.cpu), null);
       assert.equal(E.capacityProblem('mem', c.machine.mem), null);
-      assert.deepEqual(E.allProblems(c.jobs, c.machine), []);
+      assert.deepEqual(plain(E.allProblems(c.jobs, c.machine)), []);
       assert.ok(c.jobs.length <= 5000);
     } else if (!d.ok) {
       assert.ok(typeof d.message === 'string' && d.message.length > 0 && d.message.length < 1000, h);
