@@ -5,7 +5,8 @@
 #   make debug      -g and -DAPRM_DEBUG (invariant checks after every step)
 #   make sanitize   debug + AddressSanitizer + UBSan; also runs the C tests and the CLI tests
 #   make test       builds and runs every tests/c/test_*.c (stops at the first failure), then
-#                   the console program tests: golden cases and exit codes (K-12)
+#                   the console program tests: golden cases and exit codes (K-12), then the
+#                   website shell tests with Node (K-23)
 #   make wasm       runs wasm/build.sh: web/vendor/aprm.js (needs emcc, see docs/TOOLCHAIN.md)
 #   make clean      removes build/ and nothing else
 #
@@ -48,7 +49,7 @@ TEST_SRC  := $(sort $(wildcard tests/c/test_*.c))
 TEST_BIN  := $(patsubst tests/c/%.c,$(OBJDIR)/tests/%,$(TEST_SRC))
 HAVE_CLI  := $(wildcard cli/main.c)
 
-.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test
+.PHONY: all debug sanitize test wasm clean cli-build tests-build tests-run cli-test web-test
 
 all:
 	@$(MAKE) --no-print-directory MODE=release cli-build
@@ -65,12 +66,19 @@ sanitize:
 test:
 	@$(MAKE) --no-print-directory MODE=debug tests-run
 	@$(MAKE) --no-print-directory MODE=debug cli-test
+	@$(MAKE) --no-print-directory web-test
 
 wasm:
 	@sh wasm/build.sh
 
 clean:
 	rm -rf build
+
+# Website shell tests (K-23): need only Node, not emcc. Skipped with a note if
+# node is missing; the real-engine part runs only if web/vendor/aprm.js is built.
+web-test:
+	@if command -v node >/dev/null 2>&1; then node tests/web/test_web.mjs; \
+	else echo "web-test: node not found, skipping website tests"; fi
 
 # ---- internal targets (run with MODE set) ----
 

@@ -22,3 +22,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-01 | Krishna | K-13 | Autonomous run: WebAssembly exports, build, Node tests, CI job, decision D64; independent AI review incl. real-browser check | PR #67 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-15 | Autonomous run: experiment runner; independent AI review | PR #70 (stacked; not yet merged) | to confirm |
 | 2026-11-01 | Krishna | K-16 | Autonomous run: invariant property checker; independent AI review with differential and mutation testing | PR #71 (stacked; not yet merged) | to confirm |
+| 2026-11-01 | Krishna | K-23 | Autonomous run: website shell (index.html, wasm.js, store.js, app.js), Node tests with fake DOM; independent AI review with mutation testing; file:// checked in headless Chrome | PR #72 | to confirm |
