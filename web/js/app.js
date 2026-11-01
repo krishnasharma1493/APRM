@@ -15,7 +15,6 @@
 
   var TEXT_LOADING = 'Loading engine…';
   var TEXT_EMPTY = 'No jobs yet. Add one, load a preset, or generate a random set.';
-  var TEXT_NO_RUN = 'Nothing to show yet. Add jobs, then press Run.';
 
   /* Where the backup demo video lives (M13). Not recorded yet, so empty: the
    * error state then says the link is still to be added. Set when the video exists. */
@@ -97,9 +96,7 @@
       }
     }
 
-    byId('canvas-empty').textContent = TEXT_NO_RUN;
-    byId('whylog-empty').textContent = 'The reasons for each decision appear here once a run starts.';
-    byId('metrics-empty').textContent = 'Metrics appear when jobs have finished.';
+    /* canvas-empty, whylog-empty and metrics-empty are owned by player.js once mounted. */
   }
 
   /* The big error state for a failed engine: a clear message plus the backup video link. */
@@ -139,9 +136,9 @@
     }
   }
 
-  /* Connect the Build mode scripts (K-24) that are present on the page. */
+  /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
-    ['presets', 'editor', 'generator'].forEach(function (name) {
+    ['presets', 'editor', 'generator', 'whylog', 'player'].forEach(function (name) {
       if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
     });
   }

@@ -77,7 +77,7 @@ clean:
 # Website shell tests (K-23): need only Node, not emcc. Skipped with a note if
 # node is missing; the real-engine part runs only if web/vendor/aprm.js is built.
 web-test:
-	@if command -v node >/dev/null 2>&1; then node tests/web/test_web.mjs && node tests/web/test_editor.mjs; \
+	@if command -v node >/dev/null 2>&1; then node tests/web/test_web.mjs && node tests/web/test_editor.mjs && node tests/web/test_player.mjs; \
 	else echo "web-test: node not found, skipping website tests"; fi
 
 # ---- internal targets (run with MODE set) ----
