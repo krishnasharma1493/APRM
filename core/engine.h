@@ -55,7 +55,8 @@ int  sim_add_job(Sim *s, const Job *job);
  * (freeing CPU and memory), add every job arriving then, run the greedy-fill
  * selection step (BLUEPRINT 3.4: pop the best waiting job, start it if it
  * fits, else set it aside; stop when none are left or free CPU or memory is
- * 0; push the set-aside jobs back). Finishes come before arrivals at the same
+ * 0; push the set-aside jobs back). The reserve policy adds the reservation
+ * of BLUEPRINT 3.5 (reserve.h, D66). Finishes come before arrivals at the same
  * tick (D9). Returns 1 = an event was handled, 0 = nothing left to do (no
  * pending, waiting or running job; the Sim is unchanged), or a negative
  * code: APRM_INVALID_ARGUMENT (NULL s, or the policy is not implemented
@@ -121,7 +122,8 @@ const SimError *sim_last_error(const Sim *s);
  * pathological input). On failure *out is left empty. The caller owns *out. */
 
 /* State at the current time: waiting in service order (best first), running
- * ordered by finish; reservation null until K-26. O(n log n) time, O(n)
+ * ordered by finish; reservation is {"id","shadow_time"} while the reserve
+ * policy holds one (K-26), else null. O(n log n) time, O(n)
  * temporary space (it sorts copies of the two heaps, never the heaps). */
 int  sim_state_json(const Sim *s, JsonBuf *out);
 

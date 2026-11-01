@@ -22,6 +22,7 @@
 #include "heap.h"
 #include "job.h"
 #include "policy.h"
+#include "reserve.h"
 
 /* Waiting-heap element: the job and its policy key (smaller = served first). */
 /* skipmask: which resources were short at this job's last logged SKIP
@@ -55,6 +56,9 @@ struct Sim {
     size_t fin_len, fin_cap;
     WaitEntry *skip;             /* scratch: jobs set aside in one greedy fill */
     size_t skip_cap;
+    Reservation resv;            /* the one reservation (reserve policy, K-26); active == 0 if none */
+    RunSlot *rscratch;           /* scratch: running jobs for the shadow-time walk */
+    size_t rscratch_cap;
     EventLog log;                /* event log (K-10, D60); seq restarts at 1 on reset */
 };
 

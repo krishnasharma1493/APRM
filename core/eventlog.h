@@ -40,6 +40,7 @@ typedef enum {
  *   FINISH        a0 = ticks it ran; a1 = cpu, a2 = mem freed
  *   RESERVE       a0 = shadow time (guaranteed start)
  *   BACKFILL      a0 = its finish time, a1 = shadow time of the reservation
+ *                 (a0 > a1: it runs past the shadow time inside the spare room)
  *   BATCH_SELECT  a0 = number of jobs in the chosen batch
  *   REJECT, PROMOTE_INFO: unused (reserved) */
 typedef struct {

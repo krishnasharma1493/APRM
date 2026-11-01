@@ -377,6 +377,8 @@ static void test_log_formatters(void)
         { LOG_FINISH,  { 1, 1, 1, 0 }, "Job 9 finished after 1 tick; freed 1 core and 1 MB." },
         { LOG_RESERVE, { 55, 0, 0, 0 }, "Job 9 reserved: start guaranteed at t=55." },
         { LOG_BACKFILL, { 50, 55, 0, 0 }, "Job 9 backfilled: finishes at t=50, before the reservation at t=55." },
+        { LOG_BACKFILL, { 55, 55, 0, 0 }, "Job 9 backfilled: finishes at t=55, before the reservation at t=55." },
+        { LOG_BACKFILL, { 70, 55, 0, 0 }, "Job 9 backfilled: finishes at t=70, after the reservation at t=55, but fits the spare room." },
         { LOG_BATCH_SELECT, { 3, 0, 0, 0 }, "Job 9 chosen for the best batch of 3 jobs." },
         { LOG_BATCH_SELECT, { 1, 0, 0, 0 }, "Job 9 chosen for the best batch of 1 job." },
         { LOG_REJECT,  { 0, 0, 0, 0 }, "Job 9 rejected (reserved kind, never emitted; see the error message)." },
