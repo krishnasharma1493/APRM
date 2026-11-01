@@ -23,6 +23,8 @@ Rules for the run: `docs/RUN_INSTRUCTIONS.md`. Updated by the orchestrator after
 | K-13 | #14 | Done, PR #67 merged (Krishna told the run to merge it, including the PRD §5 `aprm_last_error` row) | WebAssembly build, 28 JS tests, native ASan driver, CI job; D64 |
 | K-15 | #16 | Done, PR #70 merged | Experiment runner |
 | K-16 | #17 | Done, PR #71 merged | Invariant checker; 10,000 real runs, 0 violations |
+| K-18 | #19 | **Blocked, label needs-krishna** | Needs Ahaana's paper check of all golden cases, her format approval and laptop versions, and Krishna's freeze sign-off. Blocks K-19 and everything after it |
+| K-23 | #25 | In progress (PR pending) | Only eligible issue; depends on K-13 only |
 | A-01 and the other A issues | | Left for Ahaana | They block nothing of Krishna's yet (K-41 needs A-06 much later) |
 
 ## Skills, plugins, tools
@@ -70,3 +72,7 @@ All five stacked PRs were merged on 2026-11-01 in the order #66, #68, #67, #70, 
 Not started (blocked): K-18 (freeze API and toolchain; needs Krishna's sign-off and Ahaana's paper check of all golden cases). Gate 3 and later depend on K-18. Follow-up: issue #69 (K-42, engine speed).
 
 Reviews found and fixed real defects in: K-04 (invalid UTF-8 in JSON), K-06 (misattributed proof), K-08 (missing error record), K-10 (unbounded skip log: up to 25M entries), K-12 (partial outputs on failure; input could be overwritten), K-13 (CSV parser differed from C on a trailing carriage return), K-14 (arrival overflow), K-15 (stale results after an engine rebuild), K-16 (tests could not detect a broken checker).
+
+## Decisions made during autonomous run
+
+- 2026-11-01: K-18 not done by the run: its acceptance needs two humans (Ahaana's paper check and format approval, Krishna's sign-off). Labelled needs-krishna. Chain K-19..K-22, K-24+ stays blocked; only K-23 was eligible.
