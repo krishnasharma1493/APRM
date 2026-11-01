@@ -41,7 +41,6 @@ function webFiles(dir = web, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'vendor') continue;                       // build output, not our code
     if (e.name === 'dist' || e.name === 'node_modules') continue;   // the built copy of these files and third-party code (K-49)
-    if (e.name === 'build.mjs') continue;                    // the build script, run by Node, not shipped to the page
     const p = join(dir, e.name);
     if (e.isDirectory()) webFiles(p, out);
     else if (/\.(html|js|css)$/.test(e.name)) out.push(p);

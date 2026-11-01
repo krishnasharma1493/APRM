@@ -123,7 +123,11 @@ try {
   check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
   // The built single file (make web) carries the chart library, so offline it still draws charts; the
   // unbuilt web/index.html loads it from the CDN and offline falls back to the table with a message.
-  if (offline) { check('offline: charts drawn from the bundled library, or the table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load/.test(note || '')), chartState); }
+  if (offline) {
+    const built = /[\\/]dist[\\/]index\.html$/.test(page);
+    if (built) { check('offline, built file: charts drawn from the bundled library', chartState === 'loaded', chartState); }
+    else { check('offline, source page: table fallback with a message', chartState === 'failed' && /could not load/.test(note || ''), chartState); }
+  }
   check('row 4: exact-optimum row explains the 9-job limit (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('compare-exact')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log

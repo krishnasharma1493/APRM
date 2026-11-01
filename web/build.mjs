@@ -8,7 +8,7 @@
 //
 // Usage: node build.mjs (or `make web`). Needs web/vendor/aprm.js (`make wasm`) and `npm ci`.
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,7 @@ function inlineSafe(text, name) {
 /* The contents of a file under web/, or a clear error naming what to run. */
 function readWeb(rel, hint) {
   const path = resolve(here, rel);
-  if (!path.startsWith(here)) { throw new Error('refusing a path outside web/: ' + rel); }
+  if (!path.startsWith(here + sep)) { throw new Error('refusing a path outside web/: ' + rel); }
   if (!existsSync(path) || statSync(path).size === 0) { throw new Error('missing ' + rel + (hint ? ' (' + hint + ')' : '')); }
   return readFileSync(path, 'utf8');
 }

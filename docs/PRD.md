@@ -660,7 +660,7 @@ On every push and pull request:
 4. **build-wasm:** install the frozen emsdk version, `make wasm`.
 4a. **build-web (K-49, inside the build-wasm job):** `make web` from the lockfile, then the offline rehearsal (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`) in headless Chrome against the built file.
 5. **python:** install from the lock file (from `requirements.txt` names before the Gate 2 freeze), run `pytest tests/py` (property checks, summary-format checks, the figure smoke test on `data/sample_summaries/`, and conformance against the fresh WebAssembly build through `wasm/run_wasm.mjs`).
-6. **deploy (main only):** publish `web/` to GitHub Pages.
+6. **deploy (main only):** build with `make wasm` and `make web`, then publish `web/dist/` to GitHub Pages.
 
 ## 10. Testing guide
 

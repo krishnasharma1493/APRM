@@ -81,7 +81,7 @@ hardening:
 	@sh tests/hardening/run.sh
 
 clean:
-	rm -rf build
+	rm -rf build web/dist web/node_modules
 
 # Website shell tests (K-23): need only Node, not emcc. Skipped with a note if
 # node is missing; the real-engine part runs only if web/vendor/aprm.js is built.
