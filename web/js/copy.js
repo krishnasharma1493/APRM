@@ -85,6 +85,7 @@
     'run.heading': 'Run your jobs',
     'run.policy': 'How to choose the next job',
     'run.more': 'More settings',
+    'run.error.settings': 'Check More settings. {why}',
     'run.alpha': 'Aging rate \u03b1 (alpha_milli)',
     'run.alpha.hint': 'How fast a waiting job gains priority. 0 to 10000; higher means faster.',
     'run.threshold': 'Reservation threshold T (ticks)',
