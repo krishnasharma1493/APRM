@@ -17,7 +17,7 @@ Every issue's definition of done also includes the CLAUDE.md checklist: tests gr
 - **Done when:**
   - [ ] Every TOOLCHAIN.md row filled for both laptops, with its source and the date checked
   - [ ] `requirements.txt` lists names only, no versions
-  - [ ] `emcc`, `gcc`/`clang`, `make`, `node`, `python3` run on both laptops (or the CI fallback for Emscripten from PRD §10B is written down)
+  - [ ] `emcc`, `gcc`/`clang`, `make`, `node`, `python3` run on both laptops (or the Emscripten fallback from PRD §10B, the `demo-ready` build, is written down)
   - [ ] No version number typed from memory anywhere
 
 ### K-02 Makefile, config.h, job.h · GitHub #2 ([link](https://github.com/krishnasharma1493/APRM/issues/2))
