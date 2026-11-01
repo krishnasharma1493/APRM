@@ -126,7 +126,7 @@
     var st = view.state;
     var out = { w: w, h: h, lanes: null };
     if (!st) { return out; }
-    var tmax = Math.max(1, st.now), k;
+    var tmax = Math.max(1, st.now, view.tmax || 0), k;     /* view.tmax: boards compared share one scale */
     for (k = 0; k < view.jobs.length; k++) { if (view.jobs[k].arrival > tmax) { tmax = view.jobs[k].arrival; } }
     var ids = Object.keys(view.bars);
     for (k = 0; k < ids.length; k++) {
@@ -162,19 +162,20 @@
   }
 
   /* Draw the board. Returns false when the page has no 2D canvas. O(cards). */
-  function draw(el, view) {
+  function draw(el, view, height) {
+    var HEIGHT_PX = height || HEIGHT;
     var ctx = el && typeof el.getContext === 'function' ? el.getContext('2d') : null;
     if (!ctx) { return false; }
     var cssW = Math.max(300, Math.floor(el.clientWidth || 640));
     var dpr = (typeof window.devicePixelRatio === 'number' && window.devicePixelRatio > 0) ? window.devicePixelRatio : 1;
     if (el.width !== Math.round(cssW * dpr)) { el.width = Math.round(cssW * dpr); }
-    if (el.height !== Math.round(HEIGHT * dpr)) { el.height = Math.round(HEIGHT * dpr); }
+    if (el.height !== Math.round(HEIGHT_PX * dpr)) { el.height = Math.round(HEIGHT_PX * dpr); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     var col = colours(el);
-    ctx.clearRect(0, 0, cssW, HEIGHT);
+    ctx.clearRect(0, 0, cssW, HEIGHT_PX);
     ctx.font = '12px ' + col.font;
     ctx.textBaseline = 'alphabetic';
-    var lay = layout(view, cssW, HEIGHT);
+    var lay = layout(view, cssW, HEIGHT_PX);
     el.__layout = lay;
     var regions = [];
     el.__regions = regions;
@@ -221,6 +222,7 @@
     /* the time axis, and the teal "now" rail across both lanes */
     var first = lay.lanes[0], last = lay.lanes[1];
     for (var v = 0; v <= lay.tmax; v += lay.step) { text(String(v), Math.min(lay.sx(v), cssW - 30), lay.axisY, 40, col.muted); }
+    if (view.hideNow) { return true; }                 /* a finished board in Compare has no "now" */
     ctx.strokeStyle = col.accent; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(lay.nowX, first.y); ctx.lineTo(lay.nowX, last.y + last.h); ctx.stroke();
     text('now ' + view.state.now, Math.min(lay.nowX + 4, cssW - 60), first.y - 3, 70, col.accent);

@@ -226,26 +226,31 @@
 
   <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
     <h2 data-copy="compare.heading">Compare schedulers</h2>
-    <div class="card compare-setup">
+    <div class="compare-setup">
       <p data-copy="compare.pick">Pick two or more. They all run on the same jobs and machine.</p>
       <div id="compare-policies" class="compare-policies"></div>
+      <div class="compare-go">
+        <button type="button" class="btn btn-primary" id="compare-start" data-copy="compare.start">Compare</button>
+        <p id="compare-status" class="status" role="status" aria-live="polite">Ready. Pick two or more.</p>
+      </div>
       <p class="hint" data-copy="compare.settings.note"></p>
-      <button type="button" class="btn btn-primary" id="compare-start" data-copy="compare.start">Compare</button>
-      <p id="compare-status" class="status" role="status" aria-live="polite">Ready. Pick two or more.</p>
       <p id="compare-error" class="field-error" role="alert" hidden></p>
     </div>
     <p id="compare-empty" class="empty" data-copy="compare.empty">Nothing to compare yet.</p>
     <p id="compare-verdict" class="verdict" role="status" hidden></p>
-    <div id="compare-table-wrap" class="table-wrap card" hidden>
-      <h3 data-copy="compare.table">Same jobs, different schedulers</h3>
-      <table class="job-table compare-table" aria-label="Metrics per scheduler">
-        <thead id="compare-head"></thead>
-        <tbody id="compare-body"></tbody>
-      </table>
+    <section id="compare-table-wrap" class="module compare-results" aria-labelledby="compare-table-title" hidden>
+      <h3 id="compare-table-title" class="tab" data-copy="compare.table">Same jobs, different schedulers</h3>
+      <div class="scroll-x">
+        <table class="job-table compare-table">
+          <thead id="compare-head"></thead>
+          <tbody id="compare-body"></tbody>
+        </table>
+      </div>
       <p class="hint" data-copy="compare.dash"></p>
-    </div>
-    <p id="compare-exact" class="empty" hidden></p>
+      <p id="compare-exact" class="exact-line" hidden></p>
+    </section>
     <h3 data-copy="compare.timelines">Who ran when</h3>
+    <p class="hint" data-copy="compare.key"></p>
     <div id="compare-timelines" class="compare-timelines"></div>
     <h3 data-copy="compare.charts">Charts</h3>
     <p id="compare-chart-note" class="empty" role="status" hidden></p>

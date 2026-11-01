@@ -182,6 +182,7 @@
     'compare.exact.big': 'The exact best order is only worked out for 9 jobs or fewer.',
     'compare.exact.failed': 'The exact best order could not be worked out: {why}',
     'compare.timelines': 'Who ran when',
+    'compare.key': 'Each card is one job with its number stamped on it. Width is how long it ran, height is its share of CPU or memory. Time runs left to right, in ticks, on the same scale for every board.',
     'compare.timeline.cap': '{name} (everything finished at tick {t})',
     'compare.timeline.aria': 'Timeline of every job under {name}',
     'compare.charts': 'Charts',

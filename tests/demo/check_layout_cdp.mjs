@@ -138,7 +138,7 @@ try {
 
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.card')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
+  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.module')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
   check('baseline: buttons have a transition, the top bar is blurred, the hairline is the light grey', base.dur > 1 && base.blur !== 'none' && base.border === 'rgb(207, 211, 208)', JSON.stringify(base));
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   const dur = await ev(`parseFloat(getComputedStyle(document.querySelector('.btn')).transitionDuration) * 1000`);
@@ -147,7 +147,7 @@ try {
   const bg = await ev(`getComputedStyle(document.querySelector('.topbar')).backdropFilter`);
   check('reduced transparency: the top bar has no blur', bg === 'none' || bg === '', bg);
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-contrast', value: 'more' }] });
-  const bd = await ev(`getComputedStyle(document.querySelector('.card')).borderTopColor`);
+  const bd = await ev(`getComputedStyle(document.querySelector('.module')).borderTopColor`);
   check('increased contrast: borders are darker than the normal hairline', bd === 'rgb(91, 98, 94)', bd);
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;

@@ -399,6 +399,8 @@ test('timelines: one canvas per policy, drawn with the same time scale', () => {
   assert.equal(canvases.length, 3);
   for (const cv of canvases) assert.ok(cv.ctx.calls.filter((c) => c.op === 'fillRect').length >= 3, 'bars drawn');
   assert.equal(p.A.compare.snapshot().tmax, 9);
+  for (const cv of canvases) assert.equal(cv.__layout.tmax, 9, 'every board uses the shared time scale');
+  assert.ok(!canvases[0].ctx.calls.some((c) => c.op === 'fillText' && String(c.a[0]).startsWith('now ')), 'a finished board has no now rail');
 });
 
 test('charts: with Chart.js present, one bar chart per key metric; old charts destroyed on re-run', () => {
