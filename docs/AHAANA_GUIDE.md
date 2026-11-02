@@ -503,7 +503,7 @@ experiments, you re-run one command.
 A smoke test does not check every detail. It only checks "does it run and
 does it produce something?" (The name comes from electronics: switch it on and
 see whether smoke comes out.) Ours runs the whole script on the sample data
-and checks that all ten files (five PNG, five PDF) exist.
+and checks that all the expected files (PNG and PDF for each figure) exist.
 
 ### The code, line by line where it matters
 
@@ -551,13 +551,11 @@ into `docs/report/figures`.
 - `error: no figures were drawn ...`: the folder exists but holds none of the
   summary files. Check that you pointed at the right folder.
 
-### Figures that are still missing
+### Figures that were added later
 
-The sample folder already has `e4_summary.csv`, `e6_summary.csv` and
-`e6_ratios.csv`, but this script draws only E1, E2, E3 and E5. The E4 and E6
-figures will be added later through issue K-35. Until then, "all figures"
-means those five (ten files), and you should not worry that E4 and E6 are not
-in the output.
+When this section was written the script drew five figures. A-04b added E4
+and the two E6 figures, so on the sample data it now draws eight figures (16
+files). See the A-04b section below.
 
 ### Exercises
 
@@ -577,5 +575,124 @@ in the output.
    status 2. (I ran this.)
 3. No: five "Skipping" lines, then `error: no figures were drawn ...`, exit
    status 1, and the output folder is not even created. (I ran this.)
+
+</details>
+
+---
+
+## A-04b: the E4 and E6 figures
+
+These three figures were written by the assistant at Krishna's request, so
+that you can read them, run them and explain them in the viva.
+
+### The functions
+
+| Function | What it does |
+| --- | --- |
+| `plot_e4_alpha_tradeoff` | Reads `e4_summary.csv`, builds the E4 figure, saves `e4_alpha_tradeoff.png` and `.pdf` |
+| `build_e4_figure` | Two panels side by side. Left: high-priority average wait against the aging rate. Right: low-priority maximum wait against the same x axis. Each uses `draw_policy_line` (mean line, error bars, shaded band from the `_ci_low` and `_ci_high` columns) |
+| `plot_e6_ratio_boxplot` | Reads `e6_ratios.csv` and saves `e6_ratio_boxplot.png` and `.pdf` |
+| `build_e6_boxplot_figure` | Draws the box plot, the reference line at 1.0, the legend and the note under the figure |
+| `draw_box_plot` | Gives matplotlib the list of ratios of each policy; matplotlib draws one box per policy, then we colour it with the policy's colour from `POLICY_LOOK` |
+| `plot_e6_wait_gap` | Reads `e6_summary.csv` and saves `e6_wait_gap.png` and `.pdf` |
+| `build_e6_wait_gap_figure` | One line per policy: mean wait gap against jobs per instance (6 to 9), with error bars and bands |
+
+All three are listed in `FIGURES`, so `python tools/plot_figures.py` draws them.
+
+**Box plot: plotting, not computing.** The rule is that the script computes no
+statistics. The box plot is the one place where matplotlib itself works out
+quartiles and the median from the 200 (or 50 per size) individual ratios in
+`e6_ratios.csv`. That is drawing a picture of the raw values, not producing a
+summary statistic for the report. We write no quartile code. The means and
+confidence intervals in the line figures still come only from the CSV columns.
+
+### How to run
+
+```sh
+python tools/plot_figures.py --input data/sample_summaries --output /tmp/figs
+```
+
+The new files are `e4_alpha_tradeoff`, `e6_ratio_boxplot` and `e6_wait_gap`
+(each as PNG and PDF). With real data use `--input results/summaries`.
+
+### How to read E4 (the alpha trade-off)
+
+Aging raises a waiting job's rank as it waits; alpha says how fast. At
+alpha = 0 there is no aging, so the scheduler is plain priority. Reading the
+two panels together:
+
+- Left panel: as alpha grows, the **high-priority** jobs wait longer on
+  average (they are overtaken by older, lower-priority jobs).
+- Right panel: as alpha grows, the **low-priority** jobs' **worst** wait gets
+  much smaller (nobody waits forever).
+
+So alpha is a price: a little extra wait for important jobs buys much less
+starvation for unimportant ones. The shaded band and the error bars are the
+95% interval over 30 seeds; where the bands of two alphas do not overlap, the
+difference is not just luck. In Krishna's real run (K-35) the maximum wait of
+the low group falls from about 1105 ticks (alpha = 0) to about 470 at
+alpha = 0.05 and then flattens near 398, while the high group's average wait
+rises from about 12 to about 52 ticks. The first small steps of alpha buy
+most of the benefit.
+
+### How to read the E6 box plot
+
+Every dot of data is one instance (6 to 9 jobs) scheduled by one policy. Its
+**turnaround ratio** is that policy's total turnaround divided by the total
+turnaround of the exact optimum. So **1.0 means optimal** (the dashed line)
+and nothing can be below 1.
+
+- **Box:** the middle half of the instances (first to third quartile).
+- **Line inside the box:** the median, the middle instance.
+- **Whiskers:** reach the furthest value that is within 1.5 x the box height
+  (the interquartile range, IQR) of the box. This is the matplotlib default and
+  the same rule as the Beaumont survey.
+- **Circles beyond the whiskers:** outliers, unusually bad instances.
+- If the median sits on the dashed line, more than half of the instances were
+  solved optimally.
+
+**Caption note (also printed under the figure):** we divide by the *exact
+optimum* (computable because there are only 6 to 9 jobs), not by a lower bound
+as the Beaumont survey does with its area bound. A ratio to a lower bound is
+always a bit pessimistic; ours is the true distance to the best possible
+schedule. Turnaround = wait + duration, so the ratio is never undefined.
+
+Viva question: "Why divide by the optimum and not a lower bound?" Because for
+6 to 9 jobs we can find the true optimum exactly (`aprm --exact`), which is a
+fairer reference.
+
+### How to read the E6 wait gap
+
+x is the number of jobs in an instance, y is `scheduler total wait - optimum
+total wait` in ticks, so 0 means the scheduler waited exactly as little as
+the best possible schedule. Points are the mean over 50 instances, with the
+95% interval as error bars and band. Lines that lie on top of each other
+(in the real run `priority`, `aging` and `reserve` are almost identical)
+simply behave the same on these small instances. A lower line is better.
+
+### Exercises
+
+1. Run the script on the sample data. In the E4 panels, by how much does the
+   low-priority maximum wait change between alpha = 0 and alpha = 1, and by
+   how much does the high-priority average wait change?
+2. In the sample `e6_ratios.csv`, what is the median ratio of `sjf`, and is
+   there any outlier circle above its whisker? (Compute the median with pandas
+   and compare with the picture.)
+3. In the sample E6 wait-gap data for 9 jobs, which policy has the largest
+   mean gap, and does its error bar overlap the next-largest policy's?
+
+<details>
+<summary>Answers (try first!)</summary>
+
+1. Low-priority maximum wait goes from 200 to 33.333 ticks (a drop of
+   166.667); high-priority average wait goes from 5 to 15 ticks (a rise of 10).
+   (I ran this.)
+2. The median is 1.0425725. The whisker limit is Q3 + 1.5 x IQR = 1.0622 and
+   the largest `sjf` ratio is 1.0552, so there is no outlier circle. (I ran
+   this with pandas and numpy.) Sample data is made up; real data does have
+   outliers.
+3. `knapsack`, with mean 16.5 and interval 15.5 to 17.5. The next policy,
+   `reserve`, has 13.5 with interval 12.5 to 14.5, so the intervals do not
+   overlap. (I ran this.)
 
 </details>

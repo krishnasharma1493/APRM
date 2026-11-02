@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
 import pandas as pd  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -277,6 +278,130 @@ def build_e5_figure(rows: pd.DataFrame, note: str = ""):
     return fig
 
 
+def build_e4_figure(rows: pd.DataFrame, note: str = ""):
+    """Build the E4 figure: two panels, wait of high and of low priority vs alpha."""
+    # Two panels side by side. They do NOT share the y-axis: the two waits
+    # have very different sizes, and each panel has its own unit label.
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+
+    # The two metrics and their y labels: (column prefix, label).
+    panels = [
+        ("high_prio_avg_wait", "High-priority average wait (ticks)"),
+        ("low_prio_max_wait", "Low-priority maximum wait (ticks)"),
+    ]
+
+    # Fill each panel with one line (mean, error bars, band) for aging.
+    for ax, (metric, y_label) in zip(axes, panels):
+        for policy in list(rows["policy"].unique()):
+            draw_policy_line(ax, rows, policy, metric)
+        ax.set_xlabel("Aging rate \u03b1 (alpha_milli / 1000)")
+        ax.set_ylabel(y_label)
+        # A tick at every alpha that is in the file.
+        ax.set_xticks(sorted(rows["x_value"].unique()))
+        # Tilt the tick labels so close values (0.05, 0.10) do not overlap.
+        ax.tick_params(axis="x", labelrotation=45)
+        ax.legend(title="Policy")
+
+    # One title over both panels.
+    fig.suptitle("E4: Aging rate trade-off, high-priority vs low-priority waits" + note)
+    fig.tight_layout()
+    return fig
+
+
+def draw_box_plot(ax, rows: pd.DataFrame, policies: list) -> None:
+    """Draw one box per policy from the per-instance ratios on the axes ax."""
+    # One list of ratios per policy, straight from the CSV column.
+    groups = [list(rows[rows["policy"] == p]["turnaround_ratio"]) for p in policies]
+
+    # matplotlib's boxplot works out the median, quartiles and whiskers
+    # (1.5 x IQR, the default) from the values. Drawing a box plot is
+    # plotting, not computing a summary statistic for the report.
+    parts = ax.boxplot(groups, tick_labels=policies, patch_artist=True, whis=1.5)
+
+    # Give every box its policy's colour, with a white fill.
+    for policy, box in zip(policies, parts["boxes"]):
+        colour = policy_look(policy)[0]
+        box.set_facecolor("white")
+        box.set_edgecolor(colour)
+        box.set_linewidth(1.8)
+
+    # Colour the median and flier points the same way, and tag the median
+    # and the upper whisker with the policy name (the tests look them up).
+    for index, policy in enumerate(policies):
+        colour = policy_look(policy)[0]
+        median = parts["medians"][index]
+        median.set_color(colour)
+        median.set_linewidth(2.5)
+        median.set_gid("median:" + policy)
+        parts["fliers"][index].set_markeredgecolor(colour)
+        # whiskers come in pairs: lower, then upper, for each box.
+        parts["whiskers"][2 * index].set_color(colour)
+        parts["whiskers"][2 * index + 1].set_color(colour)
+        parts["whiskers"][2 * index + 1].set_gid("whisker_high:" + policy)
+        parts["caps"][2 * index].set_color(colour)
+        parts["caps"][2 * index + 1].set_color(colour)
+
+
+def build_e6_boxplot_figure(rows: pd.DataFrame, note: str = ""):
+    """Build the E6 box plot: turnaround ratio to the exact optimum per policy."""
+    # Make a new empty figure with one set of axes.
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+    # Policies in the order they first appear in the file.
+    policies = list(rows["policy"].unique())
+    draw_box_plot(ax, rows, policies)
+
+    # Reference line at ratio 1.0: a scheduler on this line is optimal.
+    ref = ax.axhline(1.0, color="#56B4E9", linestyle="--", linewidth=1.5)
+    ref.set_gid("reference")
+
+    # Title and axis labels (the ratio has no unit).
+    ax.set_title("E6: Turnaround ratio to the exact optimum" + note)
+    ax.set_xlabel("Policy")
+    ax.set_ylabel("Turnaround ratio to optimum (1 = optimal)")
+
+    # Legend: one entry per policy box plus the reference line.
+    handles = []
+    for policy in policies:
+        handles.append(Patch(facecolor="white", edgecolor=policy_look(policy)[0],
+                             linewidth=1.8, label=policy))
+    handles.append(ref)
+    ref.set_label("Optimum (ratio = 1)")
+    # Placed outside the plot, on the right, so it never hides a box.
+    ax.legend(handles=handles, title="Policy", loc="upper left",
+              bbox_to_anchor=(1.01, 1.0))
+
+    # The caption note (D42/D74): exact optimum, not a lower bound.
+    fig.text(0.5, 0.01,
+             "Divided by the exact optimum, not a lower bound; whiskers reach 1.5 x IQR.",
+             ha="center", fontsize=9)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    return fig
+
+
+def build_e6_wait_gap_figure(rows: pd.DataFrame, note: str = ""):
+    """Build the E6 wait-gap figure: mean gap per policy vs jobs per instance."""
+    # Make a new empty figure with one set of axes.
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+
+    # One line (mean, error bars, band) for each policy.
+    for policy in list(rows["policy"].unique()):
+        draw_policy_line(ax, rows, policy, "wait_gap")
+
+    # A tick at every instance size in the file (6, 7, 8, 9).
+    ax.set_xticks(sorted(rows["x_value"].unique()))
+
+    # Title and axis labels, with units.
+    ax.set_title("E6: Wait gap to the exact optimum" + note)
+    ax.set_xlabel("Jobs per instance")
+    ax.set_ylabel("Wait gap (ticks, scheduler minus optimum)")
+
+    # Legend with the policy names.
+    ax.legend(title="Policy")
+    fig.tight_layout()
+    return fig
+
+
 def plot_e1_avg_wait(summary_dir: str, out_dir: str) -> str:
     """Draw E1 (average wait vs load); save PNG and PDF; return the PNG path."""
     # Read the E1 summary (only file this figure needs).
@@ -343,6 +468,45 @@ def plot_e5_max_wait(summary_dir: str, out_dir: str) -> str:
     return save_figure(fig, "e5_max_wait", out_dir)[0]
 
 
+def plot_e4_alpha_tradeoff(summary_dir: str, out_dir: str) -> str:
+    """Draw E4 (waits vs aging rate); save PNG and PDF; return the PNG path."""
+    # Read the E4 summary.
+    rows = read_summary(summary_dir, "e4_summary.csv")
+
+    # Apply the shared style, then build the figure.
+    apply_style()
+    fig = build_e4_figure(rows, sample_note(summary_dir))
+
+    # Save and return the PNG path.
+    return save_figure(fig, "e4_alpha_tradeoff", out_dir)[0]
+
+
+def plot_e6_ratio_boxplot(summary_dir: str, out_dir: str) -> str:
+    """Draw the E6 box plot of ratios; save PNG and PDF; return the PNG path."""
+    # Read the per-instance ratios (one row per instance and policy).
+    rows = read_summary(summary_dir, "e6_ratios.csv")
+
+    # Apply the shared style, then build the figure.
+    apply_style()
+    fig = build_e6_boxplot_figure(rows, sample_note(summary_dir))
+
+    # Save and return the PNG path.
+    return save_figure(fig, "e6_ratio_boxplot", out_dir)[0]
+
+
+def plot_e6_wait_gap(summary_dir: str, out_dir: str) -> str:
+    """Draw the E6 wait gap; save PNG and PDF; return the PNG path."""
+    # Read the E6 summary (means and 95% interval ends).
+    rows = read_summary(summary_dir, "e6_summary.csv")
+
+    # Apply the shared style, then build the figure.
+    apply_style()
+    fig = build_e6_wait_gap_figure(rows, sample_note(summary_dir))
+
+    # Save and return the PNG path.
+    return save_figure(fig, "e6_wait_gap", out_dir)[0]
+
+
 # Every figure: (function, the summary file it needs). In report order.
 # This is the one list that run_all walks; to add a figure, add one line here.
 FIGURES = [
@@ -350,7 +514,10 @@ FIGURES = [
     (plot_e2_max_wait, "e2_summary.csv"),
     (plot_e2_wait_cdf, "e2_wait_cdf.csv"),
     (plot_e3_wait_by_priority, "e3_summary.csv"),
+    (plot_e4_alpha_tradeoff, "e4_summary.csv"),
     (plot_e5_max_wait, "e5_summary.csv"),
+    (plot_e6_ratio_boxplot, "e6_ratios.csv"),
+    (plot_e6_wait_gap, "e6_summary.csv"),
 ]
 
 
