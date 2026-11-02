@@ -1,4 +1,5 @@
-# Build output (PRD §2)
+# --- Build output (C) --------------------------------------------------------
+# make, make debug, make sanitize, make test write everything under build/.
 build/
 *.o
 *.a
@@ -6,21 +7,34 @@ build/
 *.dSYM/
 /aprm
 
-# Generated WebAssembly bundle: commit only on the demo-ready tag (git add -f)
+# --- Website build -----------------------------------------------------------
+# make wasm writes the engine bundle; make web installs npm packages and writes
+# the one-file site. The engine bundle is committed only on the demo-ready tag
+# (git add -f web/vendor/aprm.js).
 web/vendor/aprm.js
 web/vendor/*.wasm
+web/node_modules/
+web/dist/
 
-# Experiment output
-results/
-
-# Python
+# --- Python ------------------------------------------------------------------
 .venv/
 venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 
-# Editor and OS caches (shared settings in .vscode/ are committed)
+# --- Experiment output -------------------------------------------------------
+# tools/run_experiments.py and tools/summarize.py write here; regenerate with
+# the commands in README.md.
+results/
+
+# Report figures from tools/plot_figures.py (regenerated, never committed by
+# default; add a final figure on purpose with git add -f <file>).
+docs/report/figures/*.png
+docs/report/figures/*.pdf
+
+# --- Editor and OS caches ----------------------------------------------------
+# Shared VS Code settings stay committed.
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
@@ -30,25 +44,17 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Research PDFs stay local: the repository is public and most papers are
-# copyrighted. docs/research/README.md lists each file and where to get it.
-docs/research/*.pdf
-
-# Autonomous-run state and logs
-.autorun/
+# --- Tool and assistant folders ----------------------------------------------
+# Local working state of the coding assistant, the design tool and the browser
+# tool, and the old autonomous-run script and its state. CLAUDE.md (the shared
+# rules every session reads) stays committed.
+.claude/
+.impeccable/
 .playwright-mcp/
+autorun.sh
+.autorun/
 
-# Generated report figures, PNG and PDF (sample-data figures are fake). Not committed by default;
-# add a real final figure on purpose with: git add -f <file>
-docs/report/figures/*.png
-docs/report/figures/*.pdf
-
-# Design tool working files (Impeccable question sessions, captures, build state)
-.impeccable/questions/
-.impeccable/review/
-.impeccable/build/
-.impeccable/critique/
-
-# Website build (K-49): dependencies and output are never committed
-web/node_modules/
-web/dist/
+# --- Local research PDFs -----------------------------------------------------
+# The repository is public and most papers are copyrighted.
+# docs/research/README.md lists each file and where to get it.
+docs/research/*.pdf

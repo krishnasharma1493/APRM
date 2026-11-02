@@ -61,3 +61,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-50 | Website verification: click driver over 145 rows in real Chrome, console comparison, fixes #122 to #125, README first run, segfault retry for web tests | K-50 PR, issue #121 | to confirm |
 | 2026-11-02 | Krishna | K-50 | Play and Step disabled on a finished run; regression test and matrix row | K-50 follow-up PR, issue #121 | to confirm |
 | 2026-11-02 | Krishna | K-50 | Click matrix updated for knapsack: six schedulers on every example, console comparison with epsilon | K-50 follow-up PR, issue #121 | to confirm |
+| 2026-11-02 | Krishna | Cleanup | Repository cleanup: tool folders untracked, run logs removed, design docs moved, LICENSE, CONTRIBUTING, docs index, README rewrite | Cleanup PR | to confirm |

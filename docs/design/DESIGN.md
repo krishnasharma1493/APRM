@@ -105,7 +105,7 @@ components:
 
 # Design System: APRM scheduler
 
-Impeccable (`PRODUCT.md` and this file) is the design authority (D76). `docs/design/APPLE_DESIGN.md` is reference only. The built site is plain HTML, CSS and classic scripts, so it works offline from `file://`, with no web fonts and no network. Engine, user, file and URL text is never injected as raw HTML, and colour is never the only signal.
+Impeccable (`PRODUCT.md` in this folder and this file) is the design authority (D76). `APPLE_DESIGN.md` in this folder is reference only. The built site is plain HTML, CSS and classic scripts, so it works offline from `file://`, with no web fonts and no network. Engine, user, file and URL text is never injected as raw HTML, and colour is never the only signal.
 
 ## Overview
 
