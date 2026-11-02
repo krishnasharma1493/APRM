@@ -14,7 +14,7 @@ This PRD follows the structure of the Hackathon Project Blueprint & PRD v3.0 tem
 6. **Ownership fixed (revised 2026-10-31).** Krishna Sharma owns everything except the report graphs: the C core and every algorithm, the WebAssembly build, the website, CI, golden test cases, preset CSVs, and all non-graph Python (workload generator, experiment runner, metrics and statistics, summary CSVs, property checks, conformance checks, timing benchmarks). Ahaana Arya owns the Python plotting script that turns summary CSV files into the report figures for E1–E6, plus figure styling and captions. She also hand-checks every golden case and reviews changes to CSV formats, summary formats and figures.
 7. **Kept from the template:** the version safety rule, MVP scope tiers, repository rules, one standard error shape, the testing-first attitude, the demo script with fallbacks, risks with early warnings, master prompts for AI assistants, future scope and document maintenance rules.
 8. **Step 1 review (2026-10-31).** Decisions taken after reading the papers and the Consensus report are recorded in `DECISIONS.md` and reflected here: integer aging rate (`alpha_milli`), `max_jobs` in `SimConfig`, classic scripts instead of ES modules, a fixed exact-solver limit of 9, the summary CSV contract (§5), and E6 measured on total turnaround.
-9. **Website rules relaxed (2026-11-02, D76).** Frameworks, libraries, ES modules, a build tool and self-hosted web fonts are allowed for the website when they improve the result; Impeccable (`PRODUCT.md`, `DESIGN.md`) is the design authority. Unchanged: scheduling stays in C, the built site works offline from `file://`, no raw HTML injection, versions verified, no build output committed. §5 is not changed.
+9. **Website rules relaxed (2026-11-02, D76).** Frameworks, libraries, ES modules, a build tool and self-hosted web fonts are allowed for the website when they improve the result; Impeccable (`docs/design/PRODUCT.md`, `docs/design/DESIGN.md`) is the design authority. Unchanged: scheduling stays in C, the built site works offline from `file://`, no raw HTML injection, versions verified, no build output committed. §5 is not changed.
 
 ## Version safety rule (read first)
 
@@ -112,7 +112,7 @@ C for every algorithm, compiled twice; a bundled HTML, CSS and JavaScript websit
 | Laptop build | GCC (Clang on Mac) + GNU Make | Krishna | `-std=c11 -Wall -Wextra -Werror`; debug and sanitizer targets |
 | Browser build | Emscripten → WebAssembly, single-file output | Krishna | Same `core/` sources; exported step API only |
 | Console program | C, `cli/main.c` | Krishna | The synopsis deliverable; reads and writes CSV |
-| Website | HTML + CSS + JavaScript, built and bundled by a frontend build tool (`make web`; tool and libraries chosen and justified in DECISIONS.md, D76 onward) | Krishna | Frameworks, ES modules and self-hosted web fonts allowed; the built `index.html` works from `file://` with no network; design authority Impeccable (`PRODUCT.md`, `DESIGN.md`) |
+| Website | HTML + CSS + JavaScript, built and bundled by a frontend build tool (`make web`; tool and libraries chosen and justified in DECISIONS.md, D76 onward) | Krishna | Frameworks, ES modules and self-hosted web fonts allowed; the built `index.html` works from `file://` with no network; design authority Impeccable (`docs/design/PRODUCT.md`, `docs/design/DESIGN.md`) |
 | Live visuals | HTML Canvas 2D | Krishna | Resource bars, waiting line, running jobs, Gantt timeline |
 | Comparison charts | A charting library bundled into the build (no CDN at runtime once K-49 lands; until then Chart.js from a CDN, pinned with SRI) | Krishna | Compare mode only; a table fallback always shows the same numbers |
 | Workload generation | Python 3 + `numpy` | Krishna | Seeded random workloads and presets written as CSV |
@@ -220,14 +220,17 @@ aprm/
 │   ├── presets/                 K  Preset CSVs (master copy of web/js/presets_data.js)
 │   └── sample_summaries/        K  Small, clearly fake summary CSVs in the §5 formats
 ├── results/                        Generated; not committed (summaries in results/summaries/)
-├── docs/  PRD.md BLUEPRINT.md BACKLOG.md DECISIONS.md RESEARCH_NOTES.md
-│          TOOLCHAIN.md AI_USE.md research/ slides/
-│   └── report/figures/          A  Generated figures (PNG + PDF)
+├── docs/  README.md (index) PRD.md BLUEPRINT.md BACKLOG.md DECISIONS.md
+│          RESEARCH_NOTES.md TOOLCHAIN.md AI_USE.md research/ slides/
+│   ├── design/                  K  PRODUCT.md, DESIGN.md, design records, screenshots
+│   └── report/figures/          A  Generated figures (PNG + PDF, not committed)
 ├── .github/workflows/ci.yml     K
-├── .github/ISSUE_TEMPLATE/task.md, pull_request_template.md, issues/   K
+├── .github/ISSUE_TEMPLATE/task.md, pull_request_template.md   K
 ├── Makefile                     K
 ├── requirements.txt             K  Names only until the freeze
 ├── requirements.lock.txt        K  After the freeze
+├── LICENSE                      Both  MIT
+├── CONTRIBUTING.md              Both
 └── README.md                    Both
 ```
 
@@ -613,7 +616,7 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 
 ### Layout
 
-Three numbered steps (Build, Run, Compare) chosen at the top; the design is recorded in `DESIGN.md` (Impeccable is the design authority, D76). Light and dark themes follow the system setting, with a day and night button (K-48).
+Three numbered steps (Build, Run, Compare) chosen at the top; the design is recorded in `docs/design/DESIGN.md` (Impeccable is the design authority, D76). Light and dark themes follow the system setting, with a day and night button (K-48).
 
 ## 8. Frontend safety checklist
 

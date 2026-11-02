@@ -248,7 +248,7 @@ Clicking a job anywhere highlights it in all views and filters the log to that j
 
 - Keyboard: Space plays or pauses, the right arrow steps one event.
 - Works in light and dark mode, and on a laptop screen without scrolling sideways.
-- Design authority: Impeccable (`PRODUCT.md`, `DESIGN.md`); frameworks, a build tool and self-hosted fonts are allowed, and the built site works offline from `file://` (D76).
+- Design authority: Impeccable (`docs/design/PRODUCT.md`, `docs/design/DESIGN.md`); frameworks, a build tool and self-hosted fonts are allowed, and the built site works offline from `file://` (D76).
 - Results export as CSV, so a case found on the website can be re-run in Python.
 - A case can be shared as a link: the job list is encoded in the URL hash.
 

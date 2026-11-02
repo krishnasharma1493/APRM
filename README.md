@@ -1,25 +1,81 @@
 # APRM: Adaptive Priority Resource Manager
 
-An online, non-preemptive job scheduler for one machine with two resources (CPU cores and memory), written in C. The same C code runs as a console program and, compiled to WebAssembly, inside an interactive website where you can build any case, watch the scheduler decide step by step with a plain-English reason for each decision, and compare schedulers side by side. Python tooling generates workloads, runs experiments, checks correctness and draws the report graphs.
+APRM is an online, non-preemptive job scheduler for one machine with two resources, CPU cores and memory, written in C11. Jobs arrive over time, each needing some cores and some memory for a known duration. The scheduler decides which waiting job starts next. It offers six policies: first come first served, static priority, shortest job first, aging (waiting jobs gain priority without ever re-sorting the heap), aging with an EASY-style reservation, and a knapsack batch selector. It also has an exact solver for small cases. The same C code runs as a console program and, compiled to WebAssembly, inside a website that works offline. There you can build a case, watch each decision with a plain-English reason, and compare schedulers side by side. Python tools generate seeded workloads, run the experiments, check invariants and draw the figures.
 
-Course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi. Team: Krishna Sharma and Ahaana Arya.
+Course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi.
 
+![The Run page: the memory-hog example under aging with reservation, paused at tick 32. Job 11 has a saved spot, and the "why" log explains every decision.](docs/design/screenshots/website-run.png)
 
-## Documentation map
+## Quick start
 
-| File | Read it for |
+With a C compiler, Make, Python 3, Node.js and Emscripten installed (see [Setup](#setup)):
+
+```sh
+git clone https://github.com/krishnasharma1493/APRM.git && cd APRM
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.lock.txt
+
+make                 # console program → build/aprm
+make test            # C unit tests and golden cases
+pytest tests/py      # property, conformance, summary and figure checks
+make wasm            # engine for the website → web/vendor/aprm.js
+make web             # one offline file → web/dist/index.html
+open web/dist/index.html    # Linux: xdg-open; WSL: explorer.exe web/dist/index.html
+```
+
+The website is one file with everything inside, so it works with Wi-Fi off and needs no server. The page shows "Engine ready" when it is ready to use.
+
+## Repository map
+
+| Path | What it holds |
 | --- | --- |
-| `CLAUDE.md` | Rules every coding session follows (people and AI assistants) |
-| `docs/PRD.md` | Scope, repository layout, limits, API and CSV contracts, testing, demo script |
-| `docs/BLUEPRINT.md` | Algorithm specifications, phase plan, website spec, experiments, report outline |
-| `docs/BACKLOG.md` | The ordered list of issues |
-| `docs/DECISIONS.md` | Every design decision and every open question |
-| `docs/RESEARCH_NOTES.md` | What each paper says, where we use it, glossary |
-| `docs/TOOLCHAIN.md` | Frozen tool versions (the only place versions are written) |
-| `docs/AI_USE.md` | Log of AI-assistant use |
-| `docs/FRESH_CLONE_TEST.md` | Timed fresh-clone setup test (steps, times, problems found) |
-| `docs/research/` | The papers |
-| `data/sample_summaries/README.md` | Fake summary files for building figures early |
+| `core/` | The scheduler in C11: heap, event loop, policies, reservation, knapsack, exact solver, metrics, event log, JSON and CSV. The only place scheduling decisions are made. |
+| `cli/` | The console program `build/aprm` |
+| `wasm/` | WebAssembly exports and build script, and the Node.js runner used for conformance |
+| `web/` | The website source (HTML, CSS, classic scripts) and `build.mjs`, which bundles it into `web/dist/index.html` |
+| `tools/` | Python: workload generator, experiment runner, summaries, property and conformance checks, timing, figures |
+| `tests/` | C unit tests (`c/`), hand-worked golden cases (`cases/`), console checks (`cli/`), Python tests (`py/`), website tests (`web/`), browser checks (`demo/`), hardening (`hardening/`) |
+| `data/` | Preset example CSVs and small, clearly fake sample summaries |
+| `docs/` | Project documents; start at [`docs/README.md`](docs/README.md) |
+| `.github/` | CI workflow, issue template and pull request template |
+
+## All build and test commands
+
+```sh
+make              # console program → build/aprm
+make debug        # with invariant checks after every step
+make sanitize     # AddressSanitizer + UndefinedBehaviorSanitizer, full test suite
+make test         # C unit tests and golden cases
+make hardening    # fuzzing, allocation-failure injection, stress, unsafe-call grep
+make wasm         # WebAssembly bundle → web/vendor/aprm.js (needs emsdk)
+make web          # website → web/dist/index.html (needs Node.js and npm)
+make web-test     # website unit tests (Node.js)
+make clean        # remove build output
+pytest tests/py   # Python checks
+node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline   # demo path in headless Chrome, network off
+```
+
+## Running the console program
+
+```sh
+build/aprm --in jobs.csv --out results.csv --policy aging \
+           [--cpu 16] [--mem 32768] [--alpha-milli 100] [--threshold 50] [--eps 0.1] \
+           [--log log.txt] [--metrics metrics.json] [--exact]
+```
+
+Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Example input: any file in `data/presets/`. Input and output formats are in `docs/PRD.md` §5.
+
+## Experiments and figures
+
+Six experiments (E1 to E6, defined in `docs/BLUEPRINT.md` §6) run the console program over seeded workloads, 30 seeds per setting (50 instances per job count for E6). With the virtual environment active and `build/aprm` built:
+
+```sh
+for e in E1 E3 E4 E5 E6; do python tools/run_experiments.py --experiment $e --jobs 8; done   # raw runs → results/raw/ (E2 reuses E1)
+python tools/summarize.py --experiments E1 E2 E3 E4 E5 E6        # means and 95% intervals → results/summaries/
+python tools/plot_figures.py --input results/summaries           # figures → docs/report/figures/
+```
+
+The full grid is 2,600 runs and takes seconds. Without `--input`, `plot_figures.py` draws from `data/sample_summaries/`, whose numbers are fake, and every title then says "SAMPLE DATA". `results/` and the figures are not committed: regenerate them with the commands above.
 
 ## Setup
 
@@ -35,9 +91,9 @@ Versions are written in one place only: `docs/TOOLCHAIN.md`. Do not copy version
 | Python 3 with `venv` | `python3 --version` and `python3 -m venv --help` | tools, `pytest`, figures |
 | A web browser (Chrome, Edge, Firefox) | open it | the website |
 | Emscripten (emsdk), optional | `emcc --version`; "command not found" is fine if `~/emsdk` exists, because `make wasm` sources it itself | `make wasm` only (the website's engine file) |
-| Node.js, optional | `node --version` | some WebAssembly tests; emsdk bundles one |
+| Node.js with npm | `node --version` and `npm --version` | `make web` (bundles the website) and the website tests; emsdk bundles a Node.js |
 
-If a command prints "command not found", install that tool using the system section below, then run the check again. Everything except the website's engine file builds without Emscripten.
+If a command prints "command not found", install that tool using the system section below, then run the check again. Everything except the website builds without Emscripten and Node.js.
 
 ### Windows (WSL2 Ubuntu)
 
@@ -73,22 +129,7 @@ source .venv/bin/activate
 pip install -r requirements.lock.txt   # exact versions; use this one
 ```
 
-(`requirements.txt` lists the package names only; install it instead only if the lock file fails on your Python.) On Windows WSL and Mac/Linux the prompt shows `(.venv)` while it is active. Open a new terminal later? Run `source .venv/bin/activate` again before `pytest` or `python tools/...`.
-
-## First run: from a fresh clone to everything working
-
-Run these in order, from the repository folder, with the virtual environment active. Each step says what success looks like.
-
-| Step | Command | Success looks like |
-| --- | --- | --- |
-| 1. Build | `make` | Last line links `build/aprm`, no errors |
-| 2. C tests | `make test` | Ends with "passed" lines, exit code 0 |
-| 3. Python tests | `pytest tests/py -q` | `passed`, no failures (about a minute) |
-| 4. Engine for the website | `make wasm` | `built web/vendor/aprm.js (... bytes)` |
-| 5. Website | `make web`, then double-click `web/dist/index.html` | `built web/dist/index.html`; the page opens with the six examples, and works with Wi-Fi off |
-| 6. Figures | `python tools/plot_figures.py` | Prints the paths of `.png` and `.pdf` files in `docs/report/figures/` |
-
-Run step 1 before step 3: some Python tests call `build/aprm`. Step 6 reads `data/sample_summaries/` until real summaries exist in `results/summaries/`. A timed record of this procedure on a fresh clone is in `docs/FRESH_CLONE_TEST.md`.
+`requirements.txt` lists the package names only; install from it only if the lock file fails on your Python. The prompt shows `(.venv)` while the environment is active. In a new terminal, run `source .venv/bin/activate` again.
 
 ### Troubleshooting
 
@@ -100,54 +141,26 @@ Run step 1 before step 3: some Python tests call `build/aprm`. Step 6 reads `dat
 | `ModuleNotFoundError` (numpy, pandas, matplotlib, pytest) or `pytest: command not found` | The virtual environment is not active in this terminal. Run `source .venv/bin/activate`. |
 | `python3 -m venv` fails on Ubuntu/WSL | `sudo apt install python3-venv`. |
 | `pip` prints "A new release of pip is available" | A notice, not an error. Ignore it; do not upgrade pip for this project. |
-| `pytest` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
+| `summarize.py` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
 
-## Build and test
+## Optional: GitHub Pages copy
 
-```sh
-make              # console program → build/aprm
-make debug        # with invariant checks after every step
-make sanitize     # AddressSanitizer + UndefinedBehaviorSanitizer
-make test         # C unit tests and golden cases
-make wasm         # WebAssembly bundle → web/vendor/aprm.js (needs emsdk)
-make clean
-pytest tests/py   # property checks, conformance, summary and figure checks
-```
+The laptop is the primary demo. The `deploy` job in `.github/workflows/ci.yml` can publish the website from `main`. It stays skipped until two settings are made, in this order:
 
-## Run
+1. Settings > Pages > Source: **GitHub Actions**.
+2. `gh variable set PAGES_ENABLED --body true` (or Settings > Secrets and variables > Actions > Variables).
 
-**Console program**
+The next push to `main` that passes every check then publishes `web/dist/`, built in CI. To stop publishing, delete the variable.
 
-```sh
-build/aprm --in jobs.csv --out results.csv --policy aging \
-           [--cpu 16] [--mem 32768] [--alpha-milli 100] [--threshold 50] [--eps 0.1] \
-           [--log log.txt] [--metrics metrics.json] [--exact]
-```
+## Authors and ownership
 
-Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Input and output formats: PRD §5.
+| Person | Owns |
+| --- | --- |
+| Krishna Sharma | The C core and every algorithm, console program, WebAssembly build, website, CI, golden cases, presets, and all Python except the figures |
+| Ahaana Arya | `tools/plot_figures.py` (report figures for E1 to E6) and the paper check of the golden cases |
 
-**Website**
+How to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md). Use of AI assistants is logged in [`docs/AI_USE.md`](docs/AI_USE.md).
 
-Run `make wasm && make web`, then double-click `web/dist/index.html` (or open it from your browser with File > Open). It is one file with everything inside, so it works offline and needs no server. The page shows "Engine ready" when the engine loaded.
+## Licence
 
-**Optional: GitHub Pages copy**
-
-The laptop is the primary demo. A bonus copy can be published from `main` by the `deploy` job in `.github/workflows/ci.yml`. It stays skipped until two human steps are done, in this order (step 1 before step 2):
-
-1. In the repository, Settings > Pages > Source: GitHub Actions.
-2. Set the repository variable: Settings > Secrets and variables > Actions > Variables > `PAGES_ENABLED` = `true`, or `gh variable set PAGES_ENABLED --body true`.
-
-The next push to `main` (after all five checks pass) publishes only `web/`, with the CI-built `web/vendor/aprm.js`. To stop publishing, delete the variable.
-
-**Python**
-
-```sh
-python tools/gen_workload.py      # seeded workloads and preset CSVs
-python tools/run_experiments.py   # run the console program over the experiment grid
-python tools/summarize.py         # means and 95% intervals → results/summaries/
-python tools/plot_figures.py      # figures → docs/report/figures/ (reads summaries only)
-```
-
-## Contributing
-
-Work one issue at a time on a branch `k/<id>-<topic>` or `a/<id>-<topic>`, open a pull request using the template, the reviewer subagent checks it, and it is squash-merged when CI is green. `main` must always build and pass its tests.
+MIT, see [`LICENSE`](LICENSE). The research papers in `docs/research/` are not part of the repository and not covered by this licence; [`docs/research/README.md`](docs/research/README.md) says where to get each one.

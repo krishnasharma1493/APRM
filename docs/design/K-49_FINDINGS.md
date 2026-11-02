@@ -1,6 +1,6 @@
 # K-49 findings (ranked)
 
-Audit of the site as shipped by K-43 to K-48, against `PRODUCT.md` and the direction contract (Production Planning Board, `.impeccable/surfaces/web-index-html.md`). Evidence: screenshots at 375 and 1366 px in light and dark, `tests/demo/check_layout_cdp.mjs` (passes 33/33 at 640 to 1440 px), the Impeccable detector (clean in regex mode, which undercounts). Severity: P0 blocks the demo, P1 hurts understanding, P2 is friction, P3 polish.
+Audit of the site as shipped by K-43 to K-48, against `PRODUCT.md` and the direction contract (Production Planning Board, kept in the local design-tool folder, not committed). Evidence: screenshots at 375 and 1366 px in light and dark, `tests/demo/check_layout_cdp.mjs` (passes 33/33 at 640 to 1440 px), the Impeccable detector (clean in regex mode, which undercounts). Severity: P0 blocks the demo, P1 hurts understanding, P2 is friction, P3 polish.
 
 | # | Sev | Where | Finding | Fix (PR) |
 | --- | --- | --- | --- | --- |
