@@ -460,7 +460,11 @@ def test_every_figure_line_uses_literal_look(monkeypatch, tmp_path) -> None:
 def test_input_folder_is_one_setting(tmp_path: Path) -> None:
     """run_all draws all four figures from whatever folder it is given."""
     paths = pf.run_all(SAMPLE_DIR, str(tmp_path))
-    assert [Path(p).name for p in paths] == [s + ".png" for _f, s, _c, _t in FIGURES]
+    assert [Path(p).name for p in paths] == [
+        "e1_avg_wait.png", "e2_max_wait.png", "e2_wait_cdf.png",
+        "e3_wait_by_priority.png", "e4_alpha_tradeoff.png", "e5_max_wait.png",
+        "e6_ratio_boxplot.png", "e6_wait_gap.png",
+    ]
 
 
 def test_real_data_title_has_no_sample_note(monkeypatch, tmp_path) -> None:
@@ -605,8 +609,265 @@ def test_e5_missing_file_error(tmp_path: Path) -> None:
 def test_run_all_includes_e5(tmp_path: Path) -> None:
     """run_all draws E5 as its last figure."""
     names = [Path(p).name for p in pf.run_all(SAMPLE_DIR, str(tmp_path))]
-    assert names[-1] == "e5_max_wait.png"
+    assert "e5_max_wait.png" in names
     assert (tmp_path / "e5_max_wait.pdf").is_file()
+
+
+# ---------------------------------------------------------------------------
+# A-04b: E4 (alpha trade-off) and E6 (box plot of ratios, wait gap).
+# ---------------------------------------------------------------------------
+
+import numpy as np  # noqa: E402
+
+E4_METRICS = ["high_prio_avg_wait", "low_prio_max_wait"]
+
+
+def test_e4_e6_files_are_written(tmp_path: Path) -> None:
+    """e4-e6-files: each new function writes a real PNG and a real PDF."""
+    for func, stem in [
+        (pf.plot_e4_alpha_tradeoff, "e4_alpha_tradeoff"),
+        (pf.plot_e6_ratio_boxplot, "e6_ratio_boxplot"),
+        (pf.plot_e6_wait_gap, "e6_wait_gap"),
+    ]:
+        png = Path(func(SAMPLE_DIR, str(tmp_path)))
+        assert png.name == stem + ".png"
+        assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        pdf = tmp_path / (stem + ".pdf")
+        assert pdf.read_bytes()[:5] == b"%PDF-"
+    assert plt.get_fignums() == []
+
+
+def test_new_functions_are_in_figures_list() -> None:
+    """The new figures are registered in FIGURES with their summary files."""
+    pairs = [(f.__name__, c) for f, c in pf.FIGURES]
+    assert ("plot_e4_alpha_tradeoff", "e4_summary.csv") in pairs
+    assert ("plot_e6_ratio_boxplot", "e6_ratios.csv") in pairs
+    assert ("plot_e6_wait_gap", "e6_summary.csv") in pairs
+
+
+@pytest.mark.parametrize("func,csv_name", [
+    (pf.plot_e4_alpha_tradeoff, "e4_summary.csv"),
+    (pf.plot_e6_ratio_boxplot, "e6_ratios.csv"),
+    (pf.plot_e6_wait_gap, "e6_summary.csv"),
+])
+def test_a04b_missing_file_error(tmp_path: Path, func, csv_name) -> None:
+    """Without its summary file each function raises a clear error."""
+    with pytest.raises(FileNotFoundError, match=csv_name):
+        func(str(tmp_path), str(tmp_path / "out"))
+
+
+def test_e4_title_labels_and_legends(monkeypatch, tmp_path) -> None:
+    """E4 has two panels, a title, labelled axes with units and legends."""
+    fig = _catch_figure(monkeypatch, pf.plot_e4_alpha_tradeoff, SAMPLE_DIR, str(tmp_path))
+    assert fig._suptitle.get_text() == (
+        "E4: Aging rate trade-off, high-priority vs low-priority waits (SAMPLE DATA)")
+    left, right = fig.axes
+    assert left.get_ylabel() == "High-priority average wait (ticks)"
+    assert right.get_ylabel() == "Low-priority maximum wait (ticks)"
+    for ax in (left, right):
+        assert ax.get_xlabel() == "Aging rate \u03b1 (alpha_milli / 1000)"
+        assert ax.get_legend() is not None
+
+
+def test_e4_plots_csv_columns(monkeypatch, tmp_path) -> None:
+    """Each panel plots x_value against its own mean column."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e4_summary.csv").sort_values("x_value")
+    fig = _catch_figure(monkeypatch, pf.plot_e4_alpha_tradeoff, SAMPLE_DIR, str(tmp_path))
+    for ax, metric in zip(fig.axes, E4_METRICS):
+        line = policy_lines(ax)["aging"]
+        assert list(line.get_xdata()) == list(rows["x_value"])
+        assert list(line.get_ydata()) == list(rows[metric + "_mean"])
+
+
+def test_e4_error_bar_ends_equal_ci_columns(monkeypatch, tmp_path) -> None:
+    """Error bars run from ci_low to ci_high; bands cover the same range."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e4_summary.csv").sort_values("x_value")
+    fig = _catch_figure(monkeypatch, pf.plot_e4_alpha_tradeoff, SAMPLE_DIR, str(tmp_path))
+    for ax, metric in zip(fig.axes, E4_METRICS):
+        segs = ax.containers[0].lines[2][0].get_segments()
+        assert [s[0][1] for s in segs] == list(rows[metric + "_ci_low"])
+        assert [s[1][1] for s in segs] == list(rows[metric + "_ci_high"])
+        band = [c for c in ax.collections if c.get_alpha() is not None][0]
+        ys = band.get_paths()[0].vertices[:, 1]
+        assert min(ys) == min(rows[metric + "_ci_low"])
+        assert max(ys) == max(rows[metric + "_ci_high"])
+
+
+def test_e4_look_is_aging_literal(monkeypatch, tmp_path) -> None:
+    """Both panels draw the aging policy with its literal look."""
+    fig = _catch_figure(monkeypatch, pf.plot_e4_alpha_tradeoff, SAMPLE_DIR, str(tmp_path))
+    for ax in fig.axes:
+        line = policy_lines(ax)["aging"]
+        assert line.get_color() == "#009E73"
+        assert line.get_linestyle() == ":"
+        assert line.get_marker() == "D"
+
+
+def test_e4_x_ticks_are_the_csv_alphas(monkeypatch, tmp_path) -> None:
+    """The x ticks are the alpha values found in the file."""
+    fig = _catch_figure(monkeypatch, pf.plot_e4_alpha_tradeoff, SAMPLE_DIR, str(tmp_path))
+    assert list(fig.axes[0].get_xticks()) == [0.0, 0.1, 0.25, 0.5, 1.0]
+
+
+def _boxplot_figure(monkeypatch, tmp_path, folder=SAMPLE_DIR):
+    """Draw the E6 box plot and return (figure, its axes, the ratios table)."""
+    fig = _catch_figure(monkeypatch, pf.plot_e6_ratio_boxplot, folder, str(tmp_path))
+    rows = pd.read_csv(folder + "/e6_ratios.csv")
+    return fig, fig.axes[0], rows
+
+
+def test_e6_boxplot_title_labels_legend(monkeypatch, tmp_path) -> None:
+    """The box plot has the agreed title, labels and a legend."""
+    fig, ax, _rows = _boxplot_figure(monkeypatch, tmp_path)
+    assert ax.get_title() == "E6: Turnaround ratio to the exact optimum (SAMPLE DATA)"
+    assert ax.get_xlabel() == "Policy"
+    assert ax.get_ylabel() == "Turnaround ratio to optimum (1 = optimal)"
+    assert ax.get_legend() is not None
+
+
+def test_e6_one_box_per_policy_in_file_order(monkeypatch, tmp_path) -> None:
+    """There is exactly one box per policy, labelled with its name."""
+    _fig, ax, rows = _boxplot_figure(monkeypatch, tmp_path)
+    policies = list(rows["policy"].unique())
+    assert len(ax.patches) == len(policies) == 6
+    assert [t.get_text() for t in ax.get_xticklabels()] == policies
+
+
+def _tagged(ax, prefix: str) -> dict:
+    """Return {policy: line} for the lines whose gid starts with prefix."""
+    return {l.get_gid().split(":")[1]: l for l in ax.lines
+            if l.get_gid() and l.get_gid().startswith(prefix + ":")}
+
+
+def test_e6_median_equals_median_of_policy_ratios(monkeypatch, tmp_path) -> None:
+    """The median line of each box sits at the median of that policy's ratios."""
+    _fig, ax, rows = _boxplot_figure(monkeypatch, tmp_path)
+    medians = _tagged(ax, "median")
+    assert sorted(medians) == sorted(rows["policy"].unique())
+    for policy, line in medians.items():
+        ratios = rows[rows["policy"] == policy]["turnaround_ratio"]
+        assert list(line.get_ydata())[0] == pytest.approx(float(np.median(ratios)))
+
+
+def test_e6_box_edges_are_the_quartiles(monkeypatch, tmp_path) -> None:
+    """The box of each policy spans its first to third quartile."""
+    _fig, ax, rows = _boxplot_figure(monkeypatch, tmp_path)
+    for policy, patch in zip(rows["policy"].unique(), ax.patches):
+        ratios = rows[rows["policy"] == policy]["turnaround_ratio"]
+        ys = patch.get_path().vertices[:, 1]
+        assert min(ys) == pytest.approx(float(np.percentile(ratios, 25)))
+        assert max(ys) == pytest.approx(float(np.percentile(ratios, 75)))
+
+
+def test_e6_whiskers_use_1_5_iqr(monkeypatch, tmp_path) -> None:
+    """Whisker ends are the most extreme values within 1.5 x IQR of the box."""
+    _fig, ax, rows = _boxplot_figure(monkeypatch, tmp_path)
+    whiskers = _tagged(ax, "whisker_high")
+    for policy, line in whiskers.items():
+        r = np.sort(rows[rows["policy"] == policy]["turnaround_ratio"].to_numpy())
+        q1, q3 = np.percentile(r, 25), np.percentile(r, 75)
+        expected = r[r <= q3 + 1.5 * (q3 - q1)].max()
+        assert max(line.get_ydata()) == pytest.approx(float(expected))
+
+
+def test_e6_outlier_is_beyond_the_whisker(monkeypatch, tmp_path) -> None:
+    """A value far above the box is drawn as a point, not inside the whisker."""
+    folder = tmp_path / "summaries"
+    folder.mkdir()
+    ratios = [1.00, 1.01, 1.02, 1.03, 1.04, 1.05, 1.06, 1.07, 1.08, 1.17]
+    table = pd.DataFrame({"policy": "fcfs", "turnaround_ratio": ratios})
+    table.to_csv(folder / "e6_ratios.csv", index=False)
+    fig = _catch_figure(monkeypatch, pf.plot_e6_ratio_boxplot, str(folder), str(tmp_path / "o"))
+    ax = fig.axes[0]
+    whisker_top = max(_tagged(ax, "whisker_high")["fcfs"].get_ydata())
+    assert whisker_top == pytest.approx(1.08)
+    fliers = [l for l in ax.lines if l.get_marker() == "o" and l.get_linestyle() == "None"]
+    assert any(1.17 in list(l.get_ydata()) for l in fliers)
+
+
+def test_e6_reference_line_at_one(monkeypatch, tmp_path) -> None:
+    """A horizontal reference line at 1.0 is drawn and named in the legend."""
+    _fig, ax, _rows = _boxplot_figure(monkeypatch, tmp_path)
+    refs = [l for l in ax.lines if l.get_gid() == "reference"]
+    assert len(refs) == 1
+    assert list(refs[0].get_ydata()) == [1.0, 1.0]
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert "Optimum (ratio = 1)" in labels
+
+
+def test_e6_box_look_per_policy_is_literal(monkeypatch, tmp_path) -> None:
+    """Each box edge uses the policy colour; each legend entry names a policy."""
+    _fig, ax, rows = _boxplot_figure(monkeypatch, tmp_path)
+    for policy, patch in zip(rows["policy"].unique(), ax.patches):
+        expected = matplotlib_colour(EXPECTED_LOOK[policy][0])
+        assert tuple(patch.get_edgecolor()) == pytest.approx(expected)
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    for policy in rows["policy"].unique():
+        assert policy in labels
+
+
+def matplotlib_colour(hex_colour: str) -> tuple:
+    """Return the RGBA tuple for a hex colour."""
+    import matplotlib.colors as mcolors
+
+    return mcolors.to_rgba(hex_colour)
+
+
+def test_e6_note_says_exact_optimum_not_lower_bound(monkeypatch, tmp_path) -> None:
+    """The figure carries the note: exact optimum, not a lower bound."""
+    fig, _ax, _rows = _boxplot_figure(monkeypatch, tmp_path)
+    texts = " ".join(t.get_text() for t in fig.texts)
+    assert "exact optimum" in texts
+    assert "not a lower bound" in texts
+    assert "1.5" in texts
+
+
+def test_e6_wait_gap_title_labels(monkeypatch, tmp_path) -> None:
+    """The wait-gap figure has the agreed title, labels and legend."""
+    fig = _catch_figure(monkeypatch, pf.plot_e6_wait_gap, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    assert ax.get_title() == "E6: Wait gap to the exact optimum (SAMPLE DATA)"
+    assert ax.get_xlabel() == "Jobs per instance"
+    assert ax.get_ylabel() == "Wait gap (ticks, scheduler minus optimum)"
+    assert ax.get_legend() is not None
+    assert list(ax.get_xticks()) == [6, 7, 8, 9]
+
+
+def test_e6_wait_gap_plots_csv_and_ci(monkeypatch, tmp_path) -> None:
+    """Mean line, error-bar ends and look come from the CSV and POLICY_LOOK."""
+    rows = pd.read_csv(SAMPLE_DIR + "/e6_summary.csv")
+    fig = _catch_figure(monkeypatch, pf.plot_e6_wait_gap, SAMPLE_DIR, str(tmp_path))
+    ax = fig.axes[0]
+    drawn = policy_lines(ax)
+    assert sorted(drawn) == sorted(rows["policy"].unique())
+    for container in ax.containers:
+        policy = container.get_label()
+        mine = rows[rows["policy"] == policy].sort_values("x_value")
+        line = container.lines[0]
+        assert list(line.get_xdata()) == list(mine["x_value"])
+        assert list(line.get_ydata()) == list(mine["wait_gap_mean"])
+        assert line.get_color() == EXPECTED_LOOK[policy][0]
+        assert line.get_marker() == EXPECTED_LOOK[policy][2]
+        segs = container.lines[2][0].get_segments()
+        assert [s[0][1] for s in segs] == list(mine["wait_gap_ci_low"])
+        assert [s[1][1] for s in segs] == list(mine["wait_gap_ci_high"])
+
+
+@pytest.mark.parametrize("func,csv_name,get_text", [
+    (pf.plot_e4_alpha_tradeoff, "e4_summary.csv", lambda f: f._suptitle.get_text()),
+    (pf.plot_e6_ratio_boxplot, "e6_ratios.csv", lambda f: f.axes[0].get_title()),
+    (pf.plot_e6_wait_gap, "e6_summary.csv", lambda f: f.axes[0].get_title()),
+])
+def test_a04b_sample_note_only_for_sample_folder(
+        monkeypatch, tmp_path, func, csv_name, get_text) -> None:
+    """SAMPLE DATA appears for the sample folder and for no other folder."""
+    fig = _catch_figure(monkeypatch, func, SAMPLE_DIR, str(tmp_path))
+    assert "(SAMPLE DATA)" in get_text(fig)
+    d = tmp_path / "summaries"
+    d.mkdir()
+    (d / csv_name).write_bytes(Path(SAMPLE_DIR, csv_name).read_bytes())
+    fig = _catch_figure(monkeypatch, func, str(d), str(tmp_path / "o"))
+    assert "SAMPLE" not in get_text(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -623,8 +884,14 @@ EXPECTED_FILES = [
     "e2_wait_cdf.pdf",
     "e3_wait_by_priority.png",
     "e3_wait_by_priority.pdf",
+    "e4_alpha_tradeoff.png",
+    "e4_alpha_tradeoff.pdf",
     "e5_max_wait.png",
     "e5_max_wait.pdf",
+    "e6_ratio_boxplot.png",
+    "e6_ratio_boxplot.pdf",
+    "e6_wait_gap.png",
+    "e6_wait_gap.pdf",
 ]
 
 SCRIPT = str(ROOT / "tools" / "plot_figures.py")
