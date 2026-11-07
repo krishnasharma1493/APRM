@@ -300,9 +300,7 @@ try {
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
   check('timeline: clicking a row selects that job everywhere', (await ev(`APRM.player.snapshot().selected`)) === 1 && /job 1/.test(await ev(`document.getElementById('whylog-filter').textContent`)));
-  const zcap = await ev(`(function(){ const zi = document.getElementById('strip-zoom-in'); for (let i = 0; i < 8; i++) zi.click(); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r({ inOff: zi.disabled, outOff: document.getElementById('strip-zoom-out').disabled, zoom: APRM.strip.view().zoom })))); })()`);
-  check('timeline: zoom in stops at 28 px per tick (the button turns off), zoom out stays on', zcap.inOff && !zcap.outOff, JSON.stringify(zcap));
-  await ev(`document.getElementById('strip-zoom-fit').click(); true`);
+  check('timeline: a short run already fits at full cell size, so both zoom buttons are off', await ev(`document.getElementById('strip-zoom-in').disabled && document.getElementById('strip-zoom-out').disabled`));
   await ev(`document.getElementById('run-source-big').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); true`);
   for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
   await sleep(300);
@@ -311,6 +309,8 @@ try {
   await sleep(300);
   const zoomed = await ev(`({ g: document.getElementById('strip-group').textContent, w: document.getElementById('strip-scroll').scrollWidth })`);
   check('timeline, 500 jobs: cells group ticks to fit, zoom in widens it and it pans by scrolling', /1 cell = \d+ ticks/.test(big.g) && big.w <= big.cw + 8 && zoomed.w > big.w * 3, JSON.stringify({ big, zoomed }));
+  const zcap = await ev(`(function(){ const zi = document.getElementById('strip-zoom-in'); for (let i = 0; i < 12; i++) zi.click(); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r({ inOff: zi.disabled, outOff: document.getElementById('strip-zoom-out').disabled, zoom: APRM.strip.view().zoom })))); })()`);
+  check('timeline, 500 jobs: zoom in stops at 28 px per tick (the button turns off), zoom out stays on', zcap.inOff && !zcap.outOff && zcap.zoom > 4, JSON.stringify(zcap));
   await ev(`document.getElementById('strip-zoom-fit').click(); true`);
   await load(1440);
   await ev(`(function(){ const jobs = []; for (let i = 0; i < 5000; i++) jobs.push({ id: i + 1, arrival: Math.floor(i / 4), duration: 1 + (i % 9), cpu: 1 + (i % 3), mem: 64, priority: i % 10 }); APRM.store.setJobs(jobs); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); })(); true`);
