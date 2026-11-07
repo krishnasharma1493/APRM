@@ -490,24 +490,30 @@
     }
   }
 
+  /* Set one capacity from text, as typed or as chosen by the stepper, slider or a quick choice.
+   * which: 'cpu' or 'mem'. A bad value stays in the field with its message next to it and the store
+   * keeps the last good value. Returns '' when stored, else the message. O(1). */
+  function setCapacity(which, text) {
+    var input = byId(which + '-input');
+    if (input && input.value !== String(text)) { input.value = String(text); }
+    var p = parseTyped(which + '_cap', text);
+    var msg = p.message ? which + '_cap must be a whole number.' : capacityProblem(which, p.value);
+    if (msg) {
+      if (input) { input.draft = true; setClass(input, 'cell-error', true); }
+      setMsg(byId(which + '-error'), msg);
+      return msg;
+    }
+    if (input) { input.draft = false; setClass(input, 'cell-error', false); }
+    setMsg(byId(which + '-error'), '');
+    var m = APRM.store.get().machine;
+    if (which === 'cpu') { APRM.store.setMachine(p.value, m.mem); } else { APRM.store.setMachine(m.cpu, p.value); }
+    return '';
+  }
+
   function wireCapacity(which) {
     var input = byId(which + '-input');
     if (!input) { return; }
-    input.addEventListener('change', function () {
-      var p = parseTyped(which + '_cap', input.value);
-      var msg = p.message ? which + '_cap must be a whole number.' : capacityProblem(which, p.value);
-      if (msg) {
-        input.draft = true;
-        setClass(input, 'cell-error', true);
-        setMsg(byId(which + '-error'), msg);
-        return;
-      }
-      input.draft = false;
-      setClass(input, 'cell-error', false);
-      setMsg(byId(which + '-error'), '');
-      var m = APRM.store.get().machine;
-      if (which === 'cpu') { APRM.store.setMachine(p.value, m.mem); } else { APRM.store.setMachine(m.cpu, p.value); }
-    });
+    input.addEventListener('change', function () { setCapacity(which, input.value); });
   }
 
   var mounted = false;
@@ -556,6 +562,7 @@
     bytesToLatin1: bytesToLatin1,
     importText: importText,
     addFromForm: addFromForm,
+    setCapacity: setCapacity,
     nextId: nextId,
     mount: mount
   };
