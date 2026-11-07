@@ -243,6 +243,49 @@ try {
   await load(1280);
   await sleep(600);
   check('reduced motion: the intro is a short cross-fade (settings shown within 0.6 s, no glide)', await ev(`document.getElementById('build-panel').dataset.panel === 'in'`));
+
+  // 5. The Run laptop (K-52): the reassembly from Build, idle when paused, reduced motion, flat, phone width
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await load(1440);
+  await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); true`);
+  await sleep(4200);                                   // the Build intro has ended
+  await ev(`document.querySelector('[data-next="run"]').click(); true`);
+  const mid = await ev(`document.getElementById('run-panel').getAttribute('data-arriving')`);
+  await sleep(1900);
+  const after = await ev(`(function(){ const p = document.getElementById('run-panel'); const lid = document.querySelector('#run-stage .lt-layer:last-child'); return { arriving: p.getAttribute('data-arriving'), lid: lid ? lid.style.transform : '', aria: document.querySelector('.rs-wrap').getAttribute('aria-hidden') }; })()`);
+  check('Build to Run: the laptop reassembles first (page faded), then settles assembled with the lid at 114 degrees', mid === 'on' && after.arriving === 'off' && /rotateX\(114deg\)/.test(after.lid), JSON.stringify({ mid, after }));
+  check('the Run laptop is decoration only (aria-hidden); the tables are the readable source', after.aria === 'true');
+  await ev(`document.getElementById('run-start').click(); true`);
+  await sleep(2500);
+  const playing = await ev(`(function(){ const s = APRM.player.snapshot(); const w = s.state.waiting.length, r = s.state.running.length; return { w, r, cards: document.querySelectorAll('.rs-queue .rs-card').length, tiles: document.querySelectorAll('.rs-tile').length, tick: document.querySelector('.rs-scr-tick').textContent, now: s.state.now }; })()`);
+  check('playing: cards and tiles follow the engine (waiting and running counts, the tick)', playing.cards === Math.min(7, playing.w) && playing.tiles === Math.min(5, playing.r) && playing.tick === 'Tick ' + playing.now, JSON.stringify(playing));
+  await ev(`APRM.player.pause(); true`);
+  await sleep(1200);
+  check('paused: no animation is running and no beat is scheduled', (await ev(`document.getAnimations().filter((a) => a.playState === 'running').length`)) === 0 && (await ev(`APRM.player.snapshot().status`)) === 'paused');
+  const ev1 = await ev(`APRM.player.snapshot().events`);
+  await sleep(1000);
+  check('paused: nothing changes while waiting', (await ev(`APRM.player.snapshot().events`)) === ev1);
+  for (const w of [375, 1440]) {
+    await load(w);
+    await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 30; i++) APRM.player.stepOnce(); true`);
+    await sleep(500);
+    check(`${w}px Run with the laptop: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
+  }
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await load(1440);
+  await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); document.querySelector('[data-next="run"]').click(); true`);
+  check('reduced motion: Run appears at once, without the reassembly', (await ev(`document.getElementById('run-panel').getAttribute('data-arriving')`)) !== 'on');
+  await ev(`document.getElementById('run-start').click(); APRM.player.pause(); APRM.player.stepOnce(); APRM.player.stepOnce(); true`);
+  await sleep(100);   /* the site's reduced-motion rule cuts every CSS transition to 0.01 ms; only script motion could remain */
+  const moving = await ev(`document.getAnimations().filter((a) => !(a instanceof CSSTransition)).map((a) => (a.transitionProperty || a.animationName || 'web') + '@' + (a.effect && a.effect.target ? a.effect.target.className : ''))`);
+  check('reduced motion: an event moves nothing', moving.length === 0, JSON.stringify(moving));
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  const flatScript = await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.CSS = { supports: function () { return false; } };` });
+  await load(1440);
+  await ev(`window.addEventListener('error', (e) => { (window.__errs = window.__errs || []).push(String(e.message)); }); document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); APRM.player.stepOnce(); true`);
+  const flatInfo = await ev(`({ flat: !!document.querySelector('.rs-flat .rs-screen'), hero: !!document.querySelector('#run-stage .lt-hero'), tiles: document.querySelectorAll('.rs-flat .rs-tile').length, errs: (window.__errs || []).length })`);
+  check('without 3D transforms: a flat laptop with the same screen, no error', flatInfo.flat && !flatInfo.hero && flatInfo.errs === 0, JSON.stringify(flatInfo));
+  await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: flatScript.identifier });
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;
 console.log(failed === 0 ? 'ALL PASS (' + results.length + ')' : failed + ' FAILED of ' + results.length);

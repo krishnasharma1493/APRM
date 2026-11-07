@@ -52,13 +52,13 @@ try {
   for (const theme of ['dark', 'light']) {
     for (const width of [1440, 375]) {
       await load(width);
-      if (theme === 'light') await ev(`document.getElementById('theme-toggle').click(); true`);
+      await ev(`if (document.documentElement.getAttribute('data-theme') !== '${theme}') document.getElementById('theme-toggle').click(); true`);
       await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); true`);
       await ev(`document.querySelector('[data-mode-button="run"]').click(); true`);
       await sleep(2200);
       await shot(`${prefix}-first-${width}-${theme}`, width);
-      await ev(`(function(){ var s = document.getElementById('run-policy'); s.value = 'aging_reserve'; s.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('run-start').click(); })(); true`);
-      for (let i = 0; i < 24; i++) { await ev(`document.getElementById('run-step').click(); true`); await sleep(60); }
+      await ev(`(function(){ var s = document.getElementById('run-policy'); s.value = 'aging_reserve'; s.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('run-start').click(); APRM.player.pause(); })(); true`);
+      for (let i = 0; i < 14; i++) { await ev(`document.getElementById('run-step').click(); true`); await sleep(60); }
       await sleep(900);
       await shot(`${prefix}-paused-${width}-${theme}`, width);
       await ev(`document.getElementById('run-jump').click(); true`);
