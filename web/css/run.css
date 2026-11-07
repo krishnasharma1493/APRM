@@ -123,7 +123,7 @@
 .rs-wrap[data-side="off"] .rs-stage { max-width: none; }
 .rs-hero { top: 0; left: 0; pointer-events: none; }
 .rs-hero .lt-board { pointer-events: none; cursor: default; }
-.rs-wrap[data-lit="on"] .lt-key { color: var(--key-lit); transition: color 400ms linear; }
+.rs-wrap[data-lit="on"] .lt-key { color: var(--key-lit); }
 
 /* Side columns: waiting on the left, finished on the right */
 .rs-col { position: relative; z-index: 2; flex: none; padding-top: var(--s-6); display: flex; flex-direction: column; gap: var(--s-2); transition: opacity 300ms linear; }
@@ -225,5 +225,5 @@
 .run-panel[data-arriving="on"] > :not(#run-stage), .run-panel[data-arriving="on"] .rs-col { opacity: 0; pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rs-bar, .rs-col, .run-panel > *, .rs-wrap[data-lit="on"] .lt-key { transition: none; }
+  .rs-bar, .rs-col, .run-panel > * { transition: none; }
 }

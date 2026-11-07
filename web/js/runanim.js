@@ -173,7 +173,7 @@
         var m = root.querySelector('[data-flip="' + st.key + '"] [data-mark]') || root.querySelector('[data-flip="' + st.key + '"]');
         if (canAnimate(m)) { track(m.animate([{ opacity: 0.35, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: Math.round(dur * 0.7), easing: EASE })); }
       } else if (st.fx === 'pop') {
-        var cells = root.querySelectorAll('[data-pop="1"]');
+        var cells = root.querySelectorAll(st.key === 'held' ? '.rs-cell-held[data-pop="1"]' : '.rs-cell-fill[data-pop="1"]');
         for (var c = 0; c < cells.length; c++) {
           if (canAnimate(cells[c])) {
             track(cells[c].animate([{ opacity: 0, transform: 'scale(0.4)' }, { opacity: 1, transform: 'none' }],

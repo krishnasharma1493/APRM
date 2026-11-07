@@ -202,6 +202,7 @@
   }
 
   function settle() {
+    timers.forEach(clearTimeout); timers = [];
     arriving = false;
     var panel = byId('run-panel');
     if (panel) { panel.setAttribute('data-arriving', 'off'); }
@@ -238,15 +239,17 @@
       var cls = 'rs-cell' + (id !== null ? ' on tone-' + tone(id) : '') + (isHeld ? ' held' : '');
       if (c.el.getAttribute('class') !== cls) { c.el.setAttribute('class', cls); }
       c.fill.setAttribute('data-pop', id !== null && c.id !== id ? '1' : '0');
+      c.held.setAttribute('data-pop', isHeld && !c.wasHeld ? '1' : '0');
       setText(c.fill, id !== null && cellW >= 18 && !large ? id : '');
       setText(c.held, isHeld && cellW >= 18 ? resId : '');
       c.id = id;
+      c.wasHeld = isHeld;
     }
     S.moreCores.hidden = C <= 64;
     setText(S.moreCores, copyText('screen.cores.more', '', { n: C }));
     /* memory: chips of 4096 MB, each running job's share drawn where it was placed */
     setText(S.memLabel, copyText('screen.mem', 'Memory', { used: usedM, cap: M }));
-    var chips = Math.max(1, Math.min(16, Math.ceil(M / 4096))), scale = Math.min(M, chips * 4096);
+    var chips = Math.max(1, Math.min(16, Math.ceil(M / 4096))), scale = chips * 4096;   /* 1 chip = 4096 MB on the drawing */
     for (var k = 0; k < 16; k++) { S.slots.children[k].hidden = k >= chips; }
     var segs = [];
     if (st) {

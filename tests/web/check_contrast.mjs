@@ -42,6 +42,10 @@ const UI = [['control-border', 'bg'], ['control-border', 'surface'], ['control-b
   ['amber-ink', 'raised'], ['stone', 'surface']];
 for (let i = 0; i < 10; i++) { UI.push(['job-' + i, 'surface']); UI.push(['job-' + i, 'bg']); }
 for (let i = 0; i < 6; i++) UI.push(['series-' + i, 'surface']);
+// The Run laptop's screen (K-52): the same colours in both themes, on the dark screen and its tiles.
+TEXT.push(['screen-text', 'screen'], ['screen-muted', 'screen'], ['screen-amber', 'screen'], ['screen-sand', 'screen'],
+  ['screen-text', 'screen-raised'], ['screen-muted', 'screen-raised'], ['screen-amber', 'screen-raised'], ['key-lit', 'metal-deep']);
+for (let i = 0; i < 10; i++) TEXT.push(['screen-ink', 'screen-job-' + i]);
 
 let failed = 0, checked = 0;
 for (const [mode, v] of Object.entries(modes)) {

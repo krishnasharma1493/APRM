@@ -280,11 +280,11 @@ try {
   const moving = await ev(`document.getAnimations().filter((a) => !(a instanceof CSSTransition)).map((a) => (a.transitionProperty || a.animationName || 'web') + '@' + (a.effect && a.effect.target ? a.effect.target.className : ''))`);
   check('reduced motion: an event moves nothing', moving.length === 0, JSON.stringify(moving));
   await send('Emulation.setEmulatedMedia', { features: [] });
-  const flatScript = await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.CSS = { supports: function () { return false; } };` });
+  const flatScript = await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.CSS = { supports: function () { return false; } }; window.addEventListener('error', function (e) { (window.__errs = window.__errs || []).push(String(e.message)); });` });
   await load(1440);
-  await ev(`window.addEventListener('error', (e) => { (window.__errs = window.__errs || []).push(String(e.message)); }); document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); APRM.player.stepOnce(); true`);
-  const flatInfo = await ev(`({ flat: !!document.querySelector('.rs-flat .rs-screen'), hero: !!document.querySelector('#run-stage .lt-hero'), tiles: document.querySelectorAll('.rs-flat .rs-tile').length, errs: (window.__errs || []).length })`);
-  check('without 3D transforms: a flat laptop with the same screen, no error', flatInfo.flat && !flatInfo.hero && flatInfo.errs === 0, JSON.stringify(flatInfo));
+  await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 6; i++) APRM.player.stepOnce(); true`);
+  const flatInfo = await ev(`({ flat: !!document.querySelector('.rs-flat .rs-screen'), hero: !!document.querySelector('#run-stage .lt-hero'), tiles: document.querySelectorAll('.rs-flat .rs-tile').length, running: APRM.player.snapshot().state.running.length, tick: document.querySelector('.rs-flat .rs-scr-tick').textContent, now: APRM.player.snapshot().state.now, errs: (window.__errs || []).length })`);
+  check('without 3D transforms: a flat laptop with the same screen drawing the run, no error', flatInfo.flat && !flatInfo.hero && flatInfo.running > 0 && flatInfo.tiles === Math.min(5, flatInfo.running) && flatInfo.tick === 'Tick ' + flatInfo.now && flatInfo.errs === 0, JSON.stringify(flatInfo));
   await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: flatScript.identifier });
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;
