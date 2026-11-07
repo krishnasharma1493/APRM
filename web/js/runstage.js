@@ -451,6 +451,10 @@
       parts = APRM.laptop.buildParts(stage);
       parts.hero.setAttribute('class', parts.hero.getAttribute('class') + ' rs-hero');
       parts.lit.hidden = true;
+      /* the design's soft shadow under the laptop and the lit key well */
+      var shadow = el('div', 'lt-abs rs-shadow');
+      parts.stage.insertBefore(shadow, parts.stage.firstChild);
+      parts.keyBed.setAttribute('class', parts.keyBed.getAttribute('class') + ' rs-well');
       var holder = el('div', 'rs-screen-hold');
       holder.style.transform = 'scale(' + (LID_SCREEN_W / SCREEN_W).toFixed(4) + ')';
       holder.appendChild(screen.root);

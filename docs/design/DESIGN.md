@@ -160,6 +160,6 @@ Only weights 400, 500, 600 and 800 appear (a test enforces it). No monospace any
 - **Do** read every colour from the tokens; a new colour needs a dark and a light value and a contrast pair in the check.
 - **Do** pair a job tone with its number and hatch.
 - **Do** keep one amber primary button per screen.
-- **Don't** add gradients, glows or blur (the Build spotlight is the only light effect, and it goes under `prefers-contrast: more`).
+- **Don't** add gradients, glows or blur beyond these: the laptop spotlight, and on the Run laptop the backlit keys (soft key glow), the lit key well and the blurred shadow under the laptop (Krishna 2026-11-08, D86). The well glow and key text glow go under `prefers-contrast: more`.
 - **Don't** use all caps outside the hero, page titles and small labels.
 - **Don't** use monospace or a second typeface.
