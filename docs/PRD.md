@@ -597,6 +597,7 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 | `runboard.js` | The Run page's analysis views, drawn from the player's frames; clicks select a job |
 | `runanim.js` | Which motion each log kind triggers (arrive, start, skip, saved spot, squeezed in, finish), the FLIP runner on transform and opacity, and where each running job is drawn on the cores and memory (K-52) |
 | `runstage.js` | The Run laptop: the same parts as Build's laptop (`laptop.js`), assembled, with the run on its screen, the waiting jobs on its left and the finished jobs on its right; the Build to Run reassembly; decorative only, the tables are the readable source (K-52) |
+| `strip.js` | The heat-strip timeline: one row per job and one cell per tick (grouped when long), waiting, running, saved and finished from the job history; zoom, pan, sort, hover card, row selection; draws only the rows on screen (K-53) |
 | `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
 | `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |

@@ -286,6 +286,37 @@ try {
   const flatInfo = await ev(`({ flat: !!document.querySelector('.rs-flat .rs-screen'), hero: !!document.querySelector('#run-stage .lt-hero'), tiles: document.querySelectorAll('.rs-flat .rs-tile').length, running: APRM.player.snapshot().state.running.length, tick: document.querySelector('.rs-flat .rs-scr-tick').textContent, now: APRM.player.snapshot().state.now, errs: (window.__errs || []).length })`);
   check('without 3D transforms: a flat laptop with the same screen drawing the run, no error', flatInfo.flat && !flatInfo.hero && flatInfo.running > 0 && flatInfo.tiles === Math.min(5, flatInfo.running) && flatInfo.tick === 'Tick ' + flatInfo.now && flatInfo.errs === 0, JSON.stringify(flatInfo));
   await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: flatScript.identifier });
+
+  // 6. The heat-strip timeline (K-53): hover card, click selects, grouping and zoom on the big case, 5,000 rows
+  await load(1440);
+  await ev(`document.querySelector('#preset-tiles [data-preset="memory_hog"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 20; i++) APRM.player.stepOnce(); document.getElementById('run-strip').scrollIntoView({ block: 'center' }); true`);
+  await sleep(2000);   /* the Build to Run reassembly keeps the page inert for about 1.4 s */
+  const cell = await ev(`(function(){ const c = document.getElementById('strip-canvas'); const s = c.__strip; const r = document.getElementById('strip-scroll').getBoundingClientRect(); return { x: r.left + s.geo.labelW + s.geo.cellW * 2 + 2, y: r.top + 2, rows: s.rows.length, jobs: APRM.player.snapshot().jobs.length }; })()`);
+  check('timeline: one row for every job from the start', cell.rows === cell.jobs, JSON.stringify(cell));
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cell.x, y: cell.y });
+  await sleep(150);
+  const tip = await ev(`(function(){ const t = document.getElementById('strip-tip'); return { shown: !t.hidden, text: t.textContent }; })()`);
+  check('timeline: pointing at a cell shows a card with the job and tick', tip.shown && /^Job 1 · tick 2/.test(tip.text), JSON.stringify(tip));
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
+  check('timeline: clicking a row selects that job everywhere', (await ev(`APRM.player.snapshot().selected`)) === 1 && /job 1/.test(await ev(`document.getElementById('whylog-filter').textContent`)));
+  check('timeline: a short run already fits at full cell size, so both zoom buttons are off', await ev(`document.getElementById('strip-zoom-in').disabled && document.getElementById('strip-zoom-out').disabled`));
+  await ev(`document.getElementById('run-source-big').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); true`);
+  for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
+  await sleep(300);
+  const big = await ev(`({ g: document.getElementById('strip-group').textContent, w: document.getElementById('strip-scroll').scrollWidth, cw: document.getElementById('strip-scroll').clientWidth })`);
+  await ev(`document.getElementById('strip-zoom-in').click(); document.getElementById('strip-zoom-in').click(); true`);
+  await sleep(300);
+  const zoomed = await ev(`({ g: document.getElementById('strip-group').textContent, w: document.getElementById('strip-scroll').scrollWidth })`);
+  check('timeline, 500 jobs: cells group ticks to fit, zoom in widens it and it pans by scrolling', /1 cell = \d+ ticks/.test(big.g) && big.w <= big.cw + 8 && zoomed.w > big.w * 3, JSON.stringify({ big, zoomed }));
+  const zcap = await ev(`(function(){ const zi = document.getElementById('strip-zoom-in'); for (let i = 0; i < 12; i++) zi.click(); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r({ inOff: zi.disabled, outOff: document.getElementById('strip-zoom-out').disabled, zoom: APRM.strip.view().zoom })))); })()`);
+  check('timeline, 500 jobs: zoom in stops at 28 px per tick (the button turns off), zoom out stays on', zcap.inOff && !zcap.outOff && zcap.zoom > 4, JSON.stringify(zcap));
+  await ev(`document.getElementById('strip-zoom-fit').click(); true`);
+  await load(1440);
+  await ev(`(function(){ const jobs = []; for (let i = 0; i < 5000; i++) jobs.push({ id: i + 1, arrival: Math.floor(i / 4), duration: 1 + (i % 9), cpu: 1 + (i % 3), mem: 64, priority: i % 10 }); APRM.store.setJobs(jobs); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); })(); true`);
+  for (let i = 0; i < 200 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
+  const ms = await ev(`new Promise((done) => { const s = document.getElementById('strip-scroll'); s.scrollIntoView(); const t0 = performance.now(); s.scrollTop = 12000; requestAnimationFrame(() => requestAnimationFrame(() => done(Math.round(performance.now() - t0)))); })`);
+  check('timeline, 5,000 jobs: scrolling to row 3000 redraws within two frames budget (< 100 ms)', ms < 100, ms + ' ms');
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;
 console.log(failed === 0 ? 'ALL PASS (' + results.length + ')' : failed + ' FAILED of ' + results.length);

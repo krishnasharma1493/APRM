@@ -227,3 +227,35 @@
 @media (prefers-reduced-motion: reduce) {
   .rs-bar, .rs-col, .run-panel > * { transition: none; }
 }
+
+/* ---------- The heat-strip timeline (K-53) ---------- */
+.rs-panel { padding: 1.25rem; border-radius: var(--r-2); background: var(--surface); border: 1px solid var(--hairline); }
+.strip { position: relative; display: flex; flex-direction: column; gap: var(--s-3); margin-bottom: var(--s-4); }
+.strip-head { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.strip-head h3 { margin: 0; color: var(--muted); }
+.strip-group { font-size: var(--fs-caption); }
+.strip-tools { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-caption); white-space: nowrap; }
+.strip-tools select { min-height: 2rem; font-size: var(--fs-caption); }
+.btn-icon { width: 2rem; min-height: 2rem; padding: 0; font-size: 1rem; line-height: 1; }
+.strip-scroll { position: relative; overflow: auto; cursor: pointer; overscroll-behavior: contain; }
+.strip-scroll[hidden] { display: none; }
+.strip-canvas { position: sticky; left: 0; top: 0; display: block; }
+.strip-spacer { position: absolute; left: 0; top: 0; pointer-events: none; }
+.strip-tip { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; padding: var(--s-2) var(--s-3); border-radius: var(--r-2);
+  background: var(--raised); border: 1px solid var(--hairline); font-size: var(--fs-caption); line-height: 1.45; min-width: 11.25rem; }
+.strip-tip[hidden] { display: none; }
+.strip-tip .tip-head { font-weight: 600; }
+.strip-tip .tip-run, .strip-tip .tip-amber { color: var(--amber-ink); }
+.strip-tip .tip-wait { color: var(--sand); }
+.strip-tip .tip-run, .strip-tip .tip-wait, .strip-tip .tip-done { font-weight: 600; }
+.strip-tip .tip-done, .strip-tip .tip-muted { color: var(--muted); }
+.strip-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; align-items: center; font-size: var(--fs-caption); }
+.strip-legend { display: flex; gap: var(--s-4); flex-wrap: wrap; color: var(--muted); }
+.strip-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { position: relative; width: 14px; height: 10px; border-radius: 2px; overflow: hidden; }
+.sw-wait { background-color: var(--strip-wait); background-image: repeating-linear-gradient(135deg, var(--strip-hatch) 0 1px, transparent 1px 4px); }
+.sw-run { background: var(--amber); }
+.sw-saved { background-color: var(--strip-wait); border: 1px solid var(--amber); }
+.sw-skip::after { content: ""; position: absolute; right: 0; top: 0; border-top: 5px solid var(--bg); border-left: 5px solid transparent; }
+.sw-done { background: var(--strip-done); }
+.strip .hint { margin: 0; }

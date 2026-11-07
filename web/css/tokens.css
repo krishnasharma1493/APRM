@@ -62,6 +62,9 @@
   --screen-job-0: #E9C987; --screen-job-1: #8FB8A8; --screen-job-2: #C8B9A0; --screen-job-3: #B9803F; --screen-job-4: #D98579;
   --screen-job-5: #A7A57A; --screen-job-6: #B08F8B; --screen-job-7: #A7D9CB; --screen-job-8: #E3B467; --screen-job-9: #C49A7C;
   --key-lit: #F6EAD4;          /* key legends while jobs run: the backlit keyboard */
+  --strip-wait: rgba(200, 185, 160, 0.45);   /* timeline: a waiting cell, under the hatch */
+  --strip-hatch: rgba(12, 12, 13, 0.6);
+  --strip-done: #2A2A2E;                     /* timeline: a finished cell */
   --core-on: #C9A867;          /* a CPU core in the socket */
   --core-lit: #F3DCA8;         /* a core while CPU is highlighted */
   --chip-fill: #A3957D;        /* a memory chip */
@@ -133,6 +136,9 @@
   --job-0: #8F6A1F; --job-1: #3F6B5B; --job-2: #7D6D52; --job-3: #7B8044; --job-4: #592E0B;
   --job-5: #605A36; --job-6: #773B07; --job-7: #488874; --job-8: #1C4538; --job-9: #4A3520;
   --hatch: rgba(255, 255, 255, 0.45);
+  --strip-wait: rgba(125, 109, 82, 0.35);
+  --strip-hatch: rgba(245, 241, 232, 0.75);
+  --strip-done: #DDD5C6;
   --series-0: #8F6A1F; --series-1: #7D6D52; --series-2: #3F6B5B;
   --series-3: #6B675F; --series-4: #8F887E; --series-5: #4E4A44;
   --scrim: rgba(28, 26, 23, 0.28);
