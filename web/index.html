@@ -271,6 +271,41 @@
     </div>
 
     <div class="run-analysis">
+      <section id="run-strip" class="rs-panel strip" aria-labelledby="strip-title">
+        <div class="strip-head">
+          <h3 id="strip-title" class="label-caps" data-copy="strip.title">Timeline</h3>
+          <span id="strip-group" class="muted strip-group"></span>
+          <div class="strip-tools">
+            <label for="strip-sort" data-copy="strip.sort">Sort rows</label>
+            <select id="strip-sort">
+              <option value="id" data-copy="strip.sort.id">By job number</option>
+              <option value="arr" data-copy="strip.sort.arr">By arrival</option>
+              <option value="pri" data-copy="strip.sort.pri">By priority</option>
+              <option value="wait" data-copy="strip.sort.wait">By longest wait</option>
+            </select>
+            <button type="button" class="btn btn-icon" id="strip-zoom-out" data-copy-label="strip.zoom.out" aria-label="Zoom out">&minus;</button>
+            <button type="button" class="btn btn-icon" id="strip-zoom-in" data-copy-label="strip.zoom.in" aria-label="Zoom in">+</button>
+            <button type="button" class="btn btn-small" id="strip-zoom-fit" data-copy="strip.zoom.fit">Fit</button>
+          </div>
+        </div>
+        <p id="strip-empty" class="empty" data-copy="strip.empty">Nothing to show yet. Press Run.</p>
+        <div id="strip-scroll" class="strip-scroll" hidden>
+          <canvas id="strip-canvas" class="strip-canvas" aria-hidden="true"></canvas>
+          <div id="strip-spacer" class="strip-spacer"></div>
+        </div>
+        <div id="strip-tip" class="strip-tip" hidden></div>
+        <div class="strip-foot">
+          <div class="strip-legend">
+            <span><span class="sw sw-wait" aria-hidden="true"></span><span data-copy="strip.legend.wait">Waiting</span></span>
+            <span><span class="sw sw-run" aria-hidden="true"></span><span data-copy="strip.legend.run">Running</span></span>
+            <span><span class="sw sw-saved" aria-hidden="true"></span><span data-copy="strip.legend.saved">Spot saved</span></span>
+            <span><span class="sw sw-wait sw-skip" aria-hidden="true"></span><span data-copy="strip.legend.skip">Skipped</span></span>
+            <span><span class="sw sw-done" aria-hidden="true"></span><span data-copy="strip.legend.done">Finished</span></span>
+          </div>
+          <span class="muted" data-copy="strip.axis">Time (ticks)</span>
+        </div>
+        <p class="hint detail-only" data-copy="strip.note">Bands under the rows: CPU use (amber) and memory use (sand) over time, on the same tick axis. Diamond = a saved spot&rsquo;s guaranteed start.</p>
+      </section>
     <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
       <section class="module tray" aria-labelledby="tray-title">
         <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
@@ -374,6 +409,7 @@
   <script src="js/runboard.js"></script>
   <script src="js/runanim.js"></script>
   <script src="js/runstage.js"></script>
+  <script src="js/strip.js"></script>
   <script src="js/compare.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/keys.js"></script>

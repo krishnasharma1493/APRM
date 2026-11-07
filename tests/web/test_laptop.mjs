@@ -137,12 +137,12 @@ test('no monospace, no bracket tags, and only weights 400, 500, 600, 800 in the 
 });
 
 test('no colour literals in the new scripts; gradients only for the spotlight and patterns', () => {
-  for (const f of ['js/machine.js', 'js/laptop.js']) {
+  for (const f of ['js/machine.js', 'js/laptop.js', 'js/runanim.js', 'js/runstage.js', 'js/strip.js', 'js/runmodel.js']) {
     const t = read(f);
     assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(t), 'colour literal in ' + f);
     assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|\beval\s*\(|new\s+Function/.test(t), 'unsafe DOM call in ' + f);
   }
-  const css = read('css/style.css') + read('css/components.css');
+  const css = read('css/style.css') + read('css/components.css') + read('css/run.css');
   const smooth = [...css.matchAll(/(?<!repeating-)(radial|linear)-gradient\(/g)];
   assert.equal(smooth.length, 1, 'one smooth gradient: the Build spotlight');
   assert.match(css, /\.lt-spot \{[^}]*radial-gradient\(closest-side, var\(--spot\)/);
