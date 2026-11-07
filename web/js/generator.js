@@ -75,6 +75,25 @@
     return jobs;
   }
 
+  /* The Run page's big case (K-51): 500 jobs on 32 cores and 131072 MB, always the same (seed 42).
+   * Input only, like generate(). Returns { cpu, mem, jobs } the caller owns. O(500). */
+  var BIG = { seed: 42, count: 500, cpu: 32, mem: 131072 };
+  function bigCase() {
+    var rand = mulberry32(BIG.seed);
+    var jobs = [];
+    for (var i = 1; i <= BIG.count; i++) {
+      jobs.push({
+        id: i,
+        arrival: randInt(rand, 0, 419),
+        duration: randInt(rand, 2, 39),
+        cpu: randInt(rand, 1, 10),
+        mem: 1024 * randInt(rand, 1, 24),
+        priority: randInt(rand, 0, 9)
+      });
+    }
+    return { cpu: BIG.cpu, mem: BIG.mem, jobs: jobs };
+  }
+
   var mounted = false;
 
   /* Slider ids and the setting each one controls. */
@@ -139,6 +158,8 @@
     mulberry32: mulberry32,
     nextSeed: nextSeed,
     generate: generate,
+    BIG: BIG,
+    bigCase: bigCase,
     mount: mount
   };
 })();

@@ -1,23 +1,26 @@
-/* player.js: Run mode (PRD section 7 "The run loop", K-25).
+/* player.js: Run mode (PRD section 7 "The run loop"; K-25, redesigned in K-51).
  *
- * Idea: each animation frame asks the C engine to advance a few events, then
- * redraws from what the engine reports. The page NEVER decides which job runs:
- * this file calls only the APRM.wasm wrapper (create, addJob, step, state, log,
- * metrics, destroy) and passes the answers to canvas.js and whylog.js.
+ * Idea: the C engine runs the schedule; this file only asks it to advance and shows what it reports.
+ * The engine is stepped one moment at a time (aprm_step). A moment can write several log entries;
+ * the page shows them one per Step, so Step = exactly one event. Between the entries of a moment the
+ * view is built by runmodel.js from the engine's previous state and the entries so far; after the
+ * moment's last entry the view IS the engine's state JSON (runmodel.snap). Metrics are the engine's,
+ * read at each moment end. The page NEVER decides which job runs.
  *
  * State machine (status):
  *   idle      no simulation (nothing started, or reset)
  *   paused    a simulation exists and waits
- *   playing   a frame loop runs, at most `speed` steps per frame (hard cap)
+ *   playing   a timer shows one event per beat (small cases) or a few ticks per beat (big cases)
  *   jumping   "jump to end" runs in slices, one slice per scheduled callback
- *   finished  the engine said there is no more event (adding a job re-opens it)
+ *   finished  every job has finished (adding a job re-opens the run)
  *   error     the engine refused something; the message is shown, handle destroyed
  *
- * Long runs cannot freeze the tab: MAX_STEPS_PER_FRAME steps per frame, and a
- * jump runs SLICE_STEPS steps per callback, redrawing once per slice.
+ * Nothing runs while paused, idle or finished: the only timer is the play beat or a jump slice.
+ * Handles: at most one simulation is alive; start(), reset() and every error destroy the old one.
  *
- * Handles: at most one simulation is alive. start(), reset() and every error
- * destroy the old handle first, so the 4,096 handles never leak.
+ * Views register with addView(fn); fn(frame, why) is called after every change with a read-only
+ * frame (see frame()) and a reason: 'start', 'event', 'events', 'jump', 'select', 'reset',
+ * 'settings', 'details', 'add', 'error', 'status' (play, pause or speed), 'mode' (the Run step opened). Elements are made with createElement and textContent only.
  *
  * Classic script: attaches APRM.player only. Nothing runs at load time.
  */
@@ -26,37 +29,35 @@
 
   var APRM = (window.APRM = window.APRM || {});
 
-  var MAX_STEPS_PER_FRAME = 200;
-  var SLICE_STEPS = 500;
   var POLICY_NAMES = ['fcfs', 'priority', 'sjf', 'aging', 'aging_reserve', 'knapsack'];
+  var SPEEDS = [0.5, 1, 2, 4];
+  var LARGE = 40;              /* more jobs than this: play by ticks, without per-event motion */
+  var BEAT_MS = 900;           /* one event per beat at 1x on a small case */
+  var LARGE_BEAT_MS = 120;     /* a big case advances a few ticks every beat */
+  var MAX_EVENTS_PER_BEAT = 2000;
+  var SLICE_STEPS = 500;       /* engine moments per jump slice */
+  var MAX_STEPS_PER_FRAME = 200;   /* the most engine moments one beat of a big case may fetch */
 
   /* ---------- the run ---------- */
 
-  var run = null;          /* null = idle; otherwise the data below */
-  var speed = 1;           /* steps per frame, 1..MAX_STEPS_PER_FRAME */
+  var run = null;          /* null = idle; otherwise see start() */
+  var speed = 1;           /* 0.5, 1, 2 or 4 */
   var status = 'idle';
   var errorText = '';
-  var frameId = null;
-  var laterId = null;
+  var timerId = null;
   var selected = null;
+  var source = 'yours';    /* 'yours' = the Build jobs, 'big' = the 500-job big case */
+  var stale = false;       /* the scheduler or a setting changed after this run started */
+  var views = [];
 
-  /* The timers. Replaceable so tests can drive frames by hand. */
+  /* The timers. Replaceable so tests can run beats and slices by hand. */
   var scheduler = {
-    frame: function (fn) {
-      return typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(fn) : setTimeout(fn, 16);
-    },
-    cancelFrame: function (id) {
-      if (typeof window.cancelAnimationFrame === 'function') { window.cancelAnimationFrame(id); } else { clearTimeout(id); }
-    },
-    later: function (fn) { return setTimeout(fn, 0); },
-    cancelLater: function (id) { clearTimeout(id); }
+    wait: function (fn, ms) { return setTimeout(fn, ms); },
+    cancel: function (id) { clearTimeout(id); }
   };
 
   function setScheduler(s) {
-    scheduler = {
-      frame: s.frame || scheduler.frame, cancelFrame: s.cancelFrame || scheduler.cancelFrame,
-      later: s.later || scheduler.later, cancelLater: s.cancelLater || scheduler.cancelLater
-    };
+    scheduler = { wait: s.wait || scheduler.wait, cancel: s.cancel || scheduler.cancel };
   }
 
   function byId(id) { return document.getElementById(id); }
@@ -70,8 +71,7 @@
   }
 
   function detailsOn() { return !!(APRM.store && APRM.store.get().details); }
-
-  function text(id, value) { var el = byId(id); if (el) { el.textContent = value; } }
+  function text(id, value) { var el = byId(id); if (el && el.textContent !== value) { el.textContent = value; } }
 
   function showMessage(id, message) {
     var el = byId(id);
@@ -80,7 +80,6 @@
     el.hidden = !message;
   }
 
-  /* "field: message" the way the editor shows engine errors. */
   var SETTING_FIELDS = ['alpha_milli', 'reserve_threshold', 'knapsack_eps'];
 
   /* A setting is wrong: open More settings, where it can be fixed, and say so before the engine's sentence. */
@@ -97,11 +96,23 @@
     return err && err.field && m.indexOf(err.field) !== 0 ? err.field + ': ' + m : m;
   }
 
+  /* ---------- the case the run uses ---------- */
+
+  /* The machine and jobs of the chosen source. Returns { cpu, mem, jobs } (copies). O(jobs). */
+  function caseOf(src) {
+    if (src === 'big' && APRM.generator && APRM.generator.bigCase) { return APRM.generator.bigCase(); }
+    var st = APRM.store.get();
+    return { cpu: st.machine.cpu, mem: st.machine.mem, jobs: st.jobs.map(copyJob) };
+  }
+
+  function copyJob(j) {
+    return { id: j.id, arrival: j.arrival, duration: j.duration, cpu: j.cpu, mem: j.mem, priority: j.priority };
+  }
+
   /* ---------- handle management ---------- */
 
   /* Destroy the live simulation if there is one. Never throws. O(1). */
   function destroyRun() {
-    stopFlights();
     if (run !== null) {
       var h = run.handle;
       run = null;
@@ -110,322 +121,210 @@
   }
 
   function cancelTimers() {
-    if (frameId !== null) { scheduler.cancelFrame(frameId); frameId = null; }
-    if (laterId !== null) { scheduler.cancelLater(laterId); laterId = null; }
+    if (timerId !== null) { scheduler.cancel(timerId); timerId = null; }
   }
 
   /* ---------- reading the engine ---------- */
 
-  /* Pull only the log entries newer than the last one seen, keep them, and
-   * update the Gantt bars from START and FINISH entries. O(new entries). */
-  function pullLog() {
+  /* One engine moment: aprm_step, its new log entries, and (unless light) the state and metrics
+   * at its end. The entries go to the queue of events not shown yet; each knows its moment.
+   * A light read still takes the state when the moment saves a spot (for its shadow time).
+   * Returns the number of new entries, or -1 when the engine had nothing left. Throws EngineError. */
+  function fetchMoment(light) {
+    if (APRM.wasm.step(run.handle) === 0) { run.engineDone = true; return -1; }
     var fresh = APRM.wasm.log(run.handle, run.lastSeq);
+    var hasReserve = false;
     for (var i = 0; i < fresh.length; i++) {
-      var e = fresh[i];
-      run.entries.push(e);
-      if (e.seq > run.lastSeq) { run.lastSeq = e.seq; }
-      if (e.kind === 'START') { barOf(e.job).start = e.t; run.justStarted.push(e.job); }
-      if (e.kind === 'FINISH') { barOf(e.job).finish = e.t; }
+      if (fresh[i].seq > run.lastSeq) { run.lastSeq = fresh[i].seq; }
+      if (fresh[i].kind === 'RESERVE') { hasReserve = true; }
+    }
+    var m = { state: null, metrics: null };
+    if (!light || hasReserve) { m.state = APRM.wasm.state(run.handle); }
+    if (!light) { m.metrics = APRM.wasm.metrics(run.handle); }
+    run.moments++;
+    if (fresh.length === 0) {           /* a knapsack window with nothing to choose: only the clock moved */
+      if (m.state) { APRM.runmodel.snap(run.view, m.state); run.state = m.state; }
+      if (m.metrics) { run.metrics = m.metrics; }
+      return 0;
+    }
+    for (var k = 0; k < fresh.length; k++) {
+      run.queue.push({ e: fresh[k], m: m, last: k === fresh.length - 1 });
     }
     return fresh.length;
   }
 
-  function barOf(id) {
-    if (!run.bars[id]) { run.bars[id] = {}; }
-    return run.bars[id];
+  /* Show the next queued entry: apply it, record it, and at its moment's end snap to the engine. O(n). */
+  function showNext() {
+    var q = run.queue.shift();
+    var e = q.e;
+    APRM.runmodel.apply(run.view, e, { jobs: run.byId, policy: run.policy, alphaMilli: run.settings.alphaMilli, end: q.m.state });
+    APRM.runmodel.record(run.hist, e, run.byId, run.view);
+    run.entries.push(e);
+    run.last = e;
+    if (q.last) {
+      if (q.m.state) { APRM.runmodel.snap(run.view, q.m.state); run.state = q.m.state; }
+      if (q.m.metrics) { run.metrics = q.m.metrics; }
+    }
+    return e;
   }
 
-  /* Read the state JSON (and the metrics unless `light`) and remember them.
-   * The planned start and finish of running jobs also feed the Gantt bars. */
-  function readEngine(light) {
-    run.state = APRM.wasm.state(run.handle);
-    var r = run.state.running;
-    for (var i = 0; i < r.length; i++) {
-      var b = barOf(r[i].id);
-      b.start = r[i].start;
-      b.finish = r[i].finish;
+  /* True when every job has finished and nothing is left to show. O(1). */
+  function allShown() {
+    return run.queue.length === 0 && run.view.done >= run.view.total;
+  }
+
+  /* Make sure at least one entry is queued, stepping the engine (full reads) as needed.
+   * Returns false when the run has nothing more to show. Throws EngineError. */
+  function ensureQueued() {
+    var guard = 0;
+    while (run.queue.length === 0) {
+      if (run.engineDone || run.view.done >= run.view.total) { return false; }
+      if (fetchMoment(false) < 0) { return false; }
+      if (++guard > 1000000) { return false; }
     }
-    if (!light) { run.metrics = APRM.wasm.metrics(run.handle); }
+    return true;
+  }
+
+  /* ---------- the frame every view reads ---------- */
+
+  function frame() {
+    return {
+      status: status, speed: speed, selected: selected, error: errorText, source: source, stale: stale,
+      large: run ? run.jobs.length > LARGE : (source === 'big' || APRM.store.get().jobs.length > LARGE),
+      events: run ? run.entries.length : 0,
+      state: run ? run.view : null,
+      engineState: run ? run.state : null,
+      metrics: run ? run.metrics : null,
+      entries: run ? run.entries : [],
+      last: run ? run.last : null,
+      hist: run ? run.hist : null,
+      jobs: run ? run.jobs : [],
+      byId: run ? run.byId : {},
+      policy: run ? run.policy : chosenPolicy(),
+      settings: run ? run.settings : APRM.store.get().settings,
+      cap: run ? { cpu: run.cpu, mem: run.mem } : (function () { var c = caseOf(source); return { cpu: c.cpu, mem: c.mem }; })(),
+      pending: run ? run.queue.length : 0
+    };
+  }
+
+  function chosenPolicy() {
+    var p = APRM.store.get().policies;
+    return p && p[0] ? p[0] : 'fcfs';
   }
 
   /* ---------- drawing ---------- */
 
-  function view() {
-    return { state: run ? run.state : null, jobs: run ? run.jobs : [], bars: run ? run.bars : {},
-      selected: selected, events: run ? run.events : 0, hold: held };
-  }
-
-  var METRIC_KEYS = ['avg_wait', 'max_wait', 'avg_turnaround', 'weighted_completion', 'makespan', 'util_cpu', 'util_mem'];
-
-  /* A metric value as text. The clean view rounds to three decimals; Show details prints the
-   * engine's number unchanged. null means the engine has no value yet. */
-  function metricText(v) {
-    if (v === null || v === undefined) { return copyText('metric.none', 'n/a (no finished job yet)'); }
-    if (typeof v === 'number' && Math.floor(v) !== v && !detailsOn()) { return v.toFixed(3); }
-    return String(v);
-  }
-
-  function drawMetrics() {
-    var list = byId('metrics-list');
-    var empty = byId('metrics-empty');
-    if (!list) { return; }
-    clear(list);
-    if (!run || !run.metrics || run.state.done === 0) {
-      if (empty) { empty.hidden = false; }
-      return;
-    }
-    if (empty) { empty.hidden = true; }
-    for (var i = 0; i < METRIC_KEYS.length; i++) {
-      var li = document.createElement('li');
-      li.textContent = copyText('metric.' + METRIC_KEYS[i], METRIC_KEYS[i]) + ': ' + metricText(run.metrics[METRIC_KEYS[i]]);
-      list.appendChild(li);
-    }
-    var byPri = run.metrics.avg_wait_by_priority;
-    if (Array.isArray(byPri)) {
-      var row = document.createElement('li');
-      var parts = [];
-      for (var q = 0; q < byPri.length; q++) { if (byPri[q] !== null && byPri[q] !== undefined) { parts.push(q + ': ' + metricText(byPri[q])); } }
-      row.textContent = copyText('metric.by_priority', 'Average wait by priority') + ' (' + parts.join(', ') + ')';
-      if (parts.length > 0) { list.appendChild(row); }
+  /* Redraw the shell and tell every view. why says what changed (see the header). */
+  function render(why) {
+    var f = frame();
+    drawShell(f);
+    for (var i = 0; i < views.length; i++) {
+      try { views[i](f, why || 'event'); } catch (e) { if (window.console && console.error) { console.error(e); } }
     }
   }
 
-  /* The machine in numbers, straight from the state JSON: used = capacity minus free. */
-  function drawResources() {
-    var st = run ? run.state : null;
-    var line = function (textId, key, unitKey) {
-      var label = byId(textId);
-      if (!label) { return; }
-      if (!st) { label.textContent = copyText('run.res.none', ''); return; }
-      var cap = st.cap[key], free = st.free[key], used = cap - free;
-      label.textContent = copyText(unitKey, used + ' of ' + cap + ', ' + free + ' free', { used: used, cap: cap, free: free });
-    };
-    line('res-cpu-text', 'cpu', 'run.res.cpu.text');
-    line('res-mem-text', 'mem', 'run.res.mem.text');
-  }
+  function addView(fn) { views.push(fn); }
 
-  /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
-  function policyAvailable(name) {
-    var list = APRM.compare && APRM.compare.POLICIES ? APRM.compare.POLICIES : [];
-    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i].available; } }
-    return true;
-  }
+  /* The head line, scheduler cards, settings line, bar, status pill, clock and event banner. */
+  function drawShell(f) {
+    var c = run ? null : caseOf(source);
+    var n = run ? run.jobs.length : c.jobs.length;
+    var cpu = run ? run.cpu : c.cpu, mem = run ? run.mem : c.mem;
+    var gb = Math.round(mem / 1024 * 100) / 100;
+    var line = copyText('run.dataline', n + ' jobs on ' + cpu + ' cores and ' + mem + ' MB.', { n: n, jobs: n === 1 ? 'job' : 'jobs', cpu: cpu, cores: cpu === 1 ? 'core' : 'cores', mem: mem, gb: gb });
+    if (run && run.added > 0) { line += ' ' + copyText('run.dataline.added', '', { n: run.added }); }
+    text('run-dataline', line);
 
-  var ownChange = false;
-  var lastTraySig = '';
-  var TRAY_ROWS = 40;      /* cards on the page; the count above always gives the true number */
-
-  /* A job's magnet: colour, hatch and stamped number. Bigger for a higher priority (a fixed ramp). */
-  function magnet(id, priority) {
-    var pal = APRM.canvas.paletteIndex(id);
-    var hatch = ((id % 3) + 3) % 3;
-    var size = priority >= 7 ? 'l' : priority >= 4 ? 'm' : 's';
-    var m = document.createElement('span');
-    m.setAttribute('class', 'magnet magnet-' + pal + ' hatch-' + hatch + ' magnet-size-' + size);
-    m.setAttribute('aria-hidden', 'true');
-    var b = document.createElement('b');
-    b.textContent = String(id);
-    m.appendChild(b);
-    return m;
-  }
-
-  /* The tray: waiting jobs in the order the engine reports, with its score when it gives one. */
-  function drawTray() {
-    var list = byId('tray-list');
-    if (!list) { return; }
-    var w = run && run.state ? run.state.waiting : [];
-    var saved = run && run.state && run.state.reservation ? run.state.reservation.id : null;
-    /* Rebuild only when something shown changed, so a click or keyboard focus survives a playing run. */
-    var sig = selected + '|' + saved + '|' + w.length;
-    for (var s = 0; s < w.length && s < TRAY_ROWS; s++) { sig += ',' + w[s].id + ':' + w[s].score; }
-    if (sig === lastTraySig) { return; }
-    lastTraySig = sig;
-    var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
-    clear(list);
-    text('tray-count', '(' + w.length + ')');
-    var empty = byId('tray-empty');
-    if (empty) { empty.hidden = w.length > 0; }
-    var shown = Math.min(w.length, TRAY_ROWS);
-    for (var i = 0; i < shown; i++) {
-      var j = w[i];
-      var li = document.createElement('li');
-      li.setAttribute('data-job', String(j.id));
-      li.setAttribute('class', 'tray-card' + (selected === j.id ? ' selected' : ''));
-      li.setAttribute('tabindex', i === 0 ? '0' : '-1');
-      li.setAttribute('role', 'button');
-      li.setAttribute('aria-pressed', selected === j.id ? 'true' : 'false');
-      li.appendChild(magnet(j.id, j.priority));
-      var body = document.createElement('span');
-      body.setAttribute('class', 'tray-body');
-      var head = document.createElement('span');
-      head.setAttribute('class', 'tray-head');
-      head.textContent = 'Job ' + j.id;
-      body.appendChild(head);
-      if (saved === j.id || i === 0) {
-        var stamp = document.createElement('span');
-        stamp.setAttribute('class', 'stamp' + (saved === j.id ? ' stamp-saved' : ''));
-        stamp.textContent = saved === j.id ? copyText('run.tray.saved', 'Spot saved') : copyText('run.tray.next', 'Next');
-        body.appendChild(stamp);
-      }
-      var meta = document.createElement('span');
-      meta.setAttribute('class', 'tray-meta');
-      var words = copyText('run.tray.needs', 'priority ' + j.priority, { p: j.priority, c: j.cpu, cores: j.cpu === 1 ? 'core' : 'cores', m: j.mem });
-      if (typeof j.score === 'number') { words += ', ' + copyText('run.tray.score', 'score ' + j.score.toFixed(3), { s: j.score.toFixed(3) }); }
-      meta.textContent = words;
-      body.appendChild(meta);
-      li.appendChild(body);
-      list.appendChild(li);
+    var yours = byId('run-source-yours');
+    if (yours) {
+      var st = APRM.store.get();
+      yours.textContent = copyText('run.source.yours', 'Your jobs', { n: st.jobs.length });
+      yours.setAttribute('aria-pressed', source === 'yours' ? 'true' : 'false');
     }
-    if (APRM.keys) { APRM.keys.refocus(list, keep); }
-    var more = byId('tray-more');
-    if (more) {
-      more.hidden = w.length <= shown;
-      more.textContent = copyText('run.tray.more', 'and ' + (w.length - shown) + ' more', { n: w.length - shown });
+    var big = byId('run-source-big');
+    if (big) { big.setAttribute('aria-pressed', source === 'big' ? 'true' : 'false'); }
+
+    var pol = chosenPolicy();
+    var mbox = byId('run-methods');
+    var cards = mbox && mbox.children ? mbox.children : [];
+    for (var i = 0; i < cards.length; i++) {
+      var on = cards[i].getAttribute('data-policy') === pol;
+      cards[i].setAttribute('aria-checked', on ? 'true' : 'false');
+      cards[i].setAttribute('tabindex', on ? '0' : '-1');
     }
-  }
+    drawSettingsLine();
 
-  var flights = 0;
-  var flightStops = [];
-  var held = {};           /* job id -> true while its magnet is in the air; the board leaves its card out */
+    var startBtn = byId('run-start');
+    if (startBtn) { startBtn.textContent = stale && run ? copyText('run.again', 'Run again') : copyText('run.start', 'Run'); }
+    var stEl = byId('run-stale');
+    if (stEl) { stEl.hidden = !(stale && run); }
 
-  /* True when a started card may travel: motion allowed, speed low, room for another flight. */
-  function canFly() {
-    return !!(APRM.motion && !APRM.motion.reduced() && speed <= 3 && status !== 'jumping' && flights < 3);
-  }
-
-  /* The signature moment: when the engine starts a job, its card is held off the board while its
-   * magnet travels from the tray to the memory lane, then the card lands. Purely visual. */
-  function flyCard(id, from) {
-    var canvasEl = byId('run-canvas');
-    var regs = canvasEl && canvasEl.__regions ? canvasEl.__regions : [];
-    var reg = null;
-    for (var i = 0; i < regs.length; i++) { if (regs[i].id === id && (regs[i].lane === 'mem' || !reg)) { reg = regs[i]; } }
-    var land = function () { delete held[id]; if (run) { APRM.canvas.draw(canvasEl, view()); } };
-    if (!reg || typeof canvasEl.getBoundingClientRect !== 'function' || !document.body) { land(); return; }
-    var box = canvasEl.getBoundingClientRect();
-    var job = null;
-    for (var k = 0; k < run.jobs.length; k++) { if (run.jobs[k].id === id) { job = run.jobs[k]; } }
-    var el = magnet(id, job ? job.priority : 0);
-    el.setAttribute('class', el.getAttribute('class') + ' flying');
-    el.style.left = from.left + 'px';
-    el.style.top = from.top + 'px';
-    document.body.appendChild(el);
-    flights++;
-    var dx = box.left + reg.x + reg.w / 2 - from.left - from.width / 2;
-    var dy = box.top + reg.y + reg.h / 2 - from.top - from.height / 2;
-    var finish = function () {
-      flights--;
-      if (el.parentNode) { el.parentNode.removeChild(el); }
-      var at = flightStops.indexOf(stop);
-      if (at >= 0) { flightStops.splice(at, 1); }
-      land();
-    };
-    var cancel = APRM.motion.animateValue(0, 1, { response: 0.28 }, function (t) {
-      el.style.transform = 'translate(' + (dx * t) + 'px,' + (dy * t) + 'px)';
-    }, finish);
-    function stop() { cancel(); finish(); }
-    flightStops.push(stop);
-  }
-
-  /* Remove any magnet still in the air (a reset or a new run mid-flight). */
-  function stopFlights() {
-    var all = flightStops.slice();
-    flightStops.length = 0;
-    for (var i = 0; i < all.length; i++) { all[i](); }
-  }
-
-  /* Tray positions before a redraw, so a started card can fly from where it was. O(cards shown). */
-  function trayRects() {
-    var out = {};
-    var list = byId('tray-list');
-    var kids = list && list.children ? list.children : [];
-    for (var i = 0; i < kids.length; i++) {
-      var m = kids[i].firstChild;
-      if (m && typeof m.getBoundingClientRect === 'function') { out[kids[i].getAttribute('data-job')] = m.getBoundingClientRect(); }
+    var pill = byId('run-status');
+    if (pill) {
+      pill.setAttribute('data-status', status);
+      text('run-status-text', copyText('status.' + status, status));
     }
-    return out;
+    text('run-clock', copyText('run.tick', 'Time: tick ' + (run ? run.view.now : 0), { now: run ? run.view.now : 0 }));
+    var sbox = byId('run-speed');
+    var spd = sbox && sbox.children ? sbox.children : [];
+    for (var s = 0; s < spd.length; s++) { spd[s].setAttribute('aria-pressed', Number(spd[s].getAttribute('data-speed')) === speed ? 'true' : 'false'); }
+
+    drawEvent(f);
+    updateButtons();
+    if (status !== 'playing') { refreshAddForm(); }
   }
 
-  /* The saved spot for the long-waiting job, as the engine reports it (id and shadow time). */
-  function drawReservation() {
-    var card = byId('reserve-card');
-    if (!card) { return; }
-    var r = run && run.state ? run.state.reservation : null;
-    if (!r) { card.textContent = ''; card.hidden = true; return; }
-    card.textContent = copyText('run.reserve', 'Job ' + r.id + ' is reserved.', { id: r.id, t: r.shadow_time });
-    card.hidden = false;
+  var KIND_WORD = { ARRIVE: 'kind.ARRIVE', START: 'kind.START', SKIP: 'kind.SKIP', RESERVE: 'kind.RESERVE',
+    BACKFILL: 'kind.BACKFILL', FINISH: 'kind.FINISH', BATCH_SELECT: 'kind.BATCH_SELECT' };
+
+  /* The banner under the stage: the newest event in the engine's own words. */
+  function drawEvent(f) {
+    var box = byId('run-event');
+    if (!box) { return; }
+    var e = f.last;
+    var kindEl = byId('run-event-kind');
+    var textEl = byId('run-event-text');
+    var rawEl = byId('run-event-raw');
+    var idle = byId('run-event-idle');
+    if (idle) {
+      idle.hidden = !!e;
+      idle.textContent = run ? copyText('run.event.ready', 'Press Play to start, or Step to see one event.') : copyText('run.event.none', 'Press Run.');
+    }
+    if (kindEl) { kindEl.hidden = !e; kindEl.textContent = e ? copyText(KIND_WORD[e.kind] || 'kind.other', e.kind) : ''; kindEl.setAttribute('data-kind', e ? e.kind : ''); }
+    if (textEl) { textEl.hidden = !e; textEl.textContent = e ? e.msg : ''; }
+    if (rawEl) {
+      rawEl.hidden = !e || !detailsOn();
+      rawEl.textContent = e ? copyText('run.event.raw', '', { kind: e.kind, n: f.events, t: e.t }) : '';
+    }
+    box.setAttribute('data-kind', e ? e.kind : '');
   }
 
   /* One line with the exact settings, always visible even when "More settings" is closed. */
   function drawSettingsLine() {
     var s = APRM.store.get().settings;
-    text('run-settings-summary', copyText('run.settings', 'Settings: alpha = ' + s.alphaMilli, { alpha: s.alphaMilli, t: s.threshold, eps: s.eps }));
+    text('run-settings-summary', copyText('run.settings', 'alpha = ' + s.alphaMilli, { alpha: alphaWords(s.alphaMilli), milli: s.alphaMilli, t: s.threshold, eps: s.eps }));
   }
 
-  function clockText() {
-    if (!run) { return copyText('run.clock.none', 'No run yet. Press Run.'); }
-    var vars = { now: run.state.now, events: run.events, done: run.state.done, total: run.state.total };
-    return copyText(detailsOn() ? 'run.clock.details' : 'run.clock', 'Time: tick ' + vars.now, vars);
-  }
-
-  function highlightJobList() {
-    var list = byId('job-list');
-    if (!list) { return; }
-    var kids = list.children || [];
-    for (var i = 0; i < kids.length; i++) {
-      var on = selected !== null && String(kids[i].textContent).indexOf('Job ' + selected + ':') === 0;
-      kids[i].setAttribute('class', on ? 'sel' : '');
-    }
-  }
-
-  /* Redraw every view from the remembered engine answers. O(shown rows + jobs). */
-  function render() {
-    var from = run && run.justStarted.length > 0 && canFly() ? trayRects() : null;
-    var flying = [];
-    if (from) {
-      for (var g = 0; g < run.justStarted.length; g++) {
-        var startedId = run.justStarted[g];
-        if (from[startedId] && flying.length + flights < 3) { held[startedId] = true; flying.push(startedId); }
-      }
-    }
-    drawTray();
-    text('run-clock', clockText());
-    text('run-status', copyText('status.' + status, status));
-    var canvasEl = byId('run-canvas');
-    var empty = byId('canvas-empty');
-    if (canvasEl) {
-      var painted = run !== null && APRM.canvas.draw(canvasEl, view());
-      canvasEl.hidden = !painted;
-      if (empty) {
-        empty.hidden = run !== null && painted;
-        empty.textContent = run !== null && !painted ? clockText() : copyText('run.canvas.empty', 'Nothing to show yet. Add jobs, then press Run.');
-      }
-    }
-    APRM.whylog.render(run ? run.entries : [], selected);
-    drawMetrics();
-    drawResources();
-    drawReservation();
-    drawSettingsLine();
-    highlightJobList();
-    if (run) { run.justStarted = []; }
-    for (var f = 0; f < flying.length; f++) { flyCard(flying[f], from[flying[f]]); }
-    updateButtons();
-    if (status !== 'playing') { refreshAddForm(); }
+  /* alpha_milli as a decimal for people (100 -> 0.1), from integers. */
+  function alphaWords(milli) {
+    var whole = Math.floor(milli / 1000), frac = String(milli % 1000);
+    while (frac.length < 3) { frac = '0' + frac; }
+    frac = frac.replace(/0+$/, '');
+    return frac ? whole + '.' + frac : String(whole);
   }
 
   function updateButtons() {
     var play = byId('run-play');
     if (play) { play.textContent = status === 'playing' ? copyText('run.pause', 'Pause') : copyText('run.play', 'Play'); }
     var live = run !== null;
-    var hasJobs = APRM.store.get().jobs.length > 0;      /* Play, Step and Jump start the run themselves */
-    var startBtn = byId('run-start');
-    if (startBtn) { startBtn.textContent = live ? copyText('run.restart', 'Start over') : copyText('run.start', 'Run'); }
+    var hasJobs = live || caseOf(source).jobs.length > 0;      /* Play, Step and Jump start the run themselves */
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
     set('run-play', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping' || status === 'finished');
     set('run-jump', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-reset', !live);
     set('ra-submit', !live);
+    set('run-add-open', !live);
     /* A button that just became disabled drops keyboard focus; Reset keeps it on the controls. */
     var focused = document.activeElement;
     var resetBtn = byId('run-reset');
@@ -441,33 +340,39 @@
     status = 'error';
     errorText = errorMessage(err);
     showMessage(target || 'run-error', errorText);
-    render();
+    render('error');
   }
 
-  /* Start (or restart) from the store: destroy the old simulation, create a new
-   * one, add every job, read the first state. Returns true on success. O(jobs). */
+  /* Start (or restart) from the chosen source: destroy the old simulation, create a new one, add
+   * every job, read the first state. Paused before the first event. Returns true on success. O(jobs). */
   function start() {
     cancelTimers();
     destroyRun();
     selected = null;
     errorText = '';
+    stale = false;
     showMessage('run-error', '');
     showMessage('ra-error', '');
-    APRM.whylog.forget();
-    var st = APRM.store.get();
-    if (st.jobs.length === 0) {
+    var c = caseOf(source);
+    if (c.jobs.length === 0) {
       status = 'idle';
-      showMessage('run-error', 'There are no jobs. Add some in Build mode first.');
-      render();
+      showMessage('run-error', copyText('run.nojobs', 'There are no jobs. Add some in Build mode first.'));
+      render('reset');
       return false;
     }
-    var policy = st.policies[0] || 'fcfs';
+    var st = APRM.store.get();
+    var policy = chosenPolicy();
+    var settings = { alphaMilli: st.settings.alphaMilli, threshold: st.settings.threshold, eps: st.settings.eps };
     var h = null;
     try {
-      h = APRM.wasm.create(st.machine.cpu, st.machine.mem, policy, st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
-      run = { handle: h, jobs: st.jobs.map(copyJob), justStarted: [], entries: [], lastSeq: 0, bars: {}, events: 0, state: null, metrics: null, policy: policy };
-      for (var i = 0; i < st.jobs.length; i++) {
-        var j = st.jobs[i];
+      h = APRM.wasm.create(c.cpu, c.mem, policy, settings.alphaMilli, settings.threshold, settings.eps);
+      var byIdMap = {};
+      for (var b = 0; b < c.jobs.length; b++) { byIdMap[c.jobs[b].id] = c.jobs[b]; }
+      run = { handle: h, jobs: c.jobs, byId: byIdMap, cpu: c.cpu, mem: c.mem, policy: policy, settings: settings,
+        queue: [], entries: [], last: null, lastSeq: 0, moments: 0, engineDone: false, added: 0,
+        view: null, state: null, metrics: null, hist: APRM.runmodel.history() };
+      for (var i = 0; i < c.jobs.length; i++) {
+        var j = c.jobs[i];
         try {
           APRM.wasm.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
         } catch (e) {
@@ -475,72 +380,95 @@
           throw e;
         }
       }
-      readEngine(false);
-      pullLog();
+      run.state = APRM.wasm.state(h);
+      run.view = APRM.runmodel.fromState(run.state);
+      run.metrics = APRM.wasm.metrics(h);
     } catch (err) {
       if (run === null && h !== null) { try { APRM.wasm.destroy(h); } catch (e2) { /* ignore */ } }
       fail(err, 'run-error');
       return false;
     }
     status = 'paused';
-    render();
+    render('start');
     return true;
   }
 
-  function copyJob(j) {
-    return { id: j.id, arrival: j.arrival, duration: j.duration, cpu: j.cpu, mem: j.mem, priority: j.priority };
-  }
-
-  /* Throw the simulation away and return to the idle state. */
+  /* Throw the simulation away and return to the first screen. */
   function reset() {
     cancelTimers();
     destroyRun();
     selected = null;
     status = 'idle';
     errorText = '';
+    stale = false;
     showMessage('run-error', '');
     showMessage('ra-error', '');
-    APRM.whylog.forget();
-    render();
+    render('reset');
   }
 
   /* ---------- stepping ---------- */
 
-  /* Ask the engine for up to n steps. Stops when it says finished. Pulls the
-   * new log entries once at the end. Returns the number of steps taken.
-   * Throws EngineError. O(n) engine steps. */
-  function advance(n) {
-    var taken = 0;
-    var finished = false;
-    while (taken < n) {
-      if (APRM.wasm.step(run.handle) === 0) { finished = true; break; }
-      taken++;
-    }
-    run.events += taken;
-    pullLog();
-    if (finished) { run.finished = true; }
-    return taken;
+  /* Show one event. Returns the entry, or null when nothing is left (status becomes finished). */
+  function advanceOne() {
+    if (!ensureQueued()) { status = 'finished'; return null; }
+    var e = showNext();
+    if (allShown()) { status = 'finished'; }
+    return e;
   }
 
-  /* One frame of the play loop: at most min(speed, cap) steps, then redraw. */
-  function tickFrame() {
-    frameId = null;
+  /* One event while paused. */
+  function stepOnce() {
+    if (run === null || status === 'playing' || status === 'jumping' || status === 'finished') { updateButtons(); return false; }
+    var e;
+    try { e = advanceOne(); } catch (err) { fail(err); return false; }
+    if (status !== 'finished') { status = 'paused'; }
+    render(e ? 'event' : 'events');
+    return true;
+  }
+
+  function isLarge() { return run !== null && run.jobs.length > LARGE; }
+
+  /* How many ticks one beat of a big case moves: 2 per beat at 1x, more for very big cases. */
+  function ticksPerBeat() {
+    return Math.max(1, Math.round(2 * speed * Math.max(1, run.jobs.length / 250)));
+  }
+
+  /* One beat of the play loop. Small case: one event. Big case: every event up to a few ticks later. */
+  function beat() {
+    timerId = null;
     if (status !== 'playing' || run === null) { return; }
-    var n = Math.max(1, Math.min(speed, MAX_STEPS_PER_FRAME));
+    var why = 'event';
     try {
-      advance(n);
-      readEngine(false);
+      if (isLarge()) {
+        why = 'events';
+        var target = run.view.now + ticksPerBeat();
+        var shown = 0, moments = 0;
+        while (shown < MAX_EVENTS_PER_BEAT && moments < MAX_STEPS_PER_FRAME) {
+          if (run.queue.length === 0) {
+            if (run.engineDone || run.view.done >= run.view.total) { break; }
+            var got = fetchMoment(false);
+            moments++;
+            if (got < 0) { break; }
+            continue;
+          }
+          if (run.queue[0].e.t > target && shown > 0) { break; }
+          showNext();
+          shown++;
+        }
+        if (allShown() || (run.engineDone && run.queue.length === 0)) { status = 'finished'; }
+      } else {
+        advanceOne();
+      }
     } catch (err) { fail(err); return; }
-    if (run.finished) { status = 'finished'; run.finished = false; render(); return; }
-    render();
-    frameId = scheduler.frame(tickFrame);
+    render(why);
+    if (status === 'playing') { timerId = scheduler.wait(beat, isLarge() ? LARGE_BEAT_MS : Math.round(BEAT_MS / speed)); }
   }
 
   function play() {
-    if (run === null || status === 'playing' || status === 'jumping' || status === 'finished') { return false; }
+    if (run === null || status === 'playing' || status === 'jumping' || status === 'finished') { updateButtons(); return false; }
     status = 'playing';
-    render();
-    frameId = scheduler.frame(tickFrame);
+    render('status');
+    timerId = scheduler.wait(beat, 0);
     return true;
   }
 
@@ -548,82 +476,86 @@
     if (status !== 'playing' && status !== 'jumping') { return false; }
     cancelTimers();
     status = 'paused';
-    render();
+    render('status');
     return true;
   }
 
-  /* One event (one aprm_step) while paused. */
-  function stepOnce() {
-    if (run === null || status === 'playing' || status === 'jumping') { return false; }
-    try {
-      advance(1);
-      readEngine(false);
-    } catch (err) { fail(err); return false; }
-    if (run.finished) { status = 'finished'; run.finished = false; } else { status = 'paused'; }
-    render();
-    return true;
-  }
-
-  /* Steps per frame, clamped to 1..MAX_STEPS_PER_FRAME. Returns the value used. */
+  /* 0.5, 1, 2 or 4 (the nearest allowed value). Returns the value used. */
   function setSpeed(n) {
-    var v = Math.floor(Number(n));
-    if (!isFinite(v) || v < 1) { v = 1; }
-    speed = Math.min(v, MAX_STEPS_PER_FRAME);
-    text('run-speed-out', String(speed));
+    var v = Number(n);
+    var best = 1, gap = Infinity;
+    for (var i = 0; i < SPEEDS.length; i++) {
+      var d = Math.abs(SPEEDS[i] - v);
+      if (isFinite(d) && d < gap) { gap = d; best = SPEEDS[i]; }
+    }
+    speed = best;
+    if (APRM.store) { APRM.store.setSettings({ speed: speed }); }
+    render('status');
     return speed;
   }
 
-  /* Run to the end in slices of SLICE_STEPS steps, one slice per callback, so the
-   * tab stays responsive even for 5,000 jobs. Pause cancels it. */
+  /* Run to the end in slices of SLICE_STEPS moments, one slice per callback, so the tab stays
+   * responsive even for 5,000 jobs. Every entry is still applied (the timeline needs them). */
   function jumpToEnd() {
     if (run === null || status === 'jumping' || status === 'finished') { return false; }
     cancelTimers();
     status = 'jumping';
-    render();
-    laterId = scheduler.later(slice);
+    render('status');
+    timerId = scheduler.wait(slice, 0);
     return true;
   }
 
   function slice() {
-    laterId = null;
+    timerId = null;
     if (status !== 'jumping' || run === null) { return; }
     try {
-      advance(SLICE_STEPS);
-      readEngine(true);
+      var n = 0;
+      while (run.queue.length > 0) { showNext(); }
+      while (n < SLICE_STEPS && !run.engineDone && run.view.done < run.view.total) {
+        if (fetchMoment(true) < 0) { break; }
+        while (run.queue.length > 0) { showNext(); }
+        n++;
+      }
+      if (run.engineDone || run.view.done >= run.view.total) {
+        run.state = APRM.wasm.state(run.handle);
+        APRM.runmodel.snap(run.view, run.state);
+        run.metrics = APRM.wasm.metrics(run.handle);
+        status = 'finished';
+        render('jump');
+        return;
+      }
+      /* between slices the page shows the engine's own state, so a pause mid-jump is exact */
+      run.state = APRM.wasm.state(run.handle);
+      APRM.runmodel.snap(run.view, run.state);
+      run.metrics = APRM.wasm.metrics(run.handle);
     } catch (err) { fail(err); return; }
-    if (run.finished) {
-      run.finished = false;
-      try { readEngine(false); } catch (err2) { fail(err2); return; }
-      status = 'finished';
-      render();
-      return;
-    }
-    render();
-    laterId = scheduler.later(slice);
+    render('jump');
+    timerId = scheduler.wait(slice, 0);
   }
 
   /* ---------- selection ---------- */
 
-  /* Select a job (or null): filters the log and highlights it in every view. */
+  /* Select a job (or null): every view highlights it and the Why log shows only its lines. */
   function select(id) {
-    selected = (id === null || id === undefined || isNaN(id)) ? null : id;
-    render();
+    selected = (id === null || id === undefined || isNaN(id)) ? null : Number(id);
+    render('select');
   }
 
   /* ---------- adding a job mid-run ---------- */
 
-  /* Pause, validate, add with arrival >= now, then resume if it was playing.
-   * D59: arrival equal to now is allowed; such a job is selected after jobs
-   * that already started at this time. The form's default is now + 1.
-   * Returns { ok: true } or { ok: false, message, field }. */
+  /* Pause, show what the engine already decided, validate, add with arrival >= now, then resume if it
+   * was playing. D59: arrival equal to now is allowed; such a job is selected after jobs that already
+   * started at this time. Returns { ok: true } or { ok: false, message, field }. */
   function addJobMidRun(job) {
-    if (run === null) { return { ok: false, message: 'Press Run first.', field: '' }; }
+    if (run === null) { return { ok: false, message: copyText('run.add.first', 'Press Run first.'), field: '' }; }
     var wasPlaying = status === 'playing';
     if (status === 'playing' || status === 'jumping') { pause(); }
-    var st = APRM.store.get();
+    while (run.queue.length > 0) { showNext(); }     /* the page now shows exactly where the engine is */
+    if (allShown()) { status = 'finished'; }
+    var machine = { cpu: run.cpu, mem: run.mem };
     if (APRM.editor && typeof APRM.editor.jobProblems === 'function') {
-      var ps = APRM.editor.jobProblems(job, st.machine);
-      if (ps.length > 0) { showMessage('ra-error', ps[0].message); return { ok: false, message: ps[0].message, field: ps[0].field }; }
+      var ps = APRM.editor.jobProblems(job, machine);
+      if (ps.length > 0) { showMessage('ra-error', ps[0].message); render('add'); return { ok: false, message: ps[0].message, field: ps[0].field }; }
     }
     try {
       APRM.wasm.addJob(run.handle, job.id, job.arrival, job.duration, job.cpu, job.mem, job.priority);
@@ -631,25 +563,36 @@
       /* a rejected job changes nothing (D54), so the run stays alive */
       var msg = errorMessage(err);
       showMessage('ra-error', msg);
+      render('add');
       return { ok: false, message: msg, field: err && err.field ? err.field : '' };
     }
     showMessage('ra-error', '');
-    run.jobs.push(copyJob(job));
-    if (run.finished || status === 'finished') { run.finished = false; status = 'paused'; }
-    var stored = APRM.store.get().jobs;
-    stored.push(copyJob(job));
+    var copy = copyJob(job);
+    run.jobs.push(copy);
+    run.byId[copy.id] = copy;
+    run.added++;
     try {
-      readEngine(false);
+      run.state = APRM.wasm.state(run.handle);
+      APRM.runmodel.snap(run.view, run.state);
+      run.metrics = APRM.wasm.metrics(run.handle);
     } catch (err2) { fail(err2); return { ok: false, message: errorText, field: '' }; }
-    render();
-    ownChange = true;           /* the run's own mid-run add, not a new case */
-    APRM.store.setJobs(stored);
-    ownChange = false;
+    run.engineDone = false;
+    if (status === 'finished') { status = 'paused'; }
+    if (source === 'yours') {
+      var stored = APRM.store.get().jobs;
+      stored.push(copyJob(job));
+      ownChange = true;           /* the run's own mid-run add, not a new case */
+      APRM.store.setJobs(stored);
+      ownChange = false;
+    }
+    render('add');
     if (wasPlaying) { play(); }
     return { ok: true };
   }
 
   /* ---------- the page ---------- */
+
+  var ownChange = false;
 
   function numberOf(id) {
     var el = byId(id);
@@ -660,8 +603,8 @@
   /* Epsilon text, with the same grammar as the console program's --eps (D72):
    * digits, optionally a point and 1 to 3 digits; no sign, exponent, leading or
    * trailing point; 0.01 to 1. Returns the number (0.1) or an error text. */
-  function epsFromText(text) {
-    var m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(text);
+  function epsFromText(t) {
+    var m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(t);
     var milli;
     if (!m) { return 'epsilon must be a decimal number like 0.1 with at most 3 decimals (no exponent, no sign).'; }
     milli = Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
@@ -669,10 +612,10 @@
     return milli / 1000;
   }
 
-  /* Read the Run panel into the store; returns an error text or ''. */
+  /* Read the settings inputs into the store; returns an error text or ''. */
   function readSettings() {
     var policyEl = byId('run-policy');
-    var policy = policyEl && policyEl.value ? policyEl.value : 'fcfs';
+    var policy = policyEl && policyEl.value ? policyEl.value : chosenPolicy();
     var alpha = numberOf('run-alpha');
     var thr = numberOf('run-threshold');
     var epsText = byId('run-eps') ? String(byId('run-eps').value).trim() : '';
@@ -680,67 +623,122 @@
     if (!isFinite(alpha) || Math.floor(alpha) !== alpha) { return 'alpha_milli must be a whole number.'; }
     if (!isFinite(thr) || Math.floor(thr) !== thr) { return 'reservation threshold must be a whole number.'; }
     if (typeof eps === 'string') { return eps; }
+    selfChange = true;
     APRM.store.setPolicies([policy]);
     APRM.store.setSettings({ alphaMilli: alpha, threshold: thr, eps: eps, speed: speed });
+    selfChange = false;
     return '';
   }
 
+  var selfChange = false;
+
   /* Make sure a run exists: from the first screen, Play, Step and Space simply begin. True when one does. */
   function ensureRun() {
-    if (run === null) { onStart(); }
+    if (run === null) { onStart(false); }
     return run !== null;
   }
 
-  function onStart() {
+  /* Run (and Run again): read the settings, start a new run, and play it unless asked not to. */
+  function onStart(andPlay) {
     var bad = readSettings();
     if (bad) { showMessage('run-error', settingsWords(bad)); return; }
-    start();
+    if (start() && andPlay !== false) { play(); }
   }
 
+  var ADD_FIELDS = ['arrival', 'duration', 'cpu', 'mem', 'priority'];
+
   function onAdd() {
-    var fields = ['id', 'arrival', 'duration', 'cpu', 'mem', 'priority'];
-    var job = {};
-    for (var i = 0; i < fields.length; i++) {
-      var n = numberOf('ra-' + fields[i]);
-      if (!isFinite(n) || Math.floor(n) !== n) { showMessage('ra-error', fields[i] + ' must be a whole number.'); return; }
-      job[fields[i]] = n;
+    var job = { id: numberOf('ra-id') };
+    if (!isFinite(job.id)) { job.id = nextId(); }
+    for (var i = 0; i < ADD_FIELDS.length; i++) {
+      var n = numberOf('ra-' + ADD_FIELDS[i]);
+      if (!isFinite(n) || Math.floor(n) !== n) {
+        showMessage('ra-error', copyText('run.add.whole', ADD_FIELDS[i] + ' must be a whole number.', { field: copyText('run.add.' + ADD_FIELDS[i], ADD_FIELDS[i]) }));
+        return;
+      }
+      job[ADD_FIELDS[i]] = n;
     }
     var res = addJobMidRun(job);
-    if (res.ok) { prepareAddForm(); }
+    if (res.ok) {
+      prepareAddForm();
+      openAdd(false);
+      if (APRM.app && APRM.app.toast) { APRM.app.toast(copyText('run.add.done', 'Job added.', { id: job.id, t: job.arrival })); }
+    }
+  }
+
+  function nextId() {
+    var jobs = run ? run.jobs : caseOf(source).jobs;
+    var m = 0;
+    for (var i = 0; i < jobs.length; i++) { if (jobs[i].id > m) { m = jobs[i].id; } }
+    return m + 1;
   }
 
   /* Next id and arrival = now + 1 (the D59 choice) for the add form. */
   function prepareAddForm() {
     var idEl = byId('ra-id');
     var arrEl = byId('ra-arrival');
-    var jobs = run ? run.jobs : APRM.store.get().jobs;
-    var m = -1;
-    for (var i = 0; i < jobs.length; i++) { if (jobs[i].id > m) { m = jobs[i].id; } }
-    if (idEl) { idEl.value = String(m + 1); }
+    if (idEl) { idEl.value = String(nextId()); }
     if (arrEl) { arrEl.value = String(run && run.state ? run.state.now + 1 : 0); }
+    text('ra-submit', copyText('run.add.submit', 'Add job', { id: nextId() }));
+    text('ra-note', copyText('run.add.note', '', { now: run && run.state ? run.state.now : 0 }));
   }
 
-  /* Keep the add form's defaults current (next unused id, arrival = now + 1)
-   * unless the user is typing in it. Called from render() when not playing. */
+  /* Keep the add form's defaults current unless the user is typing in it. */
   function refreshAddForm() {
     var a = typeof document !== 'undefined' ? document.activeElement : null;
     if (a && typeof a.id === 'string' && a.id.indexOf('ra-') === 0) { return; }
     prepareAddForm();
   }
 
-  var mounted = false;
+  /* Open or close the inline add form; opening pauses first so the clock stands still. */
+  function openAdd(on) {
+    var box = byId('run-add');
+    var btn = byId('run-add-open');
+    if (!box) { return; }
+    if (on && status === 'playing') { pause(); }
+    if (on && run) { while (run.queue.length > 0) { showNext(); } if (allShown()) { status = 'finished'; } render('event'); }
+    box.hidden = !on;
+    if (btn) { btn.setAttribute('aria-expanded', on ? 'true' : 'false'); }
+    if (on) { prepareAddForm(); var first = byId('ra-arrival'); if (first && first.focus) { first.focus(); } }
+    else { showMessage('ra-error', ''); }
+  }
 
-  /* Connect the Run panel, canvas click and job list click. Missing elements are skipped. */
-  function mount() {
-    if (mounted) { return; }
-    mounted = true;
+  /* Choose a scheduler: the store keeps it; a run already made with another one is marked stale. */
+  function choosePolicy(name) {
+    if (POLICY_NAMES.indexOf(name) < 0 || !policyAvailable(name)) { return; }
+    var sel = byId('run-policy');
+    if (sel) { sel.value = name; }
+    selfChange = true;
+    APRM.store.setPolicies([name]);
+    selfChange = false;
+    if (run && run.policy !== name) { stale = true; }
+    if (run && run.policy === name) { stale = false; }
+    render('settings');
+  }
+
+  /* Switch between your jobs and the big case: the old run ends. */
+  function setSource(src) {
+    if (src !== 'yours' && src !== 'big') { return; }
+    if (src === source) { return; }
+    source = src;
+    reset();
+  }
+
+  /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
+  function policyAvailable(name) {
+    var list = APRM.compare && APRM.compare.POLICIES ? APRM.compare.POLICIES : [];
+    for (var i = 0; i < list.length; i++) { if (list[i].name === name) { return list[i].available; } }
+    return true;
+  }
+
+  /* The six scheduler cards (radio buttons) and the hidden select they drive. */
+  function buildMethods() {
     var sel = byId('run-policy');
     if (sel && sel.children.length === 0) {
       for (var i = 0; i < POLICY_NAMES.length; i++) {
         var opt = document.createElement('option');
         opt.setAttribute('value', POLICY_NAMES[i]);
         opt.textContent = copyText('policy.' + POLICY_NAMES[i], POLICY_NAMES[i]);
-        /* One list of what the engine can run: the same flag that greys a scheduler out in Compare. */
         if (!policyAvailable(POLICY_NAMES[i])) {
           opt.disabled = true;
           opt.setAttribute('disabled', 'disabled');
@@ -749,60 +747,105 @@
         sel.appendChild(opt);
       }
     }
+    var box = byId('run-methods');
+    if (!box || box.children.length > 0) { return; }
+    for (var k = 0; k < POLICY_NAMES.length; k++) {
+      var name = POLICY_NAMES[k];
+      var b = document.createElement('button');
+      b.setAttribute('type', 'button');
+      b.setAttribute('role', 'radio');
+      b.setAttribute('class', 'method');
+      b.setAttribute('data-policy', name);
+      b.setAttribute('aria-checked', 'false');
+      var dot = document.createElement('span');
+      dot.setAttribute('class', 'method-dot');
+      dot.setAttribute('aria-hidden', 'true');
+      var words = document.createElement('span');
+      words.setAttribute('class', 'method-words');
+      var plainName = document.createElement('span');
+      plainName.textContent = copyText('method.' + name, name);
+      var term = document.createElement('span');
+      term.setAttribute('class', 'method-term');
+      term.textContent = ' (' + copyText('term.' + name, name) + ')';
+      words.appendChild(plainName); words.appendChild(term);
+      b.appendChild(dot); b.appendChild(words);
+      if (!policyAvailable(name)) { b.disabled = true; }
+      box.appendChild(b);
+    }
+  }
+
+  var mounted = false;
+
+  /* Connect the Run panel. Missing elements are skipped. */
+  function mount() {
+    if (mounted) { return; }
+    mounted = true;
+    buildMethods();
     var on = function (id, fn) { var el = byId(id); if (el) { el.addEventListener('click', fn); } };
-    on('run-start', onStart);
+    on('run-start', function () { onStart(true); });
     on('run-play', function () { if (status === 'playing') { pause(); } else if (ensureRun()) { play(); } });
     on('run-step', function () { if (ensureRun()) { stepOnce(); } });
     on('run-jump', function () { if (ensureRun()) { jumpToEnd(); } });
     on('run-reset', reset);
     on('ra-submit', onAdd);
-    var sp = byId('run-speed');
-    if (sp) {
-      sp.setAttribute('max', String(MAX_STEPS_PER_FRAME));
-      sp.addEventListener('input', function () { setSpeed(sp.value); });
-    }
-    var cv = byId('run-canvas');
-    if (cv) {
-      cv.addEventListener('click', function (ev) {
-        var r = typeof cv.getBoundingClientRect === 'function' ? cv.getBoundingClientRect() : { left: 0, top: 0 };
-        var id = APRM.canvas.hit(cv, ev.clientX - r.left, ev.clientY - r.top);
-        select(id === selected ? null : id);
-      });
-    }
-    var tray = byId('tray-list');
-    if (tray) {
-      tray.addEventListener('click', function (ev) {
+    on('ra-cancel', function () { openAdd(false); });
+    on('run-add-open', function () { var box = byId('run-add'); openAdd(!!(box && box.hidden)); });
+    on('run-source-yours', function () { setSource('yours'); });
+    on('run-source-big', function () { setSource('big'); });
+    var spd = byId('run-speed');
+    if (spd) {
+      spd.addEventListener('click', function (ev) {
         var t = ev.target;
-        while (t && t !== tray && !(t.getAttribute && t.getAttribute('data-job'))) { t = t.parentNode; }
-        var id = t && t !== tray && t.getAttribute ? t.getAttribute('data-job') : null;
-        if (id !== null && id !== undefined) { select(Number(id) === selected ? null : Number(id)); }
-      });
-      if (APRM.keys) { APRM.keys.rovingList(tray, function (id) { select(id === selected ? null : id); }); }
-    }
-    var jl = byId('job-list');
-    if (jl) {
-      jl.addEventListener('click', function (ev) {
-        var t = ev.target && ev.target.textContent ? String(ev.target.textContent) : '';
-        var m = /^Job (\d+):/.exec(t);
-        if (m) { select(Number(m[1])); }
+        while (t && t !== spd && !(t.getAttribute && t.getAttribute('data-speed'))) { t = t.parentNode; }
+        if (t && t !== spd && t.getAttribute) { setSpeed(Number(t.getAttribute('data-speed'))); }
       });
     }
+    var methods = byId('run-methods');
+    if (methods) {
+      methods.addEventListener('click', function (ev) {
+        var t = ev.target;
+        while (t && t !== methods && !(t.getAttribute && t.getAttribute('data-policy'))) { t = t.parentNode; }
+        if (t && t !== methods && t.getAttribute && !t.disabled) { choosePolicy(t.getAttribute('data-policy')); }
+      });
+      /* A radio group: arrow keys move the choice, like native radio buttons. */
+      methods.addEventListener('keydown', function (ev) {
+        var dir = ev.key === 'ArrowRight' || ev.key === 'ArrowDown' ? 1 : ev.key === 'ArrowLeft' || ev.key === 'ArrowUp' ? -1 : 0;
+        if (!dir) { return; }
+        ev.preventDefault();
+        var cur = POLICY_NAMES.indexOf(chosenPolicy());
+        for (var step = 1; step <= POLICY_NAMES.length; step++) {
+          var next = POLICY_NAMES[(cur + dir * step + POLICY_NAMES.length * 2) % POLICY_NAMES.length];
+          if (policyAvailable(next)) {
+            choosePolicy(next);
+            var card = methods.querySelector ? methods.querySelector('[data-policy="' + next + '"]') : null;
+            if (card && card.focus) { card.focus(); }
+            return;
+          }
+        }
+      });
+    }
+    var sel = byId('run-policy');
+    if (sel) { sel.addEventListener('change', function () { choosePolicy(sel.value); }); }
+    ['run-alpha', 'run-threshold', 'run-eps'].forEach(function (id) {
+      var el = byId(id);
+      if (el) { el.addEventListener('change', function () { if (!readSettings()) { if (run) { stale = true; } render('settings'); } }); }
+    });
     APRM.store.subscribe(function (s, changed) {
       var panel = byId('run-panel');
       if (panel) { panel.hidden = s.mode !== 'run'; }
       if (changed === 'mode' && s.mode !== 'run') { pause(); }
-      if (changed === 'settings' || changed === 'policies' || changed === 'mode') { syncInputs(s); }
+      if ((changed === 'settings' || changed === 'policies' || changed === 'mode') && !selfChange) { syncInputs(s); }
       /* The run belongs to the jobs and machine it started with; a new case ends it. */
-      if ((changed === 'jobs' || changed === 'machine') && run !== null && !ownChange) { reset(); }
-      if (changed === 'jobs' && run === null) { render(); }
-      if (changed === 'details' || changed === 'settings' || changed === 'theme') { render(); }
+      if ((changed === 'jobs' || changed === 'machine') && run !== null && !ownChange && source === 'yours') { reset(); }
+      if (changed === 'jobs' && run === null) { render('reset'); }
+      if (changed === 'details' || changed === 'theme') { render('details'); }
+      if (changed === 'mode' && s.mode === 'run') { render('mode'); }
     });
     syncInputs(APRM.store.get());
-    setSpeed(APRM.store.get().settings.speed || 1);
-    var spEl = byId('run-speed');
-    if (spEl) { spEl.value = String(speed); }
+    var sp = Number(APRM.store.get().settings.speed);
+    speed = SPEEDS.indexOf(sp) >= 0 ? sp : 1;
     prepareAddForm();
-    render();
+    render('reset');
   }
 
   /* Show the store's settings in the Run panel's inputs. */
@@ -815,10 +858,16 @@
   }
 
   APRM.player = {
-    MAX_STEPS_PER_FRAME: MAX_STEPS_PER_FRAME,
+    SPEEDS: SPEEDS,
+    LARGE: LARGE,
+    BEAT_MS: BEAT_MS,
+    LARGE_BEAT_MS: LARGE_BEAT_MS,
     SLICE_STEPS: SLICE_STEPS,
+    MAX_STEPS_PER_FRAME: MAX_STEPS_PER_FRAME,
     POLICY_NAMES: POLICY_NAMES,
     setScheduler: setScheduler,
+    addView: addView,
+    frame: frame,
     start: start,
     reset: reset,
     play: play,
@@ -827,16 +876,21 @@
     stepOnce: stepOnce,
     setSpeed: setSpeed,
     jumpToEnd: jumpToEnd,
-    tickFrame: tickFrame,
     addJobMidRun: addJobMidRun,
+    choosePolicy: choosePolicy,
+    setSource: setSource,
+    openAdd: openAdd,
     select: select,
+    alphaWords: alphaWords,
+    epsFromText: epsFromText,
     mount: mount,
     handle: function () { return run ? run.handle : null; },
     snapshot: function () {
       return {
-        status: status, speed: speed, selected: selected, error: errorText,
-        events: run ? run.events : 0, state: run ? run.state : null, metrics: run ? run.metrics : null,
-        entries: run ? run.entries : [], bars: run ? run.bars : {}, jobs: run ? run.jobs : []
+        status: status, speed: speed, selected: selected, error: errorText, source: source, stale: stale,
+        events: run ? run.entries.length : 0, state: run ? run.view : null, engineState: run ? run.state : null,
+        metrics: run ? run.metrics : null, entries: run ? run.entries : [],
+        bars: run ? APRM.runmodel.bars(run.hist) : {}, jobs: run ? run.jobs : [], pending: run ? run.queue.length : 0
       };
     }
   };

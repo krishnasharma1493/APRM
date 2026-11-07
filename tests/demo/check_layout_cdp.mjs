@@ -75,7 +75,7 @@ try {
     check(`${width}px Build: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
     await ev(`document.querySelector('#more-ways').open = true; true`);
     check(`${width}px Build with "More ways" open: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
-    await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); for (let i = 0; i < 12; i++) APRM.player.stepOnce(); true`);
+    await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 12; i++) APRM.player.stepOnce(); true`);
     check(`${width}px Run: no sideways scroll`, (await hscroll()) <= 0, await hscroll());
     await ev(`document.querySelector('[data-mode-button="compare"]').click(); document.getElementById('compare-start').click(); true`);
     for (let i = 0; i < 100 && (await ev(`APRM.compare.snapshot().status`)) !== 'done'; i++) await sleep(100);
@@ -96,8 +96,8 @@ try {
   await sleep(300);
   check('375px: Add job is the top element at its own position', await ev(`(function(){ const b = document.getElementById('add-submit'); const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; })()`));
   await ev(`document.querySelector('[data-mode-button="run"]').click(); true`);
-  const fit = await ev(`(function(){ const s = document.getElementById('run-policy'); const cs = getComputedStyle(s); const c = document.createElement('canvas').getContext('2d'); c.font = cs.fontSize + ' ' + cs.fontFamily; let m = 0; for (const o of s.options) m = Math.max(m, c.measureText(o.textContent).width); return { text: m, room: s.clientWidth - 28 }; })()`);
-  check('375px: the longest scheduler name fits its select', fit.text <= fit.room, JSON.stringify(fit));
+  const fit = await ev(`(function(){ const out = []; for (const c of document.querySelectorAll('#run-methods [data-policy]')) { const r = c.getBoundingClientRect(); if (c.scrollWidth > c.clientWidth + 1 || r.right > document.documentElement.clientWidth) out.push(c.getAttribute('data-policy')); } return { cards: document.querySelectorAll('#run-methods [data-policy]').length, over: out }; })()`);
+  check('375px: every scheduler card shows its whole name on screen', fit.cards === 6 && fit.over.length === 0, JSON.stringify(fit));
   for (const w of [1366, 375]) {
     await load(w);
     const gap = await ev(`document.documentElement.clientWidth - document.getElementById('theme-toggle').getBoundingClientRect().right`);
@@ -131,7 +131,7 @@ try {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, text });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk });
   };
-  await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); document.activeElement.blur(); true`);
+  await ev(`document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); document.activeElement.blur(); true`);
   let n = await ev(`APRM.player.snapshot().events`);
   await key('ArrowRight', 'ArrowRight', 39);
   check('Right arrow steps one event on the Run step', (await ev(`APRM.player.snapshot().events`)) === n + 1);
@@ -170,7 +170,7 @@ try {
 
   // 3d. keyboard on job rows: Enter filters, focus stays on the list, Esc shows all again
   await load(1280);
-  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); for (let i = 0; i < 8; i++) APRM.player.stepOnce(); document.querySelector('#tray-list li').focus(); true`);
+  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 16; i++) APRM.player.stepOnce(); document.querySelector('#tray-list li').focus(); true`);
   await key('Enter', 'Enter', 13);
   check('Enter on a tray row selects that job', (await ev(`APRM.player.snapshot().selected`)) !== null);
   check('focus stays on a tray row after the pick', await ev(`document.activeElement.parentNode === document.getElementById('tray-list')`));
@@ -200,10 +200,14 @@ try {
     need('open step 2', (await ev(`APRM.store.get().mode`)) === 'run');
     need('reach Run', await tabTo(q('#run-start')));
     await key('Enter', 'Enter', 13);
+    need('Run plays', ['playing', 'finished'].includes(await ev(`APRM.player.snapshot().status`)));
     await ev(`document.activeElement.blur(); true`);
+    await key(' ', 'Space', 32);
+    need('Space pauses', (await ev(`APRM.player.snapshot().status`)) === 'paused');
+    const before = await ev(`APRM.player.snapshot().events`);
     await key('ArrowRight', 'ArrowRight', 39);
     await key('ArrowRight', 'ArrowRight', 39);
-    need('step twice', (await ev(`APRM.player.snapshot().events`)) === 2);
+    need('step twice', (await ev(`APRM.player.snapshot().events`)) === before + 2);
     need('reach Jump to end', await tabTo(q('#run-jump')));
     await key('Enter', 'Enter', 13);
     for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);

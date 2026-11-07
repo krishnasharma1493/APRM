@@ -592,7 +592,9 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 | `generator.js` | Random job sets from slider settings with a visible seed; produces input only |
 | `machine.js` | Build's machine controls: cores stepper, log-scale cores slider (1 to 128, snapping), memory quick choices, the line beside Next; every value goes through the editor's capacity check |
 | `laptop.js` | Build's exploded laptop: five layers whose parts show the cores, memory and job count, leader-line labels with the exact numbers, the once-per-visit intro; decorative only, reads the store |
-| `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step`, pulls state and new log entries after each step; draws the waiting tray and moves a magnet to the board when a job starts |
+| `runmodel.js` | Pure: applies one log entry to the view (the previous engine state plus the entries of the current moment so far); at a moment end the view is replaced by the engine's state JSON; keeps each job's history for the timeline (K-51) |
+| `player.js` | Run, play, pause, step, speed (0.5x to 4x), jump to end, add a job mid-run, the scheduler cards and the control bar; steps the engine one moment at a time with `aprm_step`, pulls the new log entries and state, and shows the entries one per Step (K-51) |
+| `runboard.js` | The Run page's analysis views, drawn from the player's frames; clicks select a job |
 | `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
 | `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |
@@ -604,8 +606,8 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 ### The run loop
 
 1. On **Run**, `player.js` destroys any old simulation, creates a new one, and adds every job from the store.
-2. Each tick of `requestAnimationFrame`, it calls `aprm_step` a number of times set by the speed slider.
-3. After stepping, it reads state and new log entries, then asks `canvas.js` and `whylog.js` to redraw.
+2. Step shows exactly one log entry. When the entries already pulled are used up, `player.js` calls `aprm_step` once (one moment), then reads the new log entries, the state and the metrics. Between the entries of a moment the view is the previous engine state with those entries applied (`runmodel.js`); after the moment's last entry the view is the engine's state JSON, so every number on screen at a moment end is the engine's (K-51).
+3. Play shows one entry per beat (900 ms at 1x) on a small case, and every entry up to a few ticks later per beat on a case with more than 40 jobs. Jump to end steps in slices of 500 moments. Nothing runs while paused. After each change the registered views redraw from the player's frame.
 4. **Add job mid-run** pauses, validates the job, calls `aprm_add_job` with arrival set to the current time or later, then resumes.
 
 ### UI states (every view has all three)
