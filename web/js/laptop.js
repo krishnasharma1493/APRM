@@ -229,7 +229,7 @@
     inner.appendChild(screen);
     lid.appendChild(inner);
     lid.appendChild(anchor('lid', 396, 4));
-    p.layers.lid = lid; p.lit = lit;
+    p.layers.lid = lid; p.lit = lit; p.screen = screen; p.keyBed = bed;
 
     ORDER.forEach(function (id) { st.appendChild(p.layers[id]); });
     stage.appendChild(hero);
@@ -313,6 +313,7 @@
     var moving = !view.instant && !rm;
 
     var h = parts.hero.style;
+    view.scale = sc;
     h.left = (heroPct * 100) + '%';
     h.transform = 'translate(' + shiftX.toFixed(1) + 'px,' + shiftY.toFixed(1) + 'px) scale(' + sc.toFixed(3) + ')';
     var glide = view.intro ? INTRO.glideMs : 440;
@@ -456,6 +457,7 @@
   /* Put each label in one column right of the laptop, pushed down to avoid overlaps, and draw its
    * line from the part's front-right corner. Skipped on narrow screens (labels become a list). O(5 log 5). */
   function measure() {
+    rememberHero();
     if (!hero || !labelsUi || narrow() || view.flat || !hero.offsetWidth) { return; }
     var cr = hero.getBoundingClientRect();
     var pts = [];
@@ -656,7 +658,60 @@
     else { draw(); twoFrames(function () { view.instant = false; }); }
   }
 
+  /* ---------- shared with the Run page (K-52): one laptop, two poses ---------- */
+
+  var RUN_CAMERA = { rx: 60, rz: -16 };   /* Run: the assembled laptop, seen from the front and a little to the side */
+
+  function copyZ(z) { return { base: z.base, mem: z.mem, cpu: z.cpu, keys: z.keys, lid: z.lid }; }
+
+  /* Layer heights (px), lid angle (degrees) and camera for a named pose. Build uses 'closed', 'open'
+   * and 'exploded'; Run uses 'exploded' (arriving from Build), 'collapse' and 'assembled'. O(1). */
+  function pose(name) {
+    if (name === 'exploded') { return { z: copyZ(EXPLODED_Z), lid: 100, cam: CAMERA }; }
+    if (name === 'collapse') { return { z: copyZ(CLOSED_Z), lid: 108, cam: CAMERA }; }
+    if (name === 'assembled') { return { z: copyZ(CLOSED_Z), lid: 114, cam: RUN_CAMERA }; }
+    if (name === 'open') { return { z: copyZ(CLOSED_Z), lid: 108, cam: FRONT }; }
+    return { z: copyZ(CLOSED_Z), lid: 0, cam: FRONT };
+  }
+
+  /* The transform of one layer in a pose. O(1). */
+  function layerTransform(ps, id) {
+    var t = 'translate3d(0px,0px,' + ps.z[id].toFixed(1) + 'px)';
+    if (id === 'lid') { t += ' rotateX(' + ps.lid + 'deg)'; }
+    return t;
+  }
+
+  /* Show a machine on built parts without motion: one cell per core (up to 64), one chip per 4096 MB.
+   * Used by the Run laptop, whose machine does not change during a run. O(64 + 16). */
+  function paintMachine(p, cores, mem) {
+    var n = coreCells(cores), m = memChips(mem);
+    for (var i = 0; i < 64; i++) { p.cells[i].el.style.opacity = i < n ? '1' : '0'; p.cells[i].el.style.transform = 'none'; }
+    for (var k = 0; k < 16; k++) {
+      var c = p.chips[k];
+      var f = k < m.full ? 1 : (k === m.full && m.frac > 0 ? m.frac : 0);
+      c.el.style.opacity = f > 0 ? '1' : '0';
+      c.el.style.transform = 'none';
+      c.fill.style.transform = f > 0 && f < 1 ? 'scaleX(' + f.toFixed(3) + ')' : 'none';
+    }
+  }
+
+  /* Where the Build laptop last stood on screen: its anchor point in page coordinates and its scale,
+   * so the Run page can start its laptop exactly there (the Build to Run reassembly). */
+  var lastHero = null;
+  function rememberHero() {
+    if (!parts || !hero || !hero.offsetWidth || view.flat) { return; }
+    var r = parts.hero.getBoundingClientRect();
+    lastHero = { x: r.left + (window.scrollX || 0), y: r.top + (window.scrollY || 0), scale: view.scale || 1, exploded: view.phase === 'exploded' };
+  }
+
   APRM.laptop = {
+    pose: pose,
+    layerTransform: layerTransform,
+    paintMachine: paintMachine,
+    buildParts: function (stage) { return build(stage); },
+    lastHero: function () { return lastHero; },
+    supports3d: function () { return supports3d(); },
+    RUN_CAMERA: RUN_CAMERA,
     INTRO: INTRO,
     FRONT: FRONT,
     CAMERA: CAMERA,
