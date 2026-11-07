@@ -48,9 +48,11 @@
     return best;
   }
 
-  /* The next stop above (dir = 1) or below (dir = -1) the current value, for arrow keys. O(stops). */
+  /* The next stop above (dir = 1) or below (dir = -1) the current value, for arrow keys. Above the
+   * slider's range (more than 128 typed in) Right keeps the value and Left comes back to 128. O(stops). */
   function stepStop(cores, dir) {
-    var c = Math.min(128, cores);
+    if (cores > 128) { return dir > 0 ? cores : 128; }
+    var c = cores;
     if (dir > 0) {
       for (var i = 0; i < SNAP.length; i++) { if (SNAP[i] > c) { return SNAP[i]; } }
       return 128;
@@ -115,7 +117,7 @@
     if (hint) { hint.textContent = APRM.copy.fill('machine.mem.hint', { mb: mem, size: sizeText(mem) }); }
     var shown = Math.min(cores, 64);
     var cn = byId('cpu-note');
-    if (cn) { cn.textContent = APRM.copy.fill('machine.cpu.note', { n: shown, more: cores > 64 ? ' (shows 64 of ' + cores + ')' : '' }); }
+    if (cn) { cn.textContent = APRM.copy.fill('machine.cpu.note', { n: shown, more: cores > 64 ? APRM.copy.fill('machine.cpu.more', { n: cores }) : '' }); }
     var mn = byId('mem-note');
     if (mn) { mn.textContent = APRM.copy.fill('machine.mem.note', { chips: chipWords(mem) }); }
     var note = byId('build-next-note');
@@ -128,9 +130,9 @@
 
   /* How the memory is drawn, in words: "8 full chips", "16 chips shown, 983040 MB more not drawn". O(1). */
   function chipWords(mem) {
-    if (mem > 65536) { return '16 chips shown, ' + (mem - 65536) + ' MB more not drawn'; }
+    if (mem > 65536) { return APRM.copy.fill('machine.chips.over', { mb: mem - 65536 }); }
     var full = Math.floor(mem / 4096), frac = mem / 4096 - full;
-    return plural(full, 'full chip') + (frac > 0 ? ' + 1 chip ' + Math.round(frac * 100) + '% filled' : '');
+    return plural(full, 'full chip') + (frac > 0 ? APRM.copy.fill('machine.chips.part', { pct: Math.round(frac * 100) }) : '');
   }
 
   /* Slider pointer handling: press, drag and release, snapping to the stops. */

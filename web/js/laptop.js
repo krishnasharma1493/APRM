@@ -62,8 +62,8 @@
   }
 
   /* The extra words when the picture cannot show everything. O(1). */
-  function cpuTag(cores) { return cores > 64 ? 'grid × ' + two(cores / 64) + ' = ' + cores + ' cores' : ''; }
-  function memTag(mb) { return mb > 65536 ? '+ ' + two((mb - 65536) / 1024) + ' GB more' : ''; }
+  function cpuTag(cores) { return cores > 64 ? APRM.copy.fill('hero.cpu.tag', { k: two(cores / 64), n: cores }) : ''; }
+  function memTag(mb) { return mb > 65536 ? APRM.copy.fill('hero.mem.tag', { gb: two((mb - 65536) / 1024) }) : ''; }
 
   /* The five label texts for a state. Returns {lid, keys, cpu, mem, base}, each {title, val, sub, tag}. O(jobs). */
   function labelTexts(st) {
@@ -73,11 +73,11 @@
     for (var i = 0; i < n; i++) { work += (st.jobs[i].cpu || 0) * (st.jobs[i].duration || 0); }
     var chips = APRM.machine ? APRM.machine.chipWords(mem) : '';
     return {
-      lid: { title: C.get('hero.lid'), val: C.get('hero.lid.val'), sub: 'Layer 5 of 5 · exploded offset ' + EXPLODED_Z.lid + ' px', tag: '' },
-      keys: { title: C.get('hero.keys'), val: n ? plural(n, 'job') : C.get('hero.keys.none'), sub: n ? plural(n, 'job') + ' · ' + work + ' core·ticks of work' : C.get('hero.keys.none'), tag: '' },
-      cpu: { title: 'CPU · ' + plural(cores, 'core'), val: cores + ' cores', sub: '1 cell = 1 core · 8 × 8 socket, ' + coreCells(cores) + ' of 64 filled', tag: cpuTag(cores) },
-      mem: { title: 'Memory · ' + size, val: mem + ' MB', sub: '1 chip = 4096 MB · ' + chips, tag: memTag(mem) },
-      base: { title: C.get('hero.base'), val: C.get('hero.base.val'), sub: cores + ' cores and ' + mem + ' MB in total', tag: '' }
+      lid: { title: C.get('hero.lid'), val: C.get('hero.lid.val'), sub: C.fill('hero.lid.sub', { z: EXPLODED_Z.lid }), tag: '' },
+      keys: { title: C.get('hero.keys'), val: n ? plural(n, 'job') : C.get('hero.keys.none'), sub: n ? C.fill('hero.keys.sub', { jobs: plural(n, 'job'), work: work }) : C.get('hero.keys.none'), tag: '' },
+      cpu: { title: C.fill('hero.cpu', { cores: plural(cores, 'core') }), val: C.fill('hero.cpu.val', { n: cores }), sub: C.fill('hero.cpu.sub', { n: coreCells(cores) }), tag: cpuTag(cores) },
+      mem: { title: C.fill('hero.mem', { size: size }), val: C.fill('hero.mem.val', { mb: mem }), sub: C.fill('hero.mem.sub', { chips: chips }), tag: memTag(mem) },
+      base: { title: C.get('hero.base'), val: C.get('hero.base.val'), sub: C.fill('hero.base.sub', { cores: cores, mem: mem }), tag: '' }
     };
   }
 
@@ -215,12 +215,12 @@
     var lit = document.createElement('div');
     lit.setAttribute('class', 'lt-lit');
     var top = document.createElement('div'); top.setAttribute('class', 'row');
-    var a1 = document.createElement('span'); a1.textContent = 'APRM';
-    var a2 = document.createElement('span'); a2.textContent = '1 Build · 2 Run · 3 Compare';
+    var a1 = document.createElement('span'); a1.textContent = APRM.copy.get('app.title');
+    var a2 = document.createElement('span'); a2.textContent = APRM.copy.get('hero.screen.steps');
     top.appendChild(a1); top.appendChild(a2);
     var mid = document.createElement('div');
-    var big = document.createElement('div'); big.setAttribute('class', 'big'); big.textContent = 'Build';
-    var small = document.createElement('div'); small.setAttribute('class', 'small'); small.textContent = 'Describe the machine and its jobs';
+    var big = document.createElement('div'); big.setAttribute('class', 'big'); big.textContent = APRM.copy.get('hero.screen.title');
+    var small = document.createElement('div'); small.setAttribute('class', 'small'); small.textContent = APRM.copy.get('hero.screen.hint');
     mid.appendChild(big); mid.appendChild(small);
     var bars = document.createElement('div'); bars.setAttribute('class', 'bars');
     for (var b = 0; b < 3; b++) { bars.appendChild(document.createElement('span')); }
@@ -352,9 +352,15 @@
     drawChips(moving, rm);
 
     hero.setAttribute('data-labels', ex ? 'on' : 'off');
+    if (labelsUi) {      /* hidden labels (during the intro) are not Tab stops */
+      ['cpu', 'mem', 'keys'].forEach(function (id) { labelsUi.labels[id].el.setAttribute('tabindex', ex ? '0' : '-1'); });
+    }
     hero.setAttribute('data-intro-line', (ph === 'closed' || ph === 'open') && view.intro ? 'on' : 'off');
     var panel = byId('build-panel');
     if (panel) { panel.setAttribute('data-panel', view.panelIn ? 'in' : 'out'); }
+    /* While the settings are faded out they cannot be reached by Tab or clicked either. */
+    var main = panel && panel.querySelector ? panel.querySelector('.build-main') : null;
+    if (main) { main.inert = !view.panelIn; }
     var skip = byId('hero-skip'), replay = byId('hero-replay');
     if (skip) { skip.hidden = !view.intro; }
     if (replay) { replay.hidden = view.intro || view.flat; }
@@ -482,21 +488,25 @@
 
   /* Play the intro (timings in INTRO): closed, the lid opens, the laptop glides left, the layers
    * separate, then the labels and the settings fade in. Reduced motion: a 300 ms cross-fade instead. */
+  var introRun = 0;      /* bumped by every start and skip, so a late frame callback of an old run does nothing */
+
   function runIntro() {
     clearTimers();
+    var run = ++introRun;
     try { window.sessionStorage.setItem(SEEN_KEY, '1'); } catch (e) { /* storage blocked: the intro may play again */ }
     if (parts) { parts.tilt.style.transform = ''; }
     if (reducedMotion()) {
       view.phase = 'exploded'; view.instant = true; view.panelIn = false; view.intro = true;
       parts.hero.style.opacity = '0';
       draw();
-      twoFrames(function () { view.instant = false; view.panelIn = true; parts.hero.style.opacity = '1'; draw(); });
+      twoFrames(function () { if (run !== introRun) { return; } view.instant = false; view.panelIn = true; parts.hero.style.opacity = '1'; draw(); });
       later(function () { view.intro = false; draw(); }, 400);
       return;
     }
     view.phase = 'closed'; view.instant = true; view.panelIn = false; view.intro = true;
     draw();
     twoFrames(function () {
+      if (run !== introRun) { return; }
       view.instant = false;
       later(function () { view.phase = 'open'; draw(); }, INTRO.open);
       later(function () { view.phase = 'slide'; draw(); }, INTRO.slide);
@@ -509,6 +519,7 @@
   /* Jump to the end of the intro without transitions. */
   function skip() {
     clearTimers();
+    introRun++;
     view.phase = 'exploded'; view.instant = true; view.panelIn = true; view.intro = false;
     if (parts) { parts.hero.style.opacity = '1'; }
     draw();
@@ -561,12 +572,23 @@
       L.addEventListener('pointerenter', function () { setHl(id); });
       L.addEventListener('pointerleave', function () { setHl(null); });
       L.addEventListener('click', function () { focusSetting(id); });
+      /* A linked label is a button for the keyboard too: Enter or Space jumps to its setting. */
+      L.setAttribute('role', 'button');
+      L.setAttribute('tabindex', '0');
+      L.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); focusSetting(id); }
+      });
+      L.addEventListener('focus', function () { setHl(id); });
+      L.addEventListener('blur', function () { setHl(null); });
       var card = byId('setting-' + id);
       if (card) {
         card.addEventListener('pointerenter', function () { setHl(id); });
         card.addEventListener('pointerleave', function () { setHl(null); });
         card.addEventListener('focusin', function () { setHl(id); });
-        card.addEventListener('focusout', function () { setHl(null); });
+        card.addEventListener('focusout', function (ev) {
+          if (ev.relatedTarget && card.contains(ev.relatedTarget)) { return; }   /* focus moved within the card */
+          setHl(null);
+        });
       }
     });
     /* Pointer parallax: at most 2.5 degrees up or down and 3 degrees sideways. */

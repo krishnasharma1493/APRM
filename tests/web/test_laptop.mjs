@@ -54,7 +54,8 @@ test('slider keys step to the next stop and stop at the ends', () => {
   assert.equal(M.stepStop(5, -1), 4);
   assert.equal(M.stepStop(128, 1), 128);
   assert.equal(M.stepStop(1, -1), 1);
-  assert.equal(M.stepStop(500, -1), 96, 'above the slider range: the highest stop below 128');
+  assert.equal(M.stepStop(500, -1), 128, 'above the slider range: Left comes back to 128');
+  assert.equal(M.stepStop(200, 1), 200, 'above the slider range: Right never lowers the value');
 });
 
 test('chips: 4096 MB each, the last filled to the remainder, 16 slots at most', () => {

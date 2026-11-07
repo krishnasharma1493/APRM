@@ -50,7 +50,7 @@ try {
   check('Inter Tight 800 is available with the network off', await ev(`document.fonts.ready.then(() => document.fonts.check('800 40px "Inter Tight"'))`));
   check('Inter Tight 400 is available with the network off', await ev(`document.fonts.check('400 15px "Inter Tight"')`));
   check('the hero title is drawn in Inter Tight', /Inter Tight/.test(await ev(`getComputedStyle(document.querySelector('.hero-title')).fontFamily`)));
-  check('the intro is playing on the first visit (settings wait)', (await ev(`document.getElementById('build-panel').dataset.panel`)) === 'out');
+  check('the intro is playing on the first visit (settings wait, and cannot be tabbed into)', await ev(`document.getElementById('build-panel').dataset.panel === 'out' && document.querySelector('.build-main').inert === true`));
   check('during the intro: no sideways scroll', (await hscroll()) <= 0, await hscroll());
   for (let i = 0; i < 60 && (await ev(`document.getElementById('build-panel').dataset.panel`)) !== 'in'; i++) await sleep(100);
   await sleep(700);
