@@ -47,6 +47,15 @@ test('grouping: one tick per cell when there is room, then 2, 5, 10 ... ticks so
   assert.equal(S.geometry(8, 30, 1200, 1, true).bottomH, 52, 'details add the use bands');
 });
 
+test('zoom stops where cells reach 28 px per tick; fit is 1', () => {
+  const g = S.geometry(12, 60, 1158, 1, false);
+  assert.ok(g.maxZoom > 1 && g.maxZoom < 2, 'about 1.5 for 60 ticks in 1158 px: ' + g.maxZoom);
+  assert.equal(S.geometry(12, 60, 1158, g.maxZoom, false).cellW, 28);
+  assert.ok(S.geometry(500, 2000, 1200, 1, false).maxZoom > 40, 'a long run can zoom a long way');
+  assert.equal(S.geometry(12, 5, 1158, 1, false).maxZoom, 1, 'already at 28 px: no zoom in');
+  assert.equal(S.geometry(12, 60, 1158, 1, false).cw % 1, 0, 'the scroll size is whole pixels');
+});
+
 test('cell state: waiting, saved, running, finished and nothing, as known at the clock', () => {
   const r = rec({ arrived: 2, start: 6, finish: 11, resAt: 4, resBy: 6, skips: [2, 3, 5] });
   assert.equal(S.cellState(r, 0, 1, 20), ST.NONE);

@@ -46,8 +46,10 @@
     var cols = Math.ceil(ticks / g);
     var bottomH = 24 + (details ? 28 : 0);
     var ch = n * rowH + bottomH;
+    /* zooming further than 28 px per tick changes nothing, so the zoom stops there */
+    var maxZoom = Math.max(1, 28 * ticks / avail);
     return { rowH: rowH, labelW: labelW, g: g, cellW: cellW, cols: cols, ticks: ticks, bottomH: bottomH,
-      cw: labelW + cols * cellW + 8, ch: ch, vh: Math.min(ch, MAX_VIEW_H) };
+      cw: Math.ceil(labelW + cols * cellW + 8), ch: ch, vh: Math.min(ch, MAX_VIEW_H), maxZoom: maxZoom };
   }
 
   /* Ticks the strip spans: up to the latest arrival, planned finish or the clock, plus one. O(jobs). */
@@ -70,6 +72,9 @@
     return lo < a.length && a[lo] <= s1 ? a[lo] : -1;
   }
 
+  /* Ticks shared by [s0, s1] and [a, b] (inclusive). O(1). */
+  function overlap(s0, s1, a, b) { return Math.max(0, Math.min(s1, b) - Math.max(s0, a) + 1); }
+
   /* What a job did over ticks s0..s1, as known at the clock `now`: the state that covers most of the
    * span (ties: finished, then running, then saved, then waiting). 0 = nothing yet. O(1). */
   function cellState(rec, s0, s1, now) {
@@ -80,12 +85,13 @@
     var R = rec.resAt !== null ? rec.resAt : INF;
     var hiT = Math.min(s1, now);
     if (s0 > hiT) { return NONE; }
-    var ov = function (a, b) { return Math.max(0, Math.min(hiT, b) - Math.max(s0, a) + 1); };
     var wEnd = Math.min(S, F) - 1;
-    var w = ov(A, wEnd), ws = ov(Math.max(A, R), wEnd), ru = ov(S, F - 1), fi = ov(F, INF);
+    var w = overlap(s0, hiT, A, wEnd), ws = overlap(s0, hiT, Math.max(A, R), wEnd), ru = overlap(s0, hiT, S, F - 1), fi = overlap(s0, hiT, F, INF);
     var best = NONE, n = 0;
-    var cand = [[fi, DONE], [ru, RUN], [ws, SAVED], [w - ws, WAIT]];
-    for (var i = 0; i < cand.length; i++) { if (cand[i][0] > n) { n = cand[i][0]; best = cand[i][1]; } }
+    if (fi > n) { n = fi; best = DONE; }
+    if (ru > n) { n = ru; best = RUN; }
+    if (ws > n) { n = ws; best = SAVED; }
+    if (w - ws > n) { best = WAIT; }
     return best;
   }
 
@@ -257,7 +263,7 @@
           ctx.beginPath(); ctx.moveTo(x + w - nn, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + nn); ctx.fill();
         }
       }
-      if (J.resAt !== null && J.resBy !== null && detailsOn()) {
+      if (J.resAt !== null && J.resBy !== null && J.resBy !== undefined && detailsOn()) {
         var dx = G.labelW + (J.resBy / G.g) * G.cellW - sl, cy = y + h / 2, d = Math.max(3, Math.min(6, h / 2));
         ctx.fillStyle = colours.amber;
         ctx.beginPath(); ctx.moveTo(dx, cy - d); ctx.lineTo(dx + d, cy); ctx.lineTo(dx, cy + d); ctx.lineTo(dx - d, cy); ctx.fill();
@@ -274,8 +280,7 @@
     ctx.restore();
     /* now line */
     var nx = G.labelW + ((now + 1) / G.g) * G.cellW - sl;
-    ctx.fillStyle = colours.text;
-    ctx.fillRect(Math.round(nx) - 1, 0, 2, rowsH);
+    if (nx >= G.labelW) { ctx.fillStyle = colours.text; ctx.fillRect(Math.round(nx) - 1, 0, 2, rowsH); }   /* never over the labels */
     /* bottom: use bands (details) and the tick axis */
     var by = rowsH;
     ctx.fillStyle = colours.surface;
@@ -308,11 +313,21 @@
     ctx.font = '500 11px ' + colours.font; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = colours.muted;
     for (var tq = Math.ceil((sl / pxT) / step) * step; tq <= G.ticks; tq += step) {
       var tx = G.labelW + tq * pxT - sl;
-      if (tx < G.labelW || tx > vw) { continue; }
+      if (tx > vw) { break; }
+      if (tx < G.labelW) { continue; }
       ctx.fillRect(tx, ay, 1, 4);
       ctx.fillText(String(tq), tx, ay + 6);
     }
     cv.__strip = { geo: G, rows: rows };
+    zoomButtons(G);
+  }
+
+  /* Zoom in stops at 28 px per tick, zoom out at "fit": the buttons say so by being off. */
+  function zoomButtons(G) {
+    var zin = byId('strip-zoom-in'), zout = byId('strip-zoom-out');
+    if (G && view.zoom > G.maxZoom) { view.zoom = G.maxZoom; }
+    if (zin) { zin.disabled = !G || view.zoom >= G.maxZoom - 1e-9; }
+    if (zout) { zout.disabled = view.zoom <= 1; }
   }
 
   /* The hover card: the job, the tick span, what it did, its demand, and the exact score or saved spot. */
@@ -330,7 +345,7 @@
       var sc = APRM.runmodel.score(f.policy, f.settings.alphaMilli, J.priority, J.arrival, t1);
       lines.push({ t: copyText('strip.tip.score', '', { s: APRM.runmodel.scoreText(sc), t: t1 }), cls: 'tip-amber' });
     }
-    if (J.resAt !== null) { lines.push({ t: copyText('strip.tip.saved', '', { a: J.resAt, b: J.resBy }), cls: 'tip-amber' }); }
+    if (J.resAt !== null && J.resBy !== null && J.resBy !== undefined) { lines.push({ t: copyText('strip.tip.saved', '', { a: J.resAt, b: J.resBy }), cls: 'tip-amber' }); }
     return lines;
   }
 
@@ -373,7 +388,13 @@
     schedule();
   }
 
-  function setZoom(z) { view.zoom = Math.max(1, Math.min(64, z)); cache = null; schedule(); }
+  /* Zoom between 1 (fit) and the 28 px-per-tick cap of the current run. */
+  function setZoom(z) {
+    var cap = cache && cache.geo ? cache.geo.maxZoom : 64;
+    view.zoom = Math.max(1, Math.min(cap, z));
+    cache = null;
+    schedule();
+  }
 
   var mounted = false;
 
@@ -403,6 +424,10 @@
       APRM.player.select(cur === h.rec.id ? null : h.rec.id);
     });
     window.addEventListener('resize', function () { cache = null; schedule(); });
+    try {
+      var hc = window.matchMedia ? window.matchMedia('(prefers-contrast: more)') : null;
+      if (hc && hc.addEventListener) { hc.addEventListener('change', function () { colours = null; schedule(); }); }
+    } catch (e) { /* no media queries: colours stay as read */ }
     APRM.player.addView(onFrame);
     onFrame(APRM.player.frame(), 'reset');
   }

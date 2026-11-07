@@ -300,6 +300,9 @@ try {
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
   check('timeline: clicking a row selects that job everywhere', (await ev(`APRM.player.snapshot().selected`)) === 1 && /job 1/.test(await ev(`document.getElementById('whylog-filter').textContent`)));
+  const zcap = await ev(`(function(){ const zi = document.getElementById('strip-zoom-in'); for (let i = 0; i < 8; i++) zi.click(); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r({ inOff: zi.disabled, outOff: document.getElementById('strip-zoom-out').disabled, zoom: APRM.strip.view().zoom })))); })()`);
+  check('timeline: zoom in stops at 28 px per tick (the button turns off), zoom out stays on', zcap.inOff && !zcap.outOff, JSON.stringify(zcap));
+  await ev(`document.getElementById('strip-zoom-fit').click(); true`);
   await ev(`document.getElementById('run-source-big').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); true`);
   for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
   await sleep(300);
