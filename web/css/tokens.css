@@ -1,116 +1,140 @@
-/* tokens.css: the design tokens (K-43). Every colour, size and timing used by the
- * site is a CSS variable defined here, with light and dark values.
+/* tokens.css: the design tokens. Every colour, size and timing used by the site is a CSS variable
+ * defined here, with a dark value (the default) and a light "warm paper" value.
  *
- * Idea: one place to change the look. Light is the default; dark follows the
- * system unless the page sets data-theme="light" or data-theme="dark".
- * Rules (docs/design/APPLE_DESIGN.md): flat solid colours, hairline borders, one
- * whisper shadow, system sans-serif only, numbers with tabular-nums.
- * "Chart gray" (--chart-gray) is for chart marks and rules only, never for text.
+ * Idea: one place to change the look. The site is dark by default whatever the system setting says;
+ * the theme button in the top bar sets data-theme="light" (warm paper) or data-theme="dark".
+ * Palette: a near-black void, warm stone greys and one soft amber light (docs/design/DESIGN.md).
+ * Rules: colour means a state, never decoration; one primary (amber) button per screen; flat solid
+ * colours with no gradients, glows or glass blur. The one exception is the Build hero spotlight
+ * (--spot, used in style.css), which prefers-contrast: more removes.
+ * Contrast is checked by tests/web/check_contrast.mjs for both themes.
  */
 :root {
-  /* Colour: light */
-  --canvas: #F2F3F1;
-  --surface: #FFFFFF;
-  --text: #1B1F1D;
-  --muted: #5B625E;
-  --border: #CFD3D0;
-  --accent: #0B5E6B;
-  --on-accent: #FFFFFF;
-  --red: #B42318;
-  --amber: #8A4B00;
-  --green: #1D7A34;
-  --chart-gray: #8A918D;
-  --focus: #0B5E6B;
-  --hatch: rgba(255, 255, 255, 0.45);
-  --error-bg: #FBEDEB;
-  --warn-bg: #FBF1E3;
-  --ok-bg: #E9F5EC;
-  --material: rgba(255, 255, 255, 0.72);
-  --material-edge: rgba(255, 255, 255, 0.85);
-  --scrim: rgba(27, 31, 29, 0.28);
-  --shadow: 0 1px 2px rgba(27, 31, 29, 0.06);
+  /* Surfaces */
+  --bg: #0C0C0D;               /* page background */
+  --surface: #151517;          /* cards, panels, inputs */
+  --raised: #1E1E21;           /* hover surfaces, popovers, selected rows */
+  --hairline: #2A2A2E;         /* decorative borders and dividers only */
+  --control-border: #75716A;   /* input and button outlines: 3.8:1 on surface, 3.4:1 on raised */
+  --stripe: #111113;           /* alternate table rows */
 
-  /* Job colours: muted, colour-blind-safe. Colour is never the only signal:
-   * every block also carries its number and one of three hatch patterns. */
-  --job-0: #3A6EA5; --job-1: #C27A1A; --job-2: #2E8B6A; --job-3: #B4483C; --job-4: #8A6D2E;
-  --job-5: #5E8FA8; --job-6: #A8567A; --job-7: #6E7F2A; --job-8: #6B7280; --job-9: #94741A;
+  /* Text */
+  --text: #F2EEE6;             /* 16.9:1 on bg */
+  --muted: #A8A39A;            /* 7.8:1 on bg */
 
-  /* Type: system sans-serif only, no web fonts, no monospace */
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-  --fs-title: 1.75rem;   --lh-title: 1.15;  --ls-title: -0.02em;  --fw-title: 650;
+  /* Accents: each one names a state */
+  --amber: #E9C987;            /* primary: primary button fill, running jobs, CPU, focus ring, selected */
+  --amber-ink: #E9C987;        /* amber used as text or thin lines */
+  --on-amber: #0C0C0D;         /* text on amber, 12.3:1 */
+  --amber-hover: #F0D6A2;      /* on-amber on it: 13.8:1 */
+  --amber-pressed: #D8B46C;    /* on-amber on it: 9.9:1 */
+  --amber-soft: #2A2419;       /* selected-card wash behind amber-ink text */
+  --sand: #C8B9A0;             /* second accent: memory, reservations, secondary highlights */
+  --sand-soft: #26221B;
+  --sage: #8FB8A8;             /* success-style labels: "12 jobs ready", "Finished" */
+  --sage-soft: #18231F;
+  --error: #E07A6B;            /* error text and outlines */
+  --error-soft: #2A1714;
+  --stone: #8E8A84;            /* chart marks and rules only, never text */
+
+  /* The black-metal laptop on the Build hero (decorative, the same in both themes) */
+  --metal: #1E1F22;
+  --metal-edge: #2A2C30;
+  --metal-deep: #141416;
+  --metal-void: #0E0E10;
+  --metal-board: #18191C;
+  --metal-chip: #232327;
+  --metal-line: #3A3A40;
+  --metal-hi: #4A4D54;
+  --metal-ink: #C8C6CE;
+  --metal-dim: #8A8794;
+  --screen: #0C0C0D;           /* the laptop's lit screen stays dark in both themes */
+  --core-on: #C9A867;          /* a CPU core in the socket */
+  --core-lit: #F3DCA8;         /* a core while CPU is highlighted */
+  --chip-fill: #A3957D;        /* a memory chip */
+  --chip-top: #C8B9A0;
+  --chip-pin: #5E564A;
+  --spot: rgba(233, 201, 135, 0.08);   /* the one allowed light effect, behind the laptop */
+  --spot-edge: rgba(233, 201, 135, 0.035);
+  --spot-none: rgba(233, 201, 135, 0);
+  --metal-shadow: rgba(14, 14, 16, 0.26);
+  --metal-sheen: rgba(255, 255, 255, 0.08);
+
+  /* Job colours: ten muted warm tones derived from amber, sand, sage and stone. Min CIE76 distance
+   * between any two is 8.5 under normal, deutan, protan and tritan simulation; colour is never the
+   * only signal anyway: every block also carries its number and one of three hatch patterns. */
+  --job-0: #E9C987; --job-1: #8FB8A8; --job-2: #C8B9A0; --job-3: #B9803F; --job-4: #D98579;
+  --job-5: #807924; --job-6: #8A6A67; --job-7: #A7D9CB; --job-8: #E3B467; --job-9: #9D7356;
+  --hatch: rgba(0, 0, 0, 0.3);
+
+  /* Compare: amber, sand and sage for the first three schedulers, stone shades (hatched) after that */
+  --series-0: #E9C987; --series-1: #C8B9A0; --series-2: #8FB8A8;
+  --series-3: #8E8A84; --series-4: #B3AEA6; --series-5: #6F6B66;
+
+  --scrim: rgba(0, 0, 0, 0.5);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  /* Type: Inter Tight (embedded in fonts.css), no monospace anywhere */
+  --font: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --fs-hero: 3.5rem;     --lh-hero: 0.95;   --ls-hero: -0.03em;   --fw-hero: 800;
+  --fs-title: 2.5rem;    --lh-title: 1;     --ls-title: -0.02em;  --fw-title: 800;
   --fs-section: 1.25rem; --lh-section: 1.25; --ls-section: -0.01em; --fw-section: 600;
-  --fs-body: 0.9375rem;  --lh-body: 1.5;    --ls-body: 0;
-  --fs-caption: 0.8125rem; --lh-caption: 1.4; --ls-caption: 0.01em;
+  --fs-label: 0.6875rem; --lh-label: 1.2;   --ls-label: 0.14em;   --fw-label: 600;
+  --fs-body: 0.9375rem;  --lh-body: 1.55;   --ls-body: 0;
+  --fs-caption: 0.8125rem; --lh-caption: 1.45; --ls-caption: 0;
 
   /* Space, radius, motion */
   --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem; --s-6: 1.5rem; --s-10: 2.5rem;
   --r-1: 0.375rem; --r-2: 0.625rem; --r-3: 0.875rem;
   --press: 100ms; --move: 240ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --blur: blur(20px) saturate(180%);
 
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --canvas: #121513;
-    --surface: #1B1F1D;
-    --text: #ECEFED;
-    --muted: #A3ABA6;
-    --border: #343A37;
-    --accent: #5FB6C4;
-    --on-accent: #0B1F22;
-    --red: #F0877C;
-    --amber: #E0A24A;
-    --green: #6FCB87;
-    --focus: #5FB6C4;
-    --error-bg: #3A1F1C;
-    --warn-bg: #38290F;
-    --ok-bg: #14301C;
-    --material: rgba(27, 31, 29, 0.72);
-    --material-edge: rgba(236, 239, 237, 0.14);
-    --scrim: rgba(0, 0, 0, 0.5);
-    --hatch: rgba(0, 0, 0, 0.3);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --job-0: #7FA6D1; --job-1: #E0A24A; --job-2: #5FBF9C; --job-3: #E27C6F; --job-4: #C2A25C;
-    --job-5: #8FB8CC; --job-6: #D08AAA; --job-7: #A2B35A; --job-8: #9AA1AD; --job-9: #D9BC5E;
-  }
-}
-
-:root[data-theme="dark"] {
-  --canvas: #121513;
-  --surface: #1B1F1D;
-  --text: #ECEFED;
-  --muted: #A3ABA6;
-  --border: #343A37;
-  --accent: #5FB6C4;
-  --on-accent: #0B1F22;
-  --red: #F0877C;
-  --amber: #E0A24A;
-  --green: #6FCB87;
-  --focus: #5FB6C4;
-  --error-bg: #3A1F1C;
-  --warn-bg: #38290F;
-  --ok-bg: #14301C;
-  --material: rgba(27, 31, 29, 0.72);
-  --material-edge: rgba(236, 239, 237, 0.14);
-  --scrim: rgba(0, 0, 0, 0.5);
-  --hatch: rgba(0, 0, 0, 0.3);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --job-0: #7FA6D1; --job-1: #E0A24A; --job-2: #5FBF9C; --job-3: #E27C6F; --job-4: #C2A25C;
-  --job-5: #8FB8CC; --job-6: #D08AAA; --job-7: #A2B35A; --job-8: #9AA1AD; --job-9: #D9BC5E;
   color-scheme: dark;
 }
 
-/* Materials become solid when the user asks for less transparency or more contrast. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  :root { --material: var(--surface); --material-edge: var(--border); --blur: none; }
+/* Warm paper: off-white ground, the same text roles inverted, a darker amber for text use. */
+:root[data-theme="light"] {
+  --bg: #F5F1E8;
+  --surface: #FBF8F2;
+  --raised: #ECE6DA;
+  --hairline: #DDD5C6;
+  --control-border: #857D71;
+  --stripe: #F2EDE3;
+  --text: #1C1A17;
+  --muted: #5C574F;
+  --amber: #E9C987;
+  --amber-ink: #7A5714;
+  --on-amber: #1C1A17;
+  --amber-hover: #EFD49C;
+  --amber-pressed: #D8B46C;
+  --amber-soft: #F2E4C4;
+  --sand: #7D6D52;
+  --sand-soft: #F7F2E8;
+  --sage: #3F6B5B;
+  --sage-soft: #E3ECE6;
+  --error: #A8402F;
+  --error-soft: #F6E3DE;
+  --stone: #857D71;
+  --spot: rgba(233, 201, 135, 0);
+  --spot-edge: rgba(233, 201, 135, 0);
+  --job-0: #8F6A1F; --job-1: #3F6B5B; --job-2: #7D6D52; --job-3: #7B8044; --job-4: #592E0B;
+  --job-5: #605A36; --job-6: #773B07; --job-7: #488874; --job-8: #1C4538; --job-9: #4A3520;
+  --hatch: rgba(255, 255, 255, 0.45);
+  --series-0: #8F6A1F; --series-1: #7D6D52; --series-2: #3F6B5B;
+  --series-3: #6B675F; --series-4: #8F887E; --series-5: #4E4A44;
+  --scrim: rgba(28, 26, 23, 0.28);
+  --shadow: 0 1px 2px rgba(28, 26, 23, 0.08);
+  color-scheme: light;
 }
+
+/* The explicit dark choice uses the default set above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* More contrast: stronger outlines and dividers, and no spotlight. The site stays dark whatever the
+ * system colour scheme is; only the theme button changes it. */
 @media (prefers-contrast: more) {
-  :root { --border: #5B625E; }
-  :root[data-theme="dark"] { --border: #A3ABA6; }
-}
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --border: #A3ABA6; }
+  :root { --hairline: #75716A; --control-border: #A8A39A; --spot: rgba(0, 0, 0, 0); --spot-edge: rgba(0, 0, 0, 0); }
+  :root[data-theme="light"] { --hairline: #857D71; --control-border: #5C574F; }
 }

@@ -22,7 +22,7 @@
     settings: { alphaMilli: 100, threshold: 50, eps: 0.1, speed: 1 },
     mode: 'build',
     details: false,
-    theme: 'light',
+    theme: 'dark',
     engine: { status: 'loading', error: '' }
   };
 
@@ -108,7 +108,7 @@
     return v;
   }
 
-  /* Day ('light') or night ('dark'). Anything else is ignored. Returns the current theme. */
+  /* Warm paper ('light') or the dark default ('dark'). Anything else is ignored. Returns the current theme. */
   function setTheme(theme) {
     if (theme !== 'light' && theme !== 'dark') { return state.theme; }
     if (state.theme !== theme) { state.theme = theme; notify('theme'); }

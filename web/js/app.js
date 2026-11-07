@@ -182,8 +182,8 @@
     }
   }
 
-  /* Day and night button. The first look follows the system; a saved choice wins. The page theme is
-   * the data-theme attribute on the root element (tokens.css holds both colour sets). */
+  /* Theme button. The site is dark by default whatever the system setting says; a saved choice wins.
+   * The page theme is the data-theme attribute on the root element (tokens.css holds both colour sets). */
   function applyTheme(theme) {
     var root = document.documentElement;
     if (root && typeof root.setAttribute === 'function') { root.setAttribute('data-theme', theme); }
@@ -193,12 +193,11 @@
 
   function wireThemeButton() {
     var btn = byId('theme-toggle');
-    var theme = 'light';
+    var theme = 'dark';
     try {
       var saved = window.localStorage ? window.localStorage.getItem('aprm.theme') : null;
       if (saved === 'light' || saved === 'dark') { theme = saved; }
-      else if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) { theme = 'dark'; }
-    } catch (e) { /* storage or matchMedia blocked: stay light */ }
+    } catch (e) { /* storage blocked: stay dark */ }
     APRM.store.setTheme(theme);
     applyTheme(theme);
     if (!btn) { return; }
@@ -223,7 +222,7 @@
 
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
-    ['presets', 'editor', 'generator', 'whylog', 'player', 'compare', 'share'].forEach(function (name) {
+    ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'compare', 'share'].forEach(function (name) {
       if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
     });
   }

@@ -21,8 +21,8 @@
   var AXIS_H = 24;               /* room for the time labels */
   var PALETTE_SIZE = 10;
   var PALETTE_VARS = ['--job-0', '--job-1', '--job-2', '--job-3', '--job-4', '--job-5', '--job-6', '--job-7', '--job-8', '--job-9'];
-  var FALLBACK_PALETTE = ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'];
-  var FALLBACK_COLOURS = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', accent: '#0B5E6B', panel: '#FFFFFF', mark: '#B42318', font: 'system-ui, sans-serif' };
+  var FALLBACK_PALETTE = ['#E9C987', '#8FB8A8', '#C8B9A0', '#B9803F', '#D98579', '#807924', '#8A6A67', '#A7D9CB', '#E3B467', '#9D7356'];
+  var FALLBACK_COLOURS = { text: '#F2EEE6', muted: '#A8A39A', border: '#2A2A2E', accent: '#E9C987', panel: '#151517', mark: '#E07A6B', font: '"Inter Tight", system-ui, sans-serif' };
 
   /* Palette index of a job: only a colour choice, never a decision. */
   function paletteIndex(id) { return ((id % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE; }
@@ -55,7 +55,7 @@
       var cs = getComputedStyle(el);
       var pick = function (name, fb) { var v = String(cs.getPropertyValue(name) || '').trim(); return v || fb; };
       out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted);
-      out.border = pick('--border', out.border); out.accent = pick('--accent', out.accent);
+      out.border = pick('--hairline', out.border); out.accent = pick('--amber', out.accent);
       out.panel = pick('--panel', out.panel); out.mark = pick('--mark', out.mark);
       for (var i = 0; i < PALETTE_SIZE; i++) { out.jobs[i] = pick(PALETTE_VARS[i], out.jobs[i]); }
       if (cs.fontFamily) { out.font = cs.fontFamily; }
