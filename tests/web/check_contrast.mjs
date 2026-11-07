@@ -1,7 +1,7 @@
-// check_contrast.mjs: WCAG contrast of every colour pair in web/css/tokens.css (K-43).
+// check_contrast.mjs: WCAG contrast of every colour pair in web/css/tokens.css (K-43, warm palette).
 // Run: node tests/web/check_contrast.mjs
-// Text pairs need 4.5:1, UI pairs (focus ring, switch, job colours) need 3:1. The chart
-// gray is allowed only for marks, so it is checked at 3:1 and never as text.
+// Text pairs need 4.5:1, UI pairs (control outlines, focus ring, job and chart colours) need 3:1.
+// Stone is allowed only for marks, so it is checked at 3:1 and never as text.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -27,15 +27,21 @@ const lum = (hex) => {
 };
 const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 
-const light = vars(':root');
-const dark = vars(':root[data-theme="dark"]');
-const modes = { light: light, dark: { ...light, ...dark } };
+// Dark is the default set (the bare :root block); warm paper overrides it under data-theme="light".
+const dark = vars(':root');
+const light = vars(':root[data-theme="light"]');
+const modes = { dark: dark, light: { ...dark, ...light } };
 
-const TEXT = [['text', 'canvas'], ['text', 'surface'], ['muted', 'canvas'], ['muted', 'surface'],
-  ['accent', 'canvas'], ['accent', 'surface'], ['on-accent', 'accent'],
-  ['red', 'surface'], ['red', 'error-bg'], ['amber', 'surface'], ['amber', 'warn-bg'], ['green', 'surface'], ['green', 'ok-bg']];
-const UI = [['focus', 'canvas'], ['focus', 'surface'], ['chart-gray', 'surface']]  // chart marks sit on cards (surface), never directly on the canvas;
-for (let i = 0; i < 10; i++) { UI.push(['job-' + i, 'surface']); UI.push(['job-' + i, 'canvas']); }
+const TEXT = [['text', 'bg'], ['text', 'surface'], ['text', 'raised'], ['muted', 'bg'], ['muted', 'surface'], ['muted', 'raised'],
+  ['amber-ink', 'bg'], ['amber-ink', 'surface'], ['amber-ink', 'amber-soft'],
+  ['on-amber', 'amber'], ['on-amber', 'amber-hover'], ['on-amber', 'amber-pressed'],
+  ['text', 'amber-soft'], ['sand', 'surface'], ['sand', 'sand-soft'], ['sage', 'bg'], ['sage', 'surface'], ['sage', 'sage-soft'],
+  ['error', 'bg'], ['error', 'surface'], ['error', 'error-soft'], ['text', 'stripe']];
+// Non-text (WCAG 1.4.11): control outlines, the focus ring (amber-ink in light, amber in dark), chart marks.
+const UI = [['control-border', 'bg'], ['control-border', 'surface'], ['control-border', 'raised'],
+  ['amber-ink', 'raised'], ['stone', 'surface']];
+for (let i = 0; i < 10; i++) { UI.push(['job-' + i, 'surface']); UI.push(['job-' + i, 'bg']); }
+for (let i = 0; i < 6; i++) UI.push(['series-' + i, 'surface']);
 
 let failed = 0, checked = 0;
 for (const [mode, v] of Object.entries(modes)) {
@@ -49,6 +55,6 @@ for (const [mode, v] of Object.entries(modes)) {
   }
 }
 assert.equal(failed, 0, failed + ' contrast pairs below the minimum');
-// Light and dark must define the same variable names (no mode left out).
-for (const k of Object.keys(dark)) assert.ok(k in light, 'dark-only variable: ' + k);
+// The light set may only override names the dark default defines (no light-only variable).
+for (const k of Object.keys(light)) assert.ok(k in dark, 'light-only variable: ' + k);
 console.log('contrast: ' + checked + ' pairs checked, all pass');

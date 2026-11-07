@@ -590,6 +590,8 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 | `presets_data.js` | The six presets as a JavaScript data object (capacities + jobs), generated from `data/presets/` by Krishna's tooling and committed |
 | `presets.js` | Reads presets from `presets_data.js` (no `fetch`) and loads one into the store |
 | `generator.js` | Random job sets from slider settings with a visible seed; produces input only |
+| `machine.js` | Build's machine controls: cores stepper, log-scale cores slider (1 to 128, snapping), memory quick choices, the line beside Next; every value goes through the editor's capacity check |
+| `laptop.js` | Build's exploded laptop: five layers whose parts show the cores, memory and job count, leader-line labels with the exact numbers, the once-per-visit intro; decorative only, reads the store |
 | `player.js` | Play, pause, step, speed, jump to end; calls `aprm_step`, pulls state and new log entries after each step; draws the waiting tray and moves a magnet to the board when a job starts |
 | `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows event-log sentences; filters to a clicked job |
@@ -616,7 +618,7 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 
 ### Layout
 
-Three numbered steps (Build, Run, Compare) chosen at the top; the design is recorded in `docs/design/DESIGN.md` (Impeccable is the design authority, D76). Light and dark themes follow the system setting, with a day and night button (K-48).
+Three numbered steps (Build, Run, Compare) chosen at the top; the design is recorded in `docs/design/DESIGN.md` (D76, D81). The site is dark by default whatever the system setting; a button in the top bar switches to a warm-paper light theme (D81). Type is Inter Tight, embedded in the page (no network).
 
 ## 8. Frontend safety checklist
 

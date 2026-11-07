@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 // ---------- static checks on the files ----------
 
 const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
-  'js/editor.js', 'js/generator.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
+  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
   'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
@@ -92,7 +92,12 @@ test('no hard-coded colours outside the :root variable blocks', () => {
   const css = read('css/style.css');
   const outside = css.replace(/:root\s*\{[^}]*\}/g, '');
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(outside), 'colour literal outside :root');
-  assert.ok(/prefers-color-scheme:\s*dark/.test(read('css/tokens.css')), 'dark theme');
+  const tokens = read('css/tokens.css');
+  // Dark is the default whatever the system says: the bare :root block is the dark set, warm paper is
+  // only under data-theme="light", and no prefers-color-scheme query switches the colours.
+  assert.match(tokens.slice(tokens.indexOf(':root {'), tokens.indexOf('}', tokens.indexOf(':root {'))), /--bg: #0C0C0D;/, 'dark default');
+  assert.ok(tokens.includes(':root[data-theme="light"] {'), 'warm paper light theme');
+  assert.ok(!/@media[^{]*prefers-color-scheme/.test(tokens), 'no system-driven theme switch');
 });
 
 // ---------- a tiny fake DOM, enough for app.js ----------
@@ -427,18 +432,18 @@ test('theme: store accepts light and dark only; the button flips data-theme and 
   await tick(); await tick();
   let seen = 0;
   APRM.store.subscribe((st, changed) => { if (changed === 'theme') seen++; });
-  assert.equal(APRM.store.get().theme, 'light');
-  assert.equal(APRM.store.setTheme('purple'), 'light');
+  assert.equal(APRM.store.get().theme, 'dark', 'dark by default');
+  assert.equal(APRM.store.setTheme('purple'), 'dark');
   assert.equal(seen, 0, 'an unknown theme is ignored');
   const btn = doc.byId['theme-toggle'];
-  assert.equal(btn.textContent, 'Night mode');
+  assert.equal(btn.textContent, 'Light theme');
   btn.click();                                           // window.localStorage is undefined here: must not throw
-  assert.equal(APRM.store.get().theme, 'dark');
-  assert.equal(btn.textContent, 'Day mode');
+  assert.equal(APRM.store.get().theme, 'light');
+  assert.equal(btn.textContent, 'Dark theme');
   assert.equal(seen, 1);
   btn.click();
-  assert.equal(APRM.store.get().theme, 'light');
-  assert.equal(btn.textContent, 'Night mode');
+  assert.equal(APRM.store.get().theme, 'dark');
+  assert.equal(btn.textContent, 'Light theme');
 });
 
 test('app: wasm missing shows the error state with a message, not a blank page', async () => {

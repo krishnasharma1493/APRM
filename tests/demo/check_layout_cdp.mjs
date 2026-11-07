@@ -5,7 +5,8 @@
 // Usage: node tests/demo/check_layout_cdp.mjs <path-to-index.html>
 // Checks: no sideways scroll on every step at 1024, 1280 and 1440 px and at 200% zoom (640 px);
 // every control reached by Tab shows a visible focus ring; reduced motion removes transitions;
-// reduced transparency makes the top bar solid.
+// the top bar is solid; Inter Tight loads from file:// with the network off; dark is the default
+// whatever the system says; the Build intro plays once and settles; the spotlight goes under more contrast.
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,6 +41,32 @@ try {
   ws = new WebSocket(url); await new Promise((r) => { ws.onopen = r; });
   ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && pending.has(d.id)) { const p = pending.get(d.id); pending.delete(d.id); d.error ? p.rej(new Error(JSON.stringify(d.error))) : p.res(d.result); } };
   await send('Page.enable'); await send('Runtime.enable');
+  // The network is off for the whole run: everything, the font included, must come from the files.
+  await send('Network.enable');
+  await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+
+  // 0. the embedded font loads from file:// with no network; the Build intro plays once and settles
+  await load(1440);
+  check('Inter Tight 800 is available with the network off', await ev(`document.fonts.ready.then(() => document.fonts.check('800 40px "Inter Tight"'))`));
+  check('Inter Tight 400 is available with the network off', await ev(`document.fonts.check('400 15px "Inter Tight"')`));
+  check('the hero title is drawn in Inter Tight', /Inter Tight/.test(await ev(`getComputedStyle(document.querySelector('.hero-title')).fontFamily`)));
+  check('the intro is playing on the first visit (settings wait, and cannot be tabbed into)', await ev(`document.getElementById('build-panel').dataset.panel === 'out' && document.querySelector('.build-main').inert === true`));
+  check('during the intro: no sideways scroll', (await hscroll()) <= 0, await hscroll());
+  for (let i = 0; i < 60 && (await ev(`document.getElementById('build-panel').dataset.panel`)) !== 'in'; i++) await sleep(100);
+  await sleep(700);
+  check('the intro settles: settings shown, labels on, Skip hidden', await ev(`document.getElementById('build-panel').dataset.panel === 'in' && document.getElementById('build-hero').dataset.labels === 'on' && document.getElementById('hero-skip').hidden`));
+  check('five laptop labels with their numbers', await ev(`[...document.querySelectorAll('.lt-label .val')].map((e) => e.textContent).join('|') === 'Build · step 1 of 3|No jobs yet|16 cores|32768 MB|1 shared machine'`));
+  const clear = await ev(`(function(){ const l = document.querySelector('[data-label="keys"]').getBoundingClientRect(), d = document.querySelector('[data-part="keys"]').getBoundingClientRect(); return { label: Math.round(l.left), deck: Math.round(d.right) }; })()`);
+  check('labels sit clear of the laptop (right of the keyboard deck)', clear.label >= clear.deck, JSON.stringify(clear));
+  await load(1440);
+  check('second visit in the same tab: no intro', (await ev(`document.getElementById('build-panel').dataset.panel`)) === 'in');
+  await ev(`document.getElementById('cpu-inc').click(); document.querySelector('#mem-quick [data-mb="16384"]').click(); true`);
+  check('stepper and quick choice reach the store and the labels', await ev(`APRM.store.get().machine.cpu === 17 && APRM.store.get().machine.mem === 16384 && document.querySelector('[data-label="cpu"] .val').textContent === '17 cores'`));
+  await ev(`document.getElementById('cpu-slider').focus(); true`);
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
+  check('slider: End jumps to 128 cores', (await ev(`APRM.store.get().machine.cpu`)) === 128);
+  await ev(`(function(){ const i = document.getElementById('cpu-input'); i.value = '0'; i.dispatchEvent(new Event('change')); })(); true`);
+  check('0 cores: message next to the field, the store keeps 128', await ev(`!document.getElementById('cpu-error').hidden && APRM.store.get().machine.cpu === 128 && document.getElementById('build-next-note').dataset.state === 'bad'`));
 
   // 1. no sideways scroll on each step, at laptop widths and at 200% zoom (640 css px)
   for (const width of [1440, 1280, 1024, 640, 375]) {
@@ -117,24 +144,27 @@ try {
   check('Space starts playing on the Run step', ['playing', 'finished'].includes(await ev(`APRM.player.snapshot().status`)));
   await key(' ', 'Space', 32);
 
-  // 3b. the day and night button changes the page colours and survives a reload
+  // 3b. the theme button turns the dark default into warm paper and survives a reload
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   await load(1280);
-  const day = await ev(`getComputedStyle(document.body).backgroundColor`);
+  const dark = await ev(`getComputedStyle(document.body).backgroundColor`);
   await ev(`document.getElementById('theme-toggle').click(); true`);
-  const night = await ev(`getComputedStyle(document.body).backgroundColor`);
-  check('day and night button: the page background changes', day === 'rgb(242, 243, 241)' && night === 'rgb(18, 21, 19)', day + ' -> ' + night);
-  check('the button now offers day mode', (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Day mode');
+  const paper = await ev(`getComputedStyle(document.body).backgroundColor`);
+  check('theme button: dark void to warm paper', dark === 'rgb(12, 12, 13)' && paper === 'rgb(245, 241, 232)', dark + ' -> ' + paper);
+  check('the button now offers the dark theme', (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Dark theme');
+  check('the laptop screen stays dark on warm paper', (await ev(`getComputedStyle(document.querySelector('.lt-lit')).backgroundColor`)) === 'rgb(12, 12, 13)');
   await send('Page.navigate', { url: pathToFileURL(page).href });
   for (let i = 0; i < 100 && !(await ev(`(document.getElementById('engine-status')||{}).textContent === 'Engine ready'`)); i++) await sleep(100);
-  check('the choice is remembered after a reload', (await ev(`getComputedStyle(document.body).backgroundColor`)) === 'rgb(18, 21, 19)');
+  check('the choice is remembered after a reload', (await ev(`getComputedStyle(document.body).backgroundColor`)) === 'rgb(245, 241, 232)');
   await ev(`localStorage.removeItem('aprm.theme'); true`);
-  await load(1280);                                   // back to the system (day) look for the checks below
-
-  // 3c. with nothing saved, a dark system starts in night mode
-  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await load(1280);
-  check('dark system, nothing saved: starts at night with the Day mode button', (await ev(`document.documentElement.getAttribute('data-theme')`)) === 'dark' && (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Day mode');
+
+  // 3c. with nothing saved, the site is dark whatever the system says
+  for (const scheme of ['light', 'dark']) {
+    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await load(1280);
+    check(`${scheme} system, nothing saved: starts dark with the Light theme button`, (await ev(`document.documentElement.getAttribute('data-theme')`)) === 'dark' && (await ev(`getComputedStyle(document.body).backgroundColor`)) === 'rgb(12, 12, 13)' && (await ev(`document.getElementById('theme-toggle').textContent`)) === 'Light theme');
+  }
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
   await load(1280);
 
@@ -192,8 +222,8 @@ try {
 
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.module')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter, border: c.borderTopColor }; })()`);
-  check('baseline: buttons have a transition, the top bar is blurred, the hairline is the light grey', base.dur > 1 && base.blur !== 'none' && base.border === 'rgb(207, 211, 208)', JSON.stringify(base));
+  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.module')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter || 'none', bg: t.backgroundColor, border: c.borderTopColor, spot: getComputedStyle(document.querySelector('.lt-spot')).display }; })()`);
+  check('baseline: buttons have a transition, the top bar is solid with no blur, the hairline is #2A2A2E, the spotlight shows', base.dur > 1 && base.blur === 'none' && base.bg === 'rgb(12, 12, 13)' && base.border === 'rgb(42, 42, 46)' && base.spot !== 'none', JSON.stringify(base));
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   const dur = await ev(`parseFloat(getComputedStyle(document.querySelector('.btn')).transitionDuration) * 1000`);
   check('reduced motion: button transitions are removed', dur <= 1, dur + ' ms');
@@ -202,7 +232,13 @@ try {
   check('reduced transparency: the top bar has no blur', bg === 'none' || bg === '', bg);
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-contrast', value: 'more' }] });
   const bd = await ev(`getComputedStyle(document.querySelector('.module')).borderTopColor`);
-  check('increased contrast: borders are darker than the normal hairline', bd === 'rgb(91, 98, 94)', bd);
+  check('increased contrast: dividers become the stronger stone', bd === 'rgb(117, 113, 106)', bd);
+  check('increased contrast: the Build spotlight is removed', (await ev(`getComputedStyle(document.querySelector('.lt-spot')).display`)) === 'none');
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  await ev(`sessionStorage.removeItem('aprm-intro-seen'); true`);
+  await load(1280);
+  await sleep(600);
+  check('reduced motion: the intro is a short cross-fade (settings shown within 0.6 s, no glide)', await ev(`document.getElementById('build-panel').dataset.panel === 'in'`));
 } finally { chrome.kill(); }
 const failed = results.filter((r) => !r).length;
 console.log(failed === 0 ? 'ALL PASS (' + results.length + ')' : failed + ' FAILED of ' + results.length);

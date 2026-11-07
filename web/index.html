@@ -1,17 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>APRM Scheduler</title>
   <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar material">
-    <h1 data-copy="app.title">APRM scheduler</h1>
+    <h1><span data-copy="app.title">APRM</span><span class="brand-long" data-copy="app.subtitle">Adaptive Priority Resource Manager</span></h1>
     <div class="segmented modes" role="group" data-copy-label="steps.label" aria-label="Steps">
       <button type="button" data-mode-button="build" aria-pressed="true" data-copy="step.build">1 Build</button>
       <button type="button" data-mode-button="run" aria-pressed="false" data-copy="step.run">2 Run</button>
@@ -34,102 +35,151 @@
 
   <noscript><p class="error-box" data-copy="noscript">This page needs JavaScript. The recorded demo video is the fallback.</p></noscript>
 
-  <section id="build-panel" class="panel build-panel" aria-label="Build">
-    <h2 data-copy="build.heading">Let&rsquo;s schedule some jobs</h2>
-    <p class="intro" data-copy="build.intro"></p>
-
-    <h3 data-copy="build.examples">Try an example</h3>
-    <div id="preset-tiles" class="tiles"></div>
-    <p id="preset-desc" class="empty" hidden></p>
-
-    <h3 data-copy="build.jobs">Your jobs</h3>
-    <div class="jobs-meta">
-      <p id="table-summary"></p>
-      <p id="machine-summary"></p>
-    </div>
-    <p id="table-empty" class="empty" data-copy="build.empty">No jobs yet. Add one, or start with an example.</p>
-    <div class="table-wrap">
-      <table class="job-table">
-        <thead>
-          <tr>
-            <th data-copy="col.id"></th><th data-copy="col.arrival"></th><th data-copy="col.duration"></th>
-            <th data-copy="col.cpu"></th><th data-copy="col.mem"></th><th data-copy="col.priority"></th>
-            <th><span class="visually-hidden" data-copy="col.problem"></span></th><th></th>
-          </tr>
-        </thead>
-        <tbody id="job-body"></tbody>
-        <tfoot>
-          <tr class="new-head"><td colspan="8" data-copy="job.new">New job</td></tr>
-          <tr class="new-row">
-            <td data-copy-attr="short.col.id"><input id="add-id" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
-            <td data-copy-attr="short.col.arrival"><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
-            <td data-copy-attr="short.col.duration"><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
-            <td data-copy-attr="short.col.cpu"><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
-            <td data-copy-attr="short.col.mem"><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
-            <td data-copy-attr="short.col.priority"><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
-            <td colspan="2" class="row-actions"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-    <p id="add-error-lead" class="field-error lead" hidden data-copy="job.add.lead">Can&rsquo;t add this job.</p>
-    <p id="add-error" class="field-error" role="alert" hidden></p>
-
-    <details class="disclosure" id="more-ways">
-      <summary data-copy="build.more">More ways to add jobs</summary>
-      <div class="build-grid">
-        <fieldset class="build-box">
-          <legend data-copy="machine.title">Your machine</legend>
-          <label for="cpu-input" data-copy="machine.cpu">Processor cores (CPU)</label>
-          <input id="cpu-input" type="text" inputmode="numeric" value="16">
-          <p id="cpu-error" class="field-error" role="alert" hidden></p>
-          <label for="mem-input" data-copy="machine.mem">Memory (MB)</label>
-          <input id="mem-input" type="text" inputmode="numeric" value="32768">
-          <p class="hint" data-copy="machine.mem.hint"></p>
-          <p id="mem-error" class="field-error" role="alert" hidden></p>
-        </fieldset>
-
-        <fieldset class="build-box">
-          <legend data-copy="random.title">Make random jobs</legend>
-          <label for="gen-seed" data-copy="random.seed"></label>
-          <input id="gen-seed" type="text" inputmode="numeric" value="42">
-          <button type="button" class="btn" id="gen-newseed" data-copy="random.newseed">New seed</button>
-          <label for="gen-count"><span data-copy="random.count"></span>: <output id="gen-count-out">12</output></label>
-          <input id="gen-count" type="range" min="1" max="200" value="12">
-          <label for="gen-arrival"><span data-copy="random.arrival"></span>: <output id="gen-arrival-out">30</output></label>
-          <input id="gen-arrival" type="range" min="0" max="200" value="30">
-          <p class="hint" data-copy="random.tick.hint"></p>
-          <label for="gen-duration"><span data-copy="random.duration"></span>: <output id="gen-duration-out">10</output></label>
-          <input id="gen-duration" type="range" min="1" max="100" value="10">
-          <label for="gen-cpu"><span data-copy="random.cpu"></span>: <output id="gen-cpu-out">50</output></label>
-          <input id="gen-cpu" type="range" min="1" max="100" value="50">
-          <label for="gen-mem"><span data-copy="random.mem"></span>: <output id="gen-mem-out">50</output></label>
-          <input id="gen-mem" type="range" min="1" max="100" value="50">
-          <button type="button" class="btn" id="gen-run" data-copy="random.make">Make jobs (replaces your list)</button>
-          <p id="gen-error" class="field-error" role="alert" hidden></p>
-        </fieldset>
-
-        <fieldset class="build-box">
-          <legend data-copy="csv.title">Import or export jobs</legend>
-          <label for="csv-file" data-copy="csv.import"></label>
-          <input id="csv-file" type="file" accept=".csv,text/csv">
-          <button type="button" class="btn" id="csv-export" data-copy="csv.export">Export jobs.csv</button>
-          <p id="csv-status" role="status" hidden></p>
-          <ul id="csv-errors" class="error-list" hidden></ul>
-        </fieldset>
-
-        <fieldset class="build-box">
-          <legend data-copy="share.title">Share this case</legend>
-          <p class="hint" data-copy="share.hint"></p>
-          <button type="button" class="btn" id="share-copy" data-copy="share.copy">Copy link to this case</button>
-          <label for="share-link" data-copy="share.link">Link</label>
-          <input id="share-link" type="text" readonly value="">
-          <p id="share-status" role="status" hidden></p>
-          <p id="share-error" class="field-error" role="alert" hidden></p>
-        </fieldset>
+  <section id="build-panel" class="panel build-panel" aria-label="Build" data-panel="in">
+    <div class="build-split">
+      <div id="build-hero" class="build-hero" data-labels="on" data-intro-line="off">
+        <div class="lt-box">
+          <div id="laptop-stage" aria-hidden="true"></div>
+          <p class="hero-intro-line" id="hero-intro-line" aria-hidden="true" data-copy="hero.intro">Describe one shared computer and the jobs it has to run.</p>
+          <button type="button" class="btn hero-btn" id="hero-replay" hidden data-copy="hero.replay">Replay intro</button>
+          <button type="button" class="btn hero-btn" id="hero-skip" hidden data-copy="hero.skip">Skip intro</button>
+        </div>
+        <div id="hero-labels" class="lt-labels"></div>
       </div>
-    </details>
-    <p class="next-row"><button type="button" class="btn btn-primary" data-next="run" data-copy="next.build">Next: run your jobs</button></p>
+
+      <div class="build-main">
+        <section class="build-head">
+          <p class="label-caps" data-copy="build.eyebrow">Step 1 &middot; Build</p>
+          <h2 class="hero-title" data-copy="build.heading">Let&rsquo;s schedule some jobs</h2>
+          <p class="intro" data-copy="build.intro"></p>
+        </section>
+
+        <section class="machine" aria-labelledby="machine-title">
+          <div class="section-head">
+            <p class="label-caps" data-copy="machine.eyebrow">Step 1 &middot; Your machine</p>
+            <h3 id="machine-title" class="section" data-copy="machine.title">Your machine</h3>
+          </div>
+
+          <div class="setting" id="setting-cpu" data-setting="cpu">
+            <div class="setting-row">
+              <span class="setting-name"><span class="label-caps cpu" data-copy="machine.cpu.tag">CPU</span><label for="cpu-input" data-copy="machine.cpu">Processor cores</label></span>
+              <span class="stepper">
+                <button type="button" class="btn" id="cpu-dec" data-copy-label="machine.cpu.dec" aria-label="One core fewer">&minus;</button>
+                <input id="cpu-input" type="text" inputmode="numeric" value="16" data-focus="cpu">
+                <button type="button" class="btn" id="cpu-inc" data-copy-label="machine.cpu.inc" aria-label="One core more">+</button>
+              </span>
+            </div>
+            <div class="log-slider" id="cpu-slider-box">
+              <div class="rail" id="cpu-slider" role="slider" tabindex="0" aria-label="Processor cores, common values from 1 to 128" aria-valuemin="1" aria-valuemax="128" aria-valuenow="16" aria-valuetext="16 cores">
+                <span class="track"></span><span class="fill" id="cpu-slider-fill"></span>
+                <span class="thumb-run" id="cpu-slider-thumb"><span class="thumb"></span></span>
+              </div>
+              <div class="ticks" id="cpu-ticks" aria-hidden="true"></div>
+            </div>
+            <p id="cpu-error" class="field-error" role="alert" hidden></p>
+            <p id="cpu-note" class="hint detail-only"></p>
+          </div>
+
+          <div class="setting" id="setting-mem" data-setting="mem">
+            <div class="setting-row">
+              <span class="setting-name"><span class="label-caps mem" data-copy="machine.mem.tag">Memory</span><label for="mem-input" data-copy="machine.mem">Memory in MB</label></span>
+              <span class="mem-entry"><input id="mem-input" type="text" inputmode="numeric" value="32768" data-focus="mem"><span class="muted">MB</span></span>
+            </div>
+            <div class="quick" id="mem-quick" role="group" data-copy-label="machine.mem.quick" aria-label="Quick choices"></div>
+            <p class="hint" id="mem-hint">32768 MB is 32 GB.</p>
+            <p id="mem-error" class="field-error" role="alert" hidden></p>
+            <p id="mem-note" class="hint detail-only"></p>
+          </div>
+        </section>
+
+        <section aria-labelledby="examples-title">
+          <h3 id="examples-title" class="section" data-copy="build.examples">Try an example</h3>
+          <div id="preset-tiles" class="tiles"></div>
+          <p id="preset-desc" class="empty" hidden></p>
+        </section>
+
+        <section class="setting setting-jobs" id="setting-keys" data-setting="keys" aria-labelledby="jobs-title">
+          <h3 id="jobs-title" class="section" data-copy="build.jobs">Your jobs</h3>
+          <div class="jobs-meta">
+            <p id="table-summary"></p>
+            <p id="machine-summary"></p>
+          </div>
+          <p id="table-empty" class="empty" data-copy="build.empty">No jobs yet. Add one, or start with an example.</p>
+        <div class="table-wrap">
+          <table class="job-table">
+            <thead>
+              <tr>
+                <th data-copy="col.id"></th><th data-copy="col.arrival"></th><th data-copy="col.duration"></th>
+                <th data-copy="col.cpu"></th><th data-copy="col.mem"></th><th data-copy="col.priority"></th>
+                <th><span class="visually-hidden" data-copy="col.problem"></span></th><th></th>
+              </tr>
+            </thead>
+            <tbody id="job-body"></tbody>
+            <tfoot>
+              <tr class="new-head"><td colspan="8" data-copy="job.new">New job</td></tr>
+              <tr class="new-row">
+                <td data-copy-attr="short.col.id"><input id="add-id" data-focus="keys" type="text" inputmode="numeric" aria-label="new job id" value="1"></td>
+                <td data-copy-attr="short.col.arrival"><input id="add-arrival" type="text" inputmode="numeric" aria-label="new job arrival" value="0"></td>
+                <td data-copy-attr="short.col.duration"><input id="add-duration" type="text" inputmode="numeric" aria-label="new job duration" value="1"></td>
+                <td data-copy-attr="short.col.cpu"><input id="add-cpu" type="text" inputmode="numeric" aria-label="new job cpu" value="1"></td>
+                <td data-copy-attr="short.col.mem"><input id="add-mem" type="text" inputmode="numeric" aria-label="new job memory" value="1024"></td>
+                <td data-copy-attr="short.col.priority"><input id="add-priority" type="text" inputmode="numeric" aria-label="new job priority" value="5"></td>
+                <td colspan="2" class="row-actions"><button type="button" class="btn" id="add-submit" data-copy="job.add">Add job</button></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p id="add-error-lead" class="field-error lead" hidden data-copy="job.add.lead">Can&rsquo;t add this job.</p>
+        <p id="add-error" class="field-error" role="alert" hidden></p>
+        </section>
+
+        <details class="disclosure" id="more-ways">
+          <summary><span data-copy="build.more">More ways to add jobs</span><span class="summary-hint" data-copy="build.more.hint">Random jobs, import, export, share</span></summary>
+          <div class="build-grid">
+            <fieldset class="build-box">
+              <legend data-copy="random.title">Make random jobs</legend>
+              <label for="gen-seed" data-copy="random.seed"></label>
+              <input id="gen-seed" type="text" inputmode="numeric" value="42">
+              <button type="button" class="btn" id="gen-newseed" data-copy="random.newseed">New seed</button>
+              <label for="gen-count"><span data-copy="random.count"></span>: <output id="gen-count-out">12</output></label>
+              <input id="gen-count" type="range" min="1" max="200" value="12">
+              <label for="gen-arrival"><span data-copy="random.arrival"></span>: <output id="gen-arrival-out">30</output></label>
+              <input id="gen-arrival" type="range" min="0" max="200" value="30">
+              <p class="hint" data-copy="random.tick.hint"></p>
+              <label for="gen-duration"><span data-copy="random.duration"></span>: <output id="gen-duration-out">10</output></label>
+              <input id="gen-duration" type="range" min="1" max="100" value="10">
+              <label for="gen-cpu"><span data-copy="random.cpu"></span>: <output id="gen-cpu-out">50</output></label>
+              <input id="gen-cpu" type="range" min="1" max="100" value="50">
+              <label for="gen-mem"><span data-copy="random.mem"></span>: <output id="gen-mem-out">50</output></label>
+              <input id="gen-mem" type="range" min="1" max="100" value="50">
+              <button type="button" class="btn" id="gen-run" data-copy="random.make">Make jobs (replaces your list)</button>
+              <p id="gen-error" class="field-error" role="alert" hidden></p>
+            </fieldset>
+
+            <fieldset class="build-box">
+              <legend data-copy="csv.title">Import or export jobs</legend>
+              <label for="csv-file" data-copy="csv.import"></label>
+              <input id="csv-file" type="file" accept=".csv,text/csv">
+              <button type="button" class="btn" id="csv-export" data-copy="csv.export">Export jobs.csv</button>
+              <p id="csv-status" role="status" hidden></p>
+              <ul id="csv-errors" class="error-list" hidden></ul>
+            </fieldset>
+
+            <fieldset class="build-box">
+              <legend data-copy="share.title">Share this case</legend>
+              <p class="hint" data-copy="share.hint"></p>
+              <button type="button" class="btn" id="share-copy" data-copy="share.copy">Copy link to this case</button>
+              <label for="share-link" data-copy="share.link">Link</label>
+              <input id="share-link" type="text" readonly value="">
+              <p id="share-status" role="status" hidden></p>
+              <p id="share-error" class="field-error" role="alert" hidden></p>
+            </fieldset>
+          </div>
+        </details>
+
+        <p class="next-row next-bar"><span id="build-next-note" class="next-note" role="status"></span><button type="button" class="btn btn-primary" data-next="run" data-copy="next.build">Next: run your jobs</button></p>
+      </div>
+    </div>
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
@@ -284,6 +334,8 @@
   <script src="js/presets.js"></script>
   <script src="js/editor.js"></script>
   <script src="js/generator.js"></script>
+  <script src="js/machine.js"></script>
+  <script src="js/laptop.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/whylog.js"></script>
   <script src="js/player.js"></script>
