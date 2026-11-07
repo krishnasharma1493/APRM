@@ -123,6 +123,7 @@
     'toast.generated': 'Replaced your jobs with {n} random ones.',
     'toast.exported': 'Exported jobs.csv.',
 
+    'run.eyebrow': 'Step 2 \u00b7 Run',
     'run.heading': 'Run your jobs',
     'run.policy': 'How to choose the next job',
     'run.more': 'More settings',

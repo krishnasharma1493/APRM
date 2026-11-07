@@ -183,17 +183,20 @@
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
-    <h2 data-copy="run.heading">Run your jobs</h2>
+    <header class="run-head">
+      <p class="label-caps" data-copy="run.eyebrow">Step 2 &middot; Run</p>
+      <h2 data-copy="run.heading">Run your jobs</h2>
+      <p id="run-data-line" class="run-data-line"></p>
+    </header>
 
     <div class="run-setup">
       <div class="run-choice">
-        <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
-        <select id="run-policy"></select>
+        <p class="label-caps" id="run-policy-label" data-copy="run.policy">How to choose the next job</p>
+        <select id="run-policy" class="visually-hidden" aria-labelledby="run-policy-label"></select>
+        <div id="run-methods" class="method-grid" role="radiogroup" aria-labelledby="run-policy-label"></div>
       </div>
-      <button type="button" class="btn" id="run-start" data-copy="run.start">Run</button>
-      <p id="run-settings-summary" class="hint"></p>
       <details class="disclosure" id="run-more">
-        <summary data-copy="run.more">More settings</summary>
+        <summary><span data-copy="run.more">More settings</span><span id="run-settings-summary" class="summary-hint"></span></summary>
         <div class="settings-grid">
           <div>
             <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
@@ -215,6 +218,17 @@
     </div>
     <p id="run-error" class="field-error" role="alert" hidden></p>
 
+    <div class="run-bar" role="group" aria-label="Run controls">
+      <button type="button" class="btn btn-primary" id="run-start" data-copy="run.start">Run</button>
+      <button type="button" class="btn" id="run-play" disabled>Play</button>
+      <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
+      <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
+      <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
+      <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span> <output id="run-speed-out">1</output></label>
+      <input id="run-speed" type="range" min="1" max="200" value="1">
+      <button type="button" class="btn" id="run-add-open" data-copy="run.add">Add a job right now</button>
+      <span class="run-bar-end"><span id="run-status" class="status" role="status">idle</span><span id="run-clock" class="run-clock" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</span></span>
+    </div>
     <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
       <section class="module tray" aria-labelledby="tray-title">
         <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
@@ -237,17 +251,7 @@
           <p id="reserve-card" class="reserve-line" role="status" hidden></p>
         </div>
         <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
-        <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
-        <div class="control-rail" role="group" aria-label="Run controls">
-          <button type="button" class="btn btn-primary" id="run-play" disabled>Play</button>
-          <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
-          <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
-          <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
-          <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span> <output id="run-speed-out">1</output></label>
-          <input id="run-speed" type="range" min="1" max="200" value="1">
-          <p id="run-status" class="status" role="status">idle</p>
-        </div>
-        <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
+        <div class="screen-frame"><canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas></div>
         <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
       </section>
 

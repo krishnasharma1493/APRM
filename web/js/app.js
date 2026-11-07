@@ -220,11 +220,130 @@
     });
   }
 
+  /* Run page helpers (the redesigned Run step): method cards that drive the real select, the
+   * "N jobs on C cores" line, and the sticky bar's Add-a-job button. They decide nothing about
+   * scheduling. Text is set with textContent only. */
+  var rpMounted = false;
+
+  function rpById(id) { return document.getElementById(id); }
+
+  /* Plain words for a count: "1 job" / "8 jobs". */
+  function rpPlural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  /* The line under the page title, from the store. O(1). */
+  function rpDataLine(state) {
+    var gb = Math.round((state.machine.mem / 1024) * 100) / 100;
+    return rpPlural(state.jobs.length, 'job', 'jobs') + ' on ' + state.machine.cpu + ' cores and ' +
+      state.machine.mem + ' MB (' + gb + ' GB).';
+  }
+
+  /* Redraw the cards so exactly one is checked, matching the select. O(policies). */
+  function rpSyncCards() {
+    var sel = rpById('run-policy');
+    var box = rpById('run-methods');
+    if (!sel || !box) { return; }
+    var cards = box.children;
+    for (var i = 0; i < cards.length; i++) {
+      var on = cards[i].getAttribute('data-value') === sel.value;
+      cards[i].setAttribute('aria-checked', on ? 'true' : 'false');
+      cards[i].setAttribute('tabindex', on ? '0' : '-1');
+    }
+  }
+
+  /* Choose a policy: set the select and tell the player (which reads the select on Run). */
+  function rpChoose(value) {
+    var sel = rpById('run-policy');
+    if (!sel) { return; }
+    sel.value = value;
+    if (typeof sel.dispatchEvent === 'function' && typeof Event === 'function') { sel.dispatchEvent(new Event('change', { bubbles: true })); }
+    rpSyncCards();
+  }
+
+  /* One card per option of the select. A disabled option becomes a disabled card. */
+  function rpBuildCards() {
+    var sel = rpById('run-policy');
+    var box = rpById('run-methods');
+    if (!sel || !box || box.children.length > 0) { return; }
+    var opts = sel.children;
+    for (var i = 0; i < opts.length; i++) {
+      (function (opt) {
+        var value = opt.getAttribute('value');
+        var card = document.createElement('button');
+        card.setAttribute('type', 'button');
+        card.setAttribute('role', 'radio');
+        card.setAttribute('data-value', value);
+        card.className = 'method-card';
+        var dot = document.createElement('span');
+        dot.className = 'method-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        var name = document.createElement('span');
+        name.textContent = opt.textContent;
+        card.appendChild(dot);
+        card.appendChild(name);
+        if (opt.disabled || opt.getAttribute('disabled') !== null && opt.getAttribute('disabled') !== undefined) {
+          card.disabled = true;
+          card.setAttribute('disabled', 'disabled');
+        } else {
+          card.addEventListener('click', function () { rpChoose(value); });
+        }
+        box.appendChild(card);
+      })(opts[i]);
+    }
+    rpSyncCards();
+  }
+
+  /* Arrow keys move between cards, as a radio group should. */
+  function rpOnKey(ev) {
+    if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowDown' && ev.key !== 'ArrowLeft' && ev.key !== 'ArrowUp') { return; }
+    var box = rpById('run-methods');
+    var cards = [];
+    for (var i = 0; i < box.children.length; i++) { if (!box.children[i].disabled) { cards.push(box.children[i]); } }
+    var at = -1;
+    for (var j = 0; j < cards.length; j++) { if (cards[j].getAttribute('aria-checked') === 'true') { at = j; } }
+    if (cards.length === 0) { return; }
+    var back = ev.key === 'ArrowLeft' || ev.key === 'ArrowUp';
+    var next = cards[(at + (back ? cards.length - 1 : 1) + cards.length) % cards.length];
+    if (typeof ev.preventDefault === 'function') { ev.preventDefault(); }
+    rpChoose(next.getAttribute('data-value'));
+    if (typeof next.focus === 'function') { next.focus(); }
+  }
+
+  function rpRefreshLine() {
+    var el = rpById('run-data-line');
+    if (el && APRM.store) { el.textContent = rpDataLine(APRM.store.get()); }
+    rpSyncCards();
+  }
+
+  /* Call once, after player.mount() has filled the select. */
+  function mountRunPage() {
+    if (rpMounted) { return; }
+    rpMounted = true;
+    rpBuildCards();
+    var box = rpById('run-methods');
+    if (box) { box.addEventListener('keydown', rpOnKey); }
+    var sel = rpById('run-policy');
+    if (sel) { sel.addEventListener('change', rpSyncCards); }
+    var open = rpById('run-add-open');
+    if (open) {
+      open.addEventListener('click', function () {
+        var d = rpById('run-add');
+        if (!d) { return; }
+        d.open = true;
+        d.setAttribute('open', '');
+        if (typeof d.scrollIntoView === 'function') { d.scrollIntoView({ block: 'center' }); }
+      });
+    }
+    if (APRM.store) { APRM.store.subscribe(rpRefreshLine); }
+    rpRefreshLine();
+  }
+
+
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
     ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'compare', 'share'].forEach(function (name) {
       if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
     });
+    mountRunPage();
   }
 
   /* Start: show loading, load the engine, then ready or error. Returns a

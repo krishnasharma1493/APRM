@@ -243,3 +243,46 @@ html { scrollbar-color: var(--stone) transparent; caret-color: var(--amber); }
 
 /* A step title focused by the page itself (so screen readers start there) needs no ring; controls keep theirs. */
 h2[tabindex="-1"]:focus { outline: none; }
+
+/* Run page redesign: page head, method cards, sticky control bar, laptop-screen board, metric tiles */
+.run-head { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-6) 0 var(--s-4); }
+.run-head h2 { margin: 0; }
+.run-data-line { margin: 0; color: var(--muted); }
+.run-setup { flex-direction: column; align-items: stretch; gap: var(--s-3); }
+.run-choice { flex: none; max-width: none; }
+.method-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: var(--s-2); margin-top: var(--s-2); }
+.method-card { display: flex; align-items: center; gap: var(--s-2); text-align: left; min-height: 2.75rem; padding: var(--s-2) var(--s-3); border-radius: var(--r-1, 6px); border: 1px solid var(--hairline); background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-caption); cursor: pointer; }
+.method-card:hover:not(:disabled) { background: var(--raised); }
+.method-card[aria-checked="true"] { border-color: var(--amber); background: var(--raised); }
+.method-card:disabled { color: var(--muted); cursor: not-allowed; }
+.method-card:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.method-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--control-border); display: flex; align-items: center; justify-content: center; }
+.method-card[aria-checked="true"] .method-dot { border-color: var(--amber); }
+.method-card[aria-checked="true"] .method-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+.run-setup details.disclosure { border: 1px solid var(--hairline); border-radius: var(--r-2); padding: 0 var(--s-3); }
+.run-setup details.disclosure > summary { padding: var(--s-2) 0; }
+
+.run-bar { position: sticky; top: 3.5rem; z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-4) calc(-1 * var(--s-4)) 0; padding: var(--s-2) var(--s-4); background: var(--bg); border-bottom: 1px solid var(--hairline); }
+.run-bar .btn { min-height: 2.5rem; }
+.run-bar input[type="range"] { width: 6rem; }
+.run-bar-end { margin-left: auto; display: flex; align-items: center; gap: var(--s-3); }
+.run-bar-end .status { margin: 0; }
+.run-clock { font-weight: 600; font-variant-numeric: tabular-nums; }
+.run-panel .board-lines { gap: var(--s-1) var(--s-6); }
+
+/* The canvas sits in a black-metal laptop screen: bezel, camera dot and a base lip */
+.screen-frame { position: relative; margin: var(--s-2) 0 var(--s-5); padding: 0.75rem 0.5rem 0.9rem; border-radius: 12px 12px 4px 4px; background: var(--metal-deep); box-shadow: inset 0 0 0 1px var(--metal-hi), 0 0 0 2px var(--metal-void); }
+.screen-frame::before { content: ""; position: absolute; left: 50%; top: 0.3rem; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--metal-chip); box-shadow: inset 0 0 0 1px var(--metal-line); }
+.screen-frame::after { content: ""; position: absolute; left: -4%; right: -4%; bottom: -0.95rem; height: 0.95rem; border-radius: 2px 2px 12px 12px; background: var(--metal); box-shadow: inset 0 1px 0 var(--metal-hi), inset 0 0 0 1px var(--metal-edge); }
+.screen-frame .run-canvas { background: var(--screen); border-radius: 3px; box-shadow: inset 0 0 0 1px var(--metal-void); }
+
+/* Metrics as tiles: the label small and muted, the number large */
+.run-panel .metrics-list { gap: var(--s-3) var(--s-5); grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); }
+.run-panel .metrics-list li { display: flex; flex-direction: column; gap: 2px; padding: var(--s-2) var(--s-3); border-radius: var(--r-1, 6px); background: var(--raised); color: var(--muted); font-size: var(--fs-caption); overflow-wrap: anywhere; }
+.run-panel .why-list li { border-radius: 6px; }
+@media (max-width: 45rem) {
+  .run-bar { top: 3rem; margin-left: calc(-1 * var(--s-3)); margin-right: calc(-1 * var(--s-3)); padding-left: var(--s-3); padding-right: var(--s-3); }
+  .run-bar-end { margin-left: 0; width: 100%; justify-content: space-between; }
+  .method-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) { .method-card { transition: background 150ms linear, border-color 150ms linear; } }
