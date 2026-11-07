@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 // ---------- static checks on the files ----------
 
 const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
-  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/player.js', 'js/compare.js',
+  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/runmodel.js', 'js/player.js', 'js/runboard.js', 'js/compare.js',
   'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
@@ -512,6 +512,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     const createAprm = require(vendor);
     for (const name of ['big_job_trap', 'priority_starvation', 'memory_hog', 'sjf_starvation', 'heavy_load', 'tiny_case']) {
       const page = loadPage({ createAprm });
+      page.ctx.setTimeout = setTimeout; page.ctx.clearTimeout = clearTimeout;   // the player's play and jump timers
       await engineReady(page);
       const A = page.APRM;
       A.presets.load(name);

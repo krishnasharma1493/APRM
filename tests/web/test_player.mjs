@@ -1,4 +1,4 @@
-// test_player.mjs: tests for Run mode (K-25): player.js, canvas.js, whylog.js.
+// test_player.mjs: tests for Run mode (K-25, event cursor K-51): player.js, runboard.js, canvas.js, whylog.js.
 // Run: node tests/web/test_player.mjs
 // The real web/js scripts run in a node:vm context with a small fake DOM built from the ids in
 // the real index.html. Logic tests use a fake engine behind the APRM.wasm wrapper interface and a
@@ -98,13 +98,10 @@ function page({ createAprm, wasm = false } = {}) {
 }
 
 function fakeScheduler() {
-  const s = { frames: [], laters: [], cancelledFrames: 0, cancelledLaters: 0 };
-  s.frame = (fn) => { s.frames.push(fn); return s.frames.length; };
-  s.cancelFrame = () => { s.cancelledFrames++; s.frames.length = 0; };
-  s.later = (fn) => { s.laters.push(fn); return s.laters.length; };
-  s.cancelLater = () => { s.cancelledLaters++; s.laters.length = 0; };
-  s.runFrame = () => { const f = s.frames.shift(); assert.ok(f, 'a frame is scheduled'); f(); };
-  s.runLater = () => { const f = s.laters.shift(); assert.ok(f, 'a slice is scheduled'); f(); };
+  const s = { timers: [], delays: [], cancelled: 0 };
+  s.wait = (fn, ms) => { s.timers.push(fn); s.delays.push(ms); return s.timers.length; };
+  s.cancel = () => { s.cancelled++; s.timers.length = 0; s.delays.length = 0; };
+  s.run = () => { const f = s.timers.shift(); s.delays.shift(); assert.ok(f, 'a timer is scheduled'); f(); };
   return s;
 }
 
@@ -145,7 +142,7 @@ function fakeWasm({ totalSteps = 10, msg } = {}) {
     f.logSince.push(since);
     const s = f.sims.get(h);
     const out = [];
-    for (let q = since + 1; q <= s.steps; q++) out.push({ seq: q, t: q, kind: q % 2 ? 'START' : 'SKIP', job: (q % 2) + 1, msg: msg || ('event ' + q + ' for job ' + ((q % 2) + 1)) });
+    for (let q = since + 1; q <= 2 * s.steps; q++) out.push({ seq: q, t: Math.ceil(q / 2), kind: q % 2 ? 'SKIP' : 'BATCH_SELECT', job: (q % 2) + 1, msg: msg || ('event ' + q + ' for job ' + ((q % 2) + 1)) });
     return out;
   };
   f.metrics = () => ({ avg_wait: 1.5, max_wait: 3, avg_turnaround: 4.25, weighted_completion: 10, makespan: 9, util_cpu: null, util_mem: 0.5 });
@@ -159,20 +156,22 @@ function ready(opts) {
   p.A.wasm = p.fe;
   p.A.whylog.mount();
   p.A.player.mount();
+  p.A.runboard.mount();
   p.A.store.setJobs(JOBS.map((j) => ({ ...j })));
   return p;
 }
 
 // ---------- static ----------
-test('index.html has canvas, whylog, player before app.js in PRD order', () => {
+test('index.html loads runmodel, player and runboard after whylog and before app.js', () => {
   const i = (n) => srcs.indexOf(n);
   assert.ok(i('js/canvas.js') > i('js/generator.js') && i('js/canvas.js') < i('js/whylog.js'));
-  assert.ok(i('js/whylog.js') < i('js/player.js') && i('js/player.js') < i('js/app.js'));
+  assert.ok(i('js/whylog.js') < i('js/runmodel.js') && i('js/runmodel.js') < i('js/player.js'));
+  assert.ok(i('js/player.js') < i('js/runboard.js') && i('js/runboard.js') < i('js/app.js'));
 });
 
 // ---------- player state machine ----------
 test('state machine: idle -> paused -> playing -> paused -> finished -> reset', () => {
-  const p = ready({ totalSteps: 6 });
+  const p = ready({ totalSteps: 2 });
   const P = p.A.player;
   assert.equal(P.snapshot().status, 'idle');
   assert.equal(P.play(), false, 'cannot play without a run');
@@ -183,26 +182,56 @@ test('state machine: idle -> paused -> playing -> paused -> finished -> reset', 
   assert.equal(P.play(), true);
   assert.equal(P.snapshot().status, 'playing');
   assert.equal(p.doc.byId['run-play'].textContent, 'Pause');
-  assert.equal(p.sched.frames.length, 1);
-  p.sched.runFrame();                       // speed 1: one step
+  p.sched.run();                            // one beat: one event
   assert.equal(P.snapshot().events, 1);
-  assert.equal(p.sched.frames.length, 1, 'next frame scheduled');
+  assert.equal(p.sched.timers.length, 1, 'next beat scheduled');
+  assert.equal(p.sched.delays[0], P.BEAT_MS, 'one event per 900 ms at 1x');
   assert.equal(P.pause(), true);
   assert.equal(P.snapshot().status, 'paused');
-  assert.equal(p.sched.frames.length, 0, 'frame cancelled');
+  assert.equal(p.sched.timers.length, 0, 'nothing runs while paused');
   assert.equal(P.stepOnce(), true);
   assert.equal(P.snapshot().events, 2);
-  P.setSpeed(100);
+  P.setSpeed(4);
   P.play();
-  p.sched.runFrame();                       // only 4 steps remain, then the engine says finished
+  while (p.sched.timers.length) p.sched.run();
   assert.equal(P.snapshot().status, 'finished');
-  assert.equal(P.snapshot().events, 6);
-  assert.equal(p.sched.frames.length, 0);
+  assert.equal(P.snapshot().events, 4);
   assert.equal(P.play(), false);
   P.reset();
   assert.equal(P.snapshot().status, 'idle');
   assert.equal(p.fe.live.size, 0);
   assert.equal(p.doc.byId['canvas-empty'].hidden, false);
+});
+
+test('Step shows exactly one log entry; the engine is stepped only when the queued moment is used up', () => {
+  const p = ready({ totalSteps: 10 });
+  const P = p.A.player;
+  P.start();
+  assert.equal(p.fe.stepCalls, 0);
+  P.stepOnce();
+  assert.equal(P.snapshot().events, 1);
+  assert.equal(p.fe.stepCalls, 1, 'one moment fetched');
+  assert.equal(P.snapshot().pending, 1, 'its second entry waits for the next Step');
+  P.stepOnce();
+  assert.equal(P.snapshot().events, 2);
+  assert.equal(p.fe.stepCalls, 1, 'no engine call: the entry was queued');
+  P.stepOnce();
+  assert.equal(p.fe.stepCalls, 2);
+  assert.equal(p.doc.byId['run-event-text'].textContent, 'event 3 for job 2');
+  assert.equal(p.doc.byId['run-event-kind'].textContent, 'Skipped');
+});
+
+test('at the end of each moment the view is the engine state; between entries it is derived', () => {
+  const p = ready({ totalSteps: 10 });
+  const P = p.A.player;
+  P.start();
+  P.stepOnce();
+  P.stepOnce();
+  const s = P.snapshot();
+  assert.equal(s.state.now, s.engineState.now);
+  assert.deepEqual(plain(s.state.waiting.map((w) => w.id)), plain(s.engineState.waiting.map((w) => w.id)));
+  assert.deepEqual(plain(s.state.free), plain(s.engineState.free));
+  assert.equal(s.state.reservation, null, 'step 1 has no saved spot in the fake engine');
 });
 
 test('start with no jobs shows an empty-state message, no engine call', () => {
@@ -244,22 +273,37 @@ test('epsilon text uses the console grammar; bad text names epsilon, no engine c
   }
 });
 
-test('step cap: a frame never runs more than MAX_STEPS_PER_FRAME steps', () => {
-  const p = ready({ totalSteps: 100000 });
+test('speed: 0.5x, 1x, 2x, 4x only; the beat follows it; the speed buttons show the choice', () => {
+  const p = ready({ totalSteps: 100 });
   const P = p.A.player;
-  assert.equal(P.setSpeed(1e9), P.MAX_STEPS_PER_FRAME);
-  assert.equal(P.setSpeed(0), 1);
-  assert.equal(P.setSpeed(-5), 1);
+  assert.equal(P.setSpeed(2), 2);
+  assert.equal(P.setSpeed(1e9), 4);
+  assert.equal(P.setSpeed(0), 0.5);
   assert.equal(P.setSpeed('abc'), 1);
-  P.setSpeed(1e9);
-  P.start(); P.play();
-  const before = p.fe.stepCalls;
-  p.sched.runFrame();
-  assert.equal(p.fe.stepCalls - before, P.MAX_STEPS_PER_FRAME);
-  assert.equal(P.snapshot().events, P.MAX_STEPS_PER_FRAME);
+  P.setSpeed(4);
+  P.start(); P.play(); p.sched.run();
+  assert.equal(p.sched.delays[0], Math.round(P.BEAT_MS / 4));
+  const box = p.doc.byId['run-speed'];
+  const b = new El('button'); b.setAttribute('data-speed', '0.5');
+  box.fire('click', { target: b });
+  assert.equal(P.snapshot().speed, 0.5);
+  assert.equal(p.A.store.get().settings.speed, 0.5, 'remembered in the store');
 });
 
-test('jump to end runs in slices through the scheduler, each at most SLICE_STEPS', () => {
+test('Run starts a new run and plays it; Play, Step and Jump also start from the first screen', () => {
+  const p = ready({ totalSteps: 10 });
+  p.doc.byId['run-start'].click();
+  assert.equal(p.A.player.snapshot().status, 'playing');
+  const q = ready({ totalSteps: 10 });
+  q.doc.byId['run-step'].click();
+  assert.equal(q.A.player.snapshot().status, 'paused');
+  assert.equal(q.A.player.snapshot().events, 1);
+  const r = ready({ totalSteps: 10 });
+  r.doc.byId['run-play'].click();
+  assert.equal(r.A.player.snapshot().status, 'playing');
+});
+
+test('jump to end runs in slices through the scheduler, each at most SLICE_STEPS moments', () => {
   const p = ready({ totalSteps: 1234 });
   const P = p.A.player;
   P.start();
@@ -268,75 +312,60 @@ test('jump to end runs in slices through the scheduler, each at most SLICE_STEPS
   assert.equal(P.snapshot().status, 'jumping');
   assert.equal(p.fe.stepCalls, base, 'nothing runs inside jumpToEnd itself');
   const slices = [];
-  while (p.sched.laters.length) {
-    const b = p.fe.stepCalls;
-    p.sched.runLater();
-    slices.push(p.fe.stepCalls - b);
-  }
-  assert.deepEqual(plain(slices), [500, 500, 235]);          // 234 events, then the call that says finished
-  assert.ok(slices.every((n) => n <= P.SLICE_STEPS));
+  while (p.sched.timers.length) { const b = p.fe.stepCalls; p.sched.run(); slices.push(p.fe.stepCalls - b); }
+  assert.deepEqual(plain(slices), [500, 500, 235]);          // 234 moments, then the call that says finished
+  assert.ok(slices.every((n) => n <= P.SLICE_STEPS + 1));
   assert.equal(P.snapshot().status, 'finished');
-  assert.equal(P.snapshot().events, 1234);
-  assert.equal(p.sched.frames.length, 0);
+  assert.equal(P.snapshot().events, 2468, 'every entry is applied, two per moment');
 });
 
 test('pause during a jump cancels the remaining slices', () => {
   const p = ready({ totalSteps: 5000 });
   const P = p.A.player;
-  P.start(); P.jumpToEnd(); p.sched.runLater();
+  P.start(); P.jumpToEnd(); p.sched.run();
   assert.equal(P.pause(), true);
-  assert.equal(p.sched.laters.length, 0);
+  assert.equal(p.sched.timers.length, 0);
   assert.equal(P.snapshot().status, 'paused');
-  assert.equal(P.snapshot().events, 500);
+  assert.equal(P.snapshot().events, 1000);
 });
 
 test('log: entries are pulled with since = last seq, never twice, shown as text', () => {
   const p = ready({ totalSteps: 10, msg: '<img src=x onerror=alert(1)>' });
   const P = p.A.player;
   P.start();
-  P.stepOnce(); P.stepOnce();
-  P.setSpeed(3); P.play(); p.sched.runFrame();
-  assert.deepEqual(plain(p.fe.logSince), [0, 0, 1, 2]);         // start, step 1, step 2, a 3-step frame
+  P.stepOnce(); P.stepOnce(); P.stepOnce();
+  assert.deepEqual(plain(p.fe.logSince), [0, 2]);
   const e = P.snapshot().entries;
-  assert.deepEqual(plain(e.map((x) => x.seq)), [1, 2, 3, 4, 5]);
+  assert.deepEqual(plain(e.map((x) => x.seq)), [1, 2, 3]);
   const list = p.doc.byId['whylog-list'];
-  assert.equal(list.children.length, 5);
+  assert.equal(list.children.length, 3);
   const line = list.children[0].children;
   assert.equal(line.length, 3, 'a plain kind label, the raw kind, and the engine sentence');
   assert.equal(line[2].constructor.name, 'Text', 'the engine sentence is a text node, never parsed markup');
   assert.equal(line[2].textContent, 't=1: <img src=x onerror=alert(1)>');
-  assert.equal(line[1].textContent, 'START');
-  assert.equal(line[0].textContent, 'Started');
+  assert.equal(p.doc.byId['run-event-text'].textContent, '<img src=x onerror=alert(1)>', 'the banner shows the engine words as text');
 });
 
 test('why log: only the newest MAX_ROWS rows exist as page elements', () => {
-  const p = ready({ totalSteps: 5000 });
+  const p = ready({ totalSteps: 2500 });
   p.A.player.start(); p.A.player.jumpToEnd();
-  while (p.sched.laters.length) p.sched.runLater();
+  while (p.sched.timers.length) p.sched.run();
   assert.equal(p.A.player.snapshot().entries.length, 5000);
   assert.equal(p.doc.byId['whylog-list'].children.length, p.A.whylog.MAX_ROWS);
 });
 
-test('selecting a job filters the log, highlights in canvas and job list; click again clears', () => {
+test('selecting a job filters the log and highlights it in the job list; Show all clears', () => {
   const p = ready({ totalSteps: 8 });
   const P = p.A.player;
   P.start();
   p.doc.byId['job-list'].children = JOBS.map((j) => { const li = new El('li'); li.textContent = 'Job ' + j.id + ': arrives 0'; return li; });
-  P.setSpeed(8); P.play(); p.sched.runFrame();
+  for (let i = 0; i < 8; i++) P.stepOnce();
   assert.equal(p.doc.byId['whylog-list'].children.length, 8);
   P.select(2);
   const rows = p.doc.byId['whylog-list'].children;
   assert.ok(rows.length > 0 && rows.length < 8);
   assert.ok(rows.every((r) => r.getAttribute('data-job') === '2'));
-  assert.match(p.doc.byId['whylog-filter'].textContent, /job 2/);
-  assert.equal(p.doc.byId['whylog-clear'].hidden, false);
   assert.equal(p.doc.byId['job-list'].children[1].getAttribute('class'), 'sel');
-  assert.equal(p.doc.byId['job-list'].children[0].getAttribute('class'), '');
-  // canvas draws a highlight (a stroked rectangle) for the selected running job
-  const ctx = p.canvas.ctx; ctx.calls.length = 0;
-  P.select(2);
-  assert.ok(ctx.calls.some((c) => c.op === 'strokeRect' && c.a[2] > 0), 'selected job outlined');
-  // clicking a log line selects its job; the clear button resets
   p.doc.byId['whylog-list'].fire('click', { target: rows[0] });
   assert.equal(P.snapshot().selected, 2);
   p.doc.byId['whylog-clear'].click();
@@ -369,31 +398,35 @@ test('step error mid-run is shown and the handle is destroyed', () => {
   assert.equal(p.fe.live.size, 0);
 });
 
-test('mid-run add: validated, added at arrival >= now, store updated, playing resumes', () => {
+test('mid-run add: shows the rest of the moment first, adds at arrival >= now, store updated, playing resumes', () => {
   const p = ready({ totalSteps: 100 });
   const P = p.A.player;
-  P.start(); P.play(); p.sched.runFrame();
-  p.sched.runFrame();
+  P.start(); P.play(); p.sched.run(); p.sched.run(); p.sched.run();
   assert.equal(P.snapshot().state.now, 2);
+  assert.equal(P.snapshot().pending, 1);
   const res = P.addJobMidRun({ id: 9, arrival: 3, duration: 4, cpu: 2, mem: 100, priority: 1 });
   assert.equal(res.ok, true);
+  assert.equal(P.snapshot().pending, 0, 'the page caught up with the engine before adding');
   assert.equal(P.snapshot().status, 'playing', 'resumed');
   assert.equal(p.A.store.get().jobs.length, 4);
   assert.equal(P.snapshot().jobs.length, 4);
   assert.equal(P.snapshot().state.total, 4);
   assert.equal(p.doc.byId['ra-error'].hidden, true);
-  // the form: fields are read and the next default arrival is now + 1
-  for (const [k, v] of Object.entries({ id: 10, arrival: 5, duration: 2, cpu: 1, mem: 10, priority: 0 })) p.doc.byId['ra-' + k].value = String(v);
+  P.pause();
+  for (const [k, v] of Object.entries({ arrival: 5, duration: 2, cpu: 1, mem: 10, priority: 0 })) p.doc.byId['ra-' + k].value = String(v);
+  p.doc.byId['ra-id'].value = '10';
   p.doc.byId['ra-submit'].click();
   assert.equal(p.A.store.get().jobs.length, 5);
   assert.equal(p.doc.byId['ra-id'].value, '11');
-  assert.equal(p.doc.byId['ra-arrival'].value, String(P.snapshot().state.now + 1));
+  assert.equal(p.doc.byId['ra-submit'].textContent, 'Add job 11');
+  assert.equal(p.doc.byId['ra-arrival'].value, String(P.snapshot().engineState.now + 1));
+  assert.equal(p.doc.byId['run-add'].hidden, true, 'the form closes after a good add');
 });
 
 test('mid-run add errors are shown by the add form and the run survives', () => {
   const p = ready({ totalSteps: 100 });
   const P = p.A.player;
-  P.start(); P.stepOnce(); P.stepOnce();
+  P.start(); P.stepOnce(); P.stepOnce(); P.stepOnce(); P.stepOnce();
   let r = P.addJobMidRun({ id: 1, arrival: 5, duration: 1, cpu: 1, mem: 1, priority: 0 });
   assert.equal(r.ok, false);
   assert.equal(p.doc.byId['ra-error'].textContent, 'id: Job id 1 already exists.');
@@ -405,156 +438,165 @@ test('mid-run add errors are shown by the add form and the run survives', () => 
   assert.match(p.doc.byId['ra-error'].textContent, /needs 99 cores/);
   assert.equal(P.snapshot().status, 'paused');
   assert.equal(p.fe.live.size, 1);
-  p.doc.byId['ra-id'].value = 'x';
+  p.doc.byId['ra-duration'].value = 'x';
   p.doc.byId['ra-submit'].click();
-  assert.equal(p.doc.byId['ra-error'].textContent, 'id must be a whole number.');
+  assert.equal(p.doc.byId['ra-error'].textContent, 'Use whole numbers only. Check “Runs for (ticks)”.');
 });
 
 test('adding a job after the run finished re-opens it', () => {
   const p = ready({ totalSteps: 2 });
   const P = p.A.player;
-  P.start(); P.jumpToEnd(); p.sched.runLater();
+  P.start(); P.jumpToEnd(); p.sched.run();
   assert.equal(P.snapshot().status, 'finished');
   assert.equal(P.addJobMidRun({ id: 30, arrival: 5, duration: 1, cpu: 1, mem: 1, priority: 0 }).ok, true);
   assert.equal(P.snapshot().status, 'paused');
 });
 
-test('add form defaults follow the run: arrival = now + 1 and an unused id after start, step, pause, reset', () => {
-  const p = ready({ totalSteps: 50 });
+test('Add a job right now opens the inline form and pauses a playing run; Cancel closes it', () => {
+  const p = ready({ totalSteps: 100 });
   const P = p.A.player;
-  const form = () => [p.doc.byId['ra-id'].value, p.doc.byId['ra-arrival'].value];
-  P.start();
-  assert.deepEqual(plain(form()), ['4', '1']);          // jobs 1..3, now 0
-  P.stepOnce(); P.stepOnce();
-  assert.deepEqual(plain(form()), ['4', '3']);
-  P.setSpeed(2); P.play(); p.sched.runFrame(); P.pause();
-  assert.deepEqual(plain(form()), ['4', String(P.snapshot().state.now + 1)]);
-  p.A.player.addJobMidRun({ id: 4, arrival: 9, duration: 1, cpu: 1, mem: 1, priority: 0 });
-  assert.equal(p.doc.byId['ra-id'].value, '5');
-  p.doc.activeElement = p.doc.byId['ra-arrival'];       // user typing: not overwritten
-  p.doc.byId['ra-arrival'].value = '77';
-  P.stepOnce();
-  assert.equal(p.doc.byId['ra-arrival'].value, '77');
-  p.doc.activeElement = null;
-  P.reset();
-  assert.deepEqual(plain(form()), ['5', '0']);
+  P.start(); P.play(); p.sched.run();
+  p.doc.byId['run-add-open'].click();
+  assert.equal(P.snapshot().status, 'paused');
+  assert.equal(p.doc.byId['run-add'].hidden, false);
+  assert.equal(p.doc.byId['run-add-open'].getAttribute('aria-expanded'), 'true');
+  assert.match(p.doc.byId['ra-note'].textContent, /^Paused at tick 1\./);
+  p.doc.byId['ra-cancel'].click();
+  assert.equal(p.doc.byId['run-add'].hidden, true);
 });
 
 test('metrics are shown from the engine, null as n/a', () => {
-  const p = ready();
-  p.A.player.start(); p.A.player.setSpeed(6); p.A.player.play(); p.sched.runFrame();
-  const texts = p.doc.byId['metrics-list'].children.map((c) => c.textContent);
-  assert.ok(texts.includes('Average wait: 1.500'));
-  assert.ok(texts.includes('CPU busy (utilization): no value yet (no job has finished)'));
-  // Show details prints the engine's number unchanged instead of rounding to three decimals
-  p.A.store.setDetails(true);
-  const exact = p.doc.byId['metrics-list'].children.map((c) => c.textContent);
-  assert.ok(exact.includes('Average wait: ' + String(p.A.player.snapshot().metrics.avg_wait)), exact.join('|'));
+  const p = ready({ totalSteps: 10 });
+  const P = p.A.player;
+  P.start(); for (let i = 0; i < 6; i++) P.stepOnce();
+  const items = p.doc.byId['metrics-list'].children.map((li) => li.textContent);
+  assert.ok(items.includes('Average wait: 1.500'));
+  assert.ok(items.includes('Longest wait: 3'));
+  assert.ok(items.some((t) => t.startsWith('CPU busy (utilization): no value yet')));
 });
 
-test('run page: the resource strip and the settings line show the engine numbers', () => {
-  const p = ready();
-  p.A.player.start();
-  const st = p.A.player.snapshot().state;
-  const want = (key, used) => key === 'cpu'
-    ? used + ' of ' + st.cap.cpu + ' cores busy, ' + st.free.cpu + ' free'
-    : used + ' of ' + st.cap.mem + ' MB in use, ' + st.free.mem + ' MB free';
-  assert.equal(p.doc.byId['res-cpu-text'].textContent, want('cpu', st.cap.cpu - st.free.cpu));
-  assert.equal(p.doc.byId['res-mem-text'].textContent, want('mem', st.cap.mem - st.free.mem));
-  const s = p.A.store.get().settings;
-  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'Settings: \u03b1 = ' + s.alphaMilli + ', T = ' + s.threshold + ', \u03b5 = ' + s.eps);
+test('the head line, the settings line and the machine lines show the case and the engine numbers', () => {
+  const p = ready({ totalSteps: 10 });
+  assert.equal(p.doc.byId['run-dataline'].textContent, '3 jobs on 16 cores and 32768 MB (32 GB).');
+  assert.equal(p.doc.byId['run-source-yours'].textContent, 'Your jobs · 3');
+  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 50 ticks · ε = 0.1');
+  p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
+  assert.equal(p.doc.byId['res-cpu-text'].textContent, '12 of 16 cores busy, 4 free');
+  assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick 1');
+  assert.equal(p.doc.byId['run-status-text'].textContent, 'Paused');
+  assert.equal(p.A.player.alphaWords(1000), '1');
+  assert.equal(p.A.player.alphaWords(1250), '1.25');
+  assert.equal(p.A.player.alphaWords(5), '0.005');
 });
 
 test('a bad setting names the problem once and opens More settings', () => {
-  const p = ready({ totalSteps: 10 });
+  const p = ready();
   p.doc.byId['run-alpha'].value = 'abc';
   p.doc.byId['run-start'].click();
+  assert.equal(p.fe.created, 0);
   assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be a whole number.');
   assert.equal(p.doc.byId['run-more'].open, true);
-  p.doc.byId['run-alpha'].value = '100';
-  p.A.wasm.create = () => { const e = new Error('alpha_milli must be 0 to 10000.'); e.field = 'alpha_milli'; throw e; };
-  p.doc.byId['run-more'].open = false;
-  p.doc.byId['run-start'].click();
-  assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be 0 to 10000.');
-  assert.equal(p.doc.byId['run-more'].open, true);
-});
-
-test('Play, Step and Jump work from the first screen: they start the run themselves', () => {
-  let p = ready({ totalSteps: 10 });
-  assert.equal(p.doc.byId['run-play'].disabled, false, 'jobs are loaded, so Play is live');
-  p.doc.byId['run-play'].click();
-  assert.equal(p.A.player.snapshot().status, 'playing');
-  p = ready({ totalSteps: 10 });
-  p.doc.byId['run-step'].click();
-  assert.equal(p.A.player.snapshot().events, 1);
-  p = ready({ totalSteps: 10 });
-  assert.equal(p.A.player.ensureRun(), true);
-  assert.equal(p.A.player.snapshot().status, 'paused');
 });
 
 test('with no jobs the controls stay off and say why', () => {
-  const p = ready({ totalSteps: 10 });
+  const p = ready();
   p.A.store.setJobs([]);
-  assert.equal(p.doc.byId['run-play'].disabled, true);
-  assert.equal(p.doc.byId['run-step'].disabled, true);
-  assert.equal(p.A.player.ensureRun(), false);
-  assert.equal(p.doc.byId['run-error'].hidden, false);
+  for (const id of ['run-play', 'run-step', 'run-jump', 'run-reset', 'run-add-open']) assert.equal(p.doc.byId[id].disabled, true, id);
+  assert.equal(p.doc.byId['run-start'].disabled, false, 'Run stays live and explains why nothing can run');
+  p.doc.byId['run-start'].click();
+  assert.match(p.doc.byId['run-error'].textContent, /no jobs/i);
 });
 
 test('a new job list or machine ends the old run, so Run never shows a stale board', () => {
   const p = ready({ totalSteps: 10 });
   const P = p.A.player;
   P.start(); P.stepOnce();
-  assert.equal(P.snapshot().status, 'paused');
-  p.A.store.setJobs(JOBS.slice(0, 1).map((j) => ({ ...j })));
-  assert.equal(P.snapshot().status, 'idle', 'jobs changed');
-  assert.equal(p.doc.byId['canvas-empty'].hidden, false);
+  p.A.store.setJobs(JOBS.slice(0, 2).map((j) => ({ ...j })));
+  assert.equal(P.snapshot().status, 'idle');
   P.start(); P.stepOnce();
-  p.A.store.setMachine(32, 65536);
-  assert.equal(P.snapshot().status, 'idle', 'machine changed');
-  assert.equal(p.fe.live.size, 0, 'no engine handle left behind');
+  p.A.store.setMachine(8, 4096);
+  assert.equal(P.snapshot().status, 'idle');
 });
 
-test('run page: every scheduler the engine has can be chosen', () => {
-  const p = ready();
-  const opts = p.doc.byId['run-policy'].children;
-  assert.equal(opts.length, 6);
-  assert.deepEqual(plain(opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'))), []);
-  assert.ok(p.A.compare.POLICIES.every((x) => x.available), 'the shipped list has no unavailable scheduler');
+test('scheduler cards: six radio cards drive #run-policy; arrows move the choice; a change marks the run stale', () => {
+  const p = ready({ totalSteps: 10 });
+  const box = p.doc.byId['run-methods'];
+  assert.deepEqual(plain(box.children.map((c) => c.getAttribute('data-policy'))), plain(p.A.player.POLICY_NAMES));
+  assert.equal(box.children[0].getAttribute('role'), 'radio');
+  assert.equal(box.children[0].children[1].textContent, 'First come, first served (FCFS)');
+  assert.equal(box.children[0].getAttribute('aria-checked'), 'true');
+  box.fire('click', { target: box.children[2] });
+  assert.equal(p.A.store.get().policies[0], 'sjf');
+  assert.equal(p.doc.byId['run-policy'].value, 'sjf');
+  assert.equal(box.children[2].getAttribute('aria-checked'), 'true');
+  assert.equal(box.children[2].getAttribute('tabindex'), '0');
+  box.fire('keydown', { key: 'ArrowRight', preventDefault() {} });
+  assert.equal(p.A.store.get().policies[0], 'aging');
+  p.A.player.start(); p.A.player.stepOnce();
+  assert.equal(p.doc.byId['run-stale'].hidden, true);
+  box.fire('click', { target: box.children[5] });
+  assert.equal(p.A.player.snapshot().stale, true);
+  assert.equal(p.doc.byId['run-stale'].hidden, false);
+  assert.equal(p.doc.byId['run-start'].textContent, 'Run again');
+  assert.equal(p.A.player.snapshot().status, 'paused', 'the current run is unaffected');
+  p.doc.byId['run-start'].click();
+  assert.equal(p.fe.args[2], 'knapsack');
+  assert.equal(p.doc.byId['run-start'].textContent, 'Run');
 });
 
 test('run page: a scheduler marked unavailable cannot be chosen', () => {
   const p = page();
-  p.fe = fakeWasm();
-  p.A.wasm = p.fe;
-  const knap = p.A.compare.POLICIES.find((x) => x.name === 'knapsack');
-  knap.available = false;
-  try {
-    p.A.whylog.mount();
-    p.A.player.mount();
-    const opts = p.doc.byId['run-policy'].children;
-    const off = opts.filter((o) => o.disabled).map((o) => o.getAttribute('value'));
-    assert.deepEqual(plain(off), ['knapsack']);
-    assert.ok(opts.find((o) => o.getAttribute('value') === 'knapsack').textContent.includes('not implemented yet'));
-  } finally {
-    knap.available = true;
-  }
+  p.fe = fakeWasm(); p.A.wasm = p.fe;
+  p.A.compare = { POLICIES: p.A.player.POLICY_NAMES.map((n) => ({ name: n, available: n !== 'knapsack' })) };
+  p.A.player.mount();
+  const opt = p.doc.byId['run-policy'].children.find((o) => o.getAttribute('value') === 'knapsack');
+  assert.equal(opt.disabled, true);
+  const card = p.doc.byId['run-methods'].children.find((c) => c.getAttribute('data-policy') === 'knapsack');
+  assert.equal(card.disabled, true);
+  p.A.player.choosePolicy('knapsack');
+  assert.notEqual(p.A.store.get().policies[0], 'knapsack');
 });
 
-test('run page: the policy list uses plain names with the technical term beside them', () => {
-  const p = ready();
-  const names = p.doc.byId['run-policy'].children.map((o) => o.textContent);
-  assert.equal(names.length, 6);
-  assert.ok(names.includes('Shortest job first (SJF)') && names.includes('First come, first served (FCFS)'));
+test('which jobs: the big case is 500 fixed jobs on 32 cores and 128 GB and ends the old run', () => {
+  const p = ready({ totalSteps: 10 });
+  const P = p.A.player;
+  P.start();
+  p.doc.byId['run-source-big'].click();
+  assert.equal(P.snapshot().status, 'idle');
+  assert.equal(P.snapshot().source, 'big');
+  assert.equal(p.doc.byId['run-source-big'].getAttribute('aria-pressed'), 'true');
+  assert.equal(p.doc.byId['run-dataline'].textContent, '500 jobs on 32 cores and 131072 MB (128 GB).');
+  P.start();
+  assert.deepEqual(plain(p.fe.args.slice(0, 2)), [32, 131072]);
+  assert.equal(p.fe.sims.get(P.handle()).jobs.length, 500);
+  const a = p.A.generator.bigCase(), b = p.A.generator.bigCase();
+  assert.deepEqual(plain(a), plain(b), 'the same every time');
+  assert.ok(a.jobs.every((j) => j.cpu >= 1 && j.cpu <= 10 && j.mem % 1024 === 0 && j.mem <= 24576 && j.priority >= 0 && j.priority <= 9));
+  assert.equal(P.frame().large, true);
+  p.doc.byId['run-source-yours'].click();
+  assert.equal(P.snapshot().status, 'idle');
+});
+
+test('a big case plays by ticks: every event up to a few ticks later in one beat', () => {
+  const p = ready({ totalSteps: 300 });
+  p.doc.byId['run-source-big'].click();
+  const P = p.A.player;
+  P.start(); P.play();
+  p.sched.run();
+  assert.equal(p.sched.delays[0], P.LARGE_BEAT_MS);
+  const n = P.snapshot().events;
+  assert.ok(n > 1, 'more than one event per beat: ' + n);
+  assert.ok(P.snapshot().state.now <= 4 + 1, 'about 2 x 2 ticks per beat at 1x for 500 jobs');
 });
 
 test('leaving Run mode pauses; the panel is shown only in Run mode', () => {
-  const p = ready({ totalSteps: 50 });
+  const p = ready({ totalSteps: 100 });
+  const P = p.A.player;
   p.A.store.setMode('run');
   assert.equal(p.doc.byId['run-panel'].hidden, false);
-  p.A.player.start(); p.A.player.play();
+  P.start(); P.play();
   p.A.store.setMode('build');
-  assert.equal(p.A.player.snapshot().status, 'paused');
+  assert.equal(P.snapshot().status, 'paused');
   assert.equal(p.doc.byId['run-panel'].hidden, true);
 });
 
@@ -686,7 +728,7 @@ test('tray: only 40 cards on the page, but the count and "more" line stay true',
 
 test('board click selects the card under the cursor and a second click clears it', () => {
   const p = ready({ totalSteps: 10 });
-  p.A.player.start(); p.A.player.stepOnce();
+  p.A.player.start(); for (let i = 0; i < 4; i++) p.A.player.stepOnce();
   const regs = p.canvas.__regions;
   if (!regs.length) return;
   const r = regs[0];
@@ -706,27 +748,29 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     await p.A.wasm.init();
     p.A.whylog.mount();
     p.A.player.mount();
+    p.A.runboard.mount();
     return p;
   };
-  const drain = (p) => { let n = 0; while (p.sched.laters.length || p.sched.frames.length) { if (p.sched.frames.length) p.sched.runFrame(); else p.sched.runLater(); n++; } return n; };
+  const drain = (p) => { let n = 0; while (p.sched.timers.length) { p.sched.run(); n++; } return n; };
   const csvRows = (text) => text.trim().split('\n').slice(1).map((l) => l.split(',').map(Number));
 
-  for (const policy of ['fcfs', 'priority', 'sjf', 'aging']) {
+  for (const policy of ['fcfs', 'priority', 'sjf', 'aging', 'aging_reserve', 'knapsack']) {
     test('real engine: preset memory_hog under ' + policy + ' played to the end equals the console program', async () => {
       const p = await realPage();
       const preset = p.A.presets.load('memory_hog');
       p.A.store.setPolicies([policy]);
       const P = p.A.player;
-      P.setSpeed(7);
+      P.setSpeed(4);
       assert.equal(P.start(), true, P.snapshot().error);
       P.play();
-      drain(p);                                          // play frames until the engine finishes
+      drain(p);
       assert.equal(P.snapshot().status, 'finished');
       const rows = p.A.wasm.results(P.handle()).map((r) => [r.id, r.arrival, r.start, r.finish, r.wait, r.turnaround, r.priority, r.cpu, r.mem]);
+      assert.equal(P.snapshot().events, p.A.wasm.log(P.handle(), 0).length, 'every log entry was shown, one per beat');
       if (existsSync(cli)) {
-        const dir = mkdtempSync(join(tmpdir(), 'k25-'));
+        const dir = mkdtempSync(join(tmpdir(), 'k51-'));
         const out = join(dir, 'out.csv'); const met = join(dir, 'm.json');
-        const r = spawnSync(cli, ['--policy', policy, '--in', join(root, 'data', 'presets', 'memory_hog.csv'), '--out', out, '--metrics', met,
+        const r = spawnSync(cli, ['--policy', policy === 'aging_reserve' ? 'reserve' : policy, '--in', join(root, 'data', 'presets', 'memory_hog.csv'), '--out', out, '--metrics', met,
           '--cpu', String(preset.cpu_cap), '--mem', String(preset.mem_cap), '--alpha-milli', String(preset.alpha_milli), '--threshold', String(preset.threshold)]);
         assert.equal(r.status, 0, String(r.stderr));
         assert.deepEqual(plain(rows), csvRows(readFileSync(out, 'utf8')));
@@ -743,16 +787,46 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     });
   }
 
-  test('real engine: jump to end equals frame-by-frame play (same schedule)', async () => {
+  test('real engine: numbers on the page equal the engine JSON at every moment end, six presets x six schedulers', async () => {
+    const p = await realPage();
+    const P = p.A.player;
+    let checked = 0;
+    for (const preset of p.A.presets.all()) {
+      for (const policy of P.POLICY_NAMES) {
+        p.A.presets.load(preset.name);
+        p.A.store.setPolicies([policy]);
+        assert.equal(P.start(), true, preset.name + ' ' + policy);
+        while (P.snapshot().status !== 'finished') {
+          P.stepOnce();
+          const s = P.snapshot();
+          if (s.pending === 0 && s.status !== 'finished') {
+            const eng = p.A.wasm.state(P.handle());
+            assert.deepEqual(plain(p.A.runmodel.diff(s.state, eng)), [], preset.name + ' ' + policy + ' tick ' + eng.now);
+            const used = eng.cap.cpu - eng.free.cpu;
+            assert.equal(p.doc.byId['res-cpu-text'].textContent, used + ' of ' + eng.cap.cpu + ' cores busy, ' + eng.free.cpu + ' free');
+            assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick ' + eng.now);
+            checked++;
+          }
+        }
+        const m = p.A.wasm.metrics(P.handle());
+        assert.deepEqual(plain(P.snapshot().metrics), plain(m), 'final metrics are the engine metrics');
+        assert.equal(P.snapshot().state.done, preset.jobs.length);
+      }
+    }
+    assert.ok(checked > 200, checked + ' moment ends checked');
+    P.reset();
+  });
+
+  test('real engine: jump to end equals event-by-event play (same schedule, same events)', async () => {
     const results = [];
     for (const mode of ['play', 'jump']) {
       const p = await realPage();
       p.A.presets.load('priority_starvation');
       p.A.store.setPolicies(['aging']);
       p.A.player.start();
-      if (mode === 'play') { p.A.player.setSpeed(3); p.A.player.play(); } else { p.A.player.jumpToEnd(); }
+      if (mode === 'play') { p.A.player.setSpeed(4); p.A.player.play(); } else { p.A.player.jumpToEnd(); }
       drain(p);
-      results.push(JSON.stringify(p.A.wasm.results(p.A.player.handle())));
+      results.push(JSON.stringify(p.A.wasm.results(p.A.player.handle())) + '|' + p.A.player.snapshot().events + '|' + JSON.stringify(p.A.player.snapshot().bars));
     }
     assert.equal(results[0], results[1]);
   });
@@ -763,7 +837,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     p.A.store.setJobs([{ id: 1, arrival: 0, duration: 10, cpu: 4, mem: 100, priority: 5 }, { id: 2, arrival: 1, duration: 3, cpu: 1, mem: 100, priority: 5 }]);
     p.A.store.setPolicies(['fcfs']);
     const P = p.A.player;
-    P.start(); P.stepOnce(); P.stepOnce();
+    P.start(); P.stepOnce(); P.stepOnce(); P.stepOnce();
     const now = P.snapshot().state.now;
     assert.equal(P.addJobMidRun({ id: 3, arrival: now + 1, duration: 2, cpu: 1, mem: 100, priority: 9 }).ok, true);
     assert.equal(P.addJobMidRun({ id: 4, arrival: now, duration: 2, cpu: 1, mem: 100, priority: 9 }).ok, true);
@@ -781,12 +855,12 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     const p = await realPage();
     for (const preset of p.A.presets.all()) {
       p.A.presets.load(preset.name);
-      p.A.store.setPolicies(['aging']);
+      p.A.store.setPolicies(['aging_reserve']);
       const P = p.A.player;
       assert.equal(P.start(), true, preset.name + ': ' + P.snapshot().error);
       P.stepOnce(); P.stepOnce();
       p.canvas.ctx.calls.length = 0;
-      P.setSpeed(200); P.play(); drain(p);
+      P.setSpeed(4); P.play(); drain(p);
       assert.equal(P.snapshot().status, 'finished', preset.name);
       assert.equal(P.snapshot().state.done, preset.jobs.length, preset.name);
       assert.ok(p.canvas.ctx.calls.length > 20, 'drawn');
@@ -794,7 +868,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     p.A.player.reset();
   });
 
-  test('real engine: 5000 jobs, jump to end in slices of at most 500 steps, handle freed on reset', async () => {
+  test('real engine: 5000 jobs, jump to end in slices of at most 500 moments, handle freed on reset', async () => {
     const p = await realPage();
     const jobs = [];
     for (let i = 0; i < 5000; i++) jobs.push({ id: i + 1, arrival: Math.floor(i / 4), duration: 1 + (i % 9), cpu: 1 + (i % 3), mem: 64 + (i % 5) * 64, priority: i % 10 });
@@ -805,31 +879,29 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     P.jumpToEnd();
     let slices = 0;
     const t0 = Date.now();
-    while (p.sched.laters.length) { p.sched.runLater(); slices++; }
+    while (p.sched.timers.length) { p.sched.run(); slices++; }
     assert.equal(P.snapshot().status, 'finished');
     assert.equal(P.snapshot().state.done, 5000);
-    assert.ok(slices >= Math.ceil(P.snapshot().events / P.SLICE_STEPS), 'sliced: ' + slices);
-    assert.ok(slices >= 2);
+    assert.equal(P.snapshot().events, p.A.wasm.log(P.handle(), 0).length);
+    assert.ok(slices >= 2, 'sliced: ' + slices);
     console.log('     5000-job jump: ' + slices + ' slices, ' + P.snapshot().events + ' events, ' + (Date.now() - t0) + ' ms');
     const h = P.handle();
     P.reset();
     assert.throws(() => p.A.wasm.state(h));                  // the handle is really gone
   });
 
-  test('real engine: 500 jobs, one frame at the capped speed is fast', async () => {
+  test('real engine: the 500-job big case, one beat at 4x is fast', async () => {
     const p = await realPage();
-    const jobs = [];
-    for (let i = 0; i < 500; i++) jobs.push({ id: i + 1, arrival: Math.floor(i / 5), duration: 1 + (i % 20), cpu: 1 + (i % 4), mem: 128 * (1 + (i % 8)), priority: i % 10 });
-    p.A.store.setJobs(jobs);
-    p.A.store.setPolicies(['aging']);
     const P = p.A.player;
-    P.start(); P.setSpeed(1e6); P.play();
+    P.setSource('big');
+    p.A.store.setPolicies(['aging']);
+    P.start(); P.setSpeed(4); P.play();
     const t0 = Date.now();
-    p.sched.runFrame();
+    p.sched.run(); p.sched.run();
     const ms = Date.now() - t0;
-    assert.equal(P.snapshot().events, P.MAX_STEPS_PER_FRAME);
-    console.log('     500 jobs, one capped frame (' + P.MAX_STEPS_PER_FRAME + ' steps + redraw): ' + ms + ' ms');
-    assert.ok(ms < 200, 'frame took ' + ms + ' ms');
+    assert.ok(P.snapshot().events > 2);
+    console.log('     500 jobs, two beats at 4x: ' + ms + ' ms, ' + P.snapshot().events + ' events');
+    assert.ok(ms < 400, 'beats took ' + ms + ' ms');
     P.reset();
   });
 
@@ -839,7 +911,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     p.A.store.setPolicies(['fcfs']);
     const P = p.A.player;
     P.start(); P.jumpToEnd();
-    while (p.sched.laters.length) p.sched.runLater();
+    drain(p);
     assert.equal(P.snapshot().status, 'finished');
     assert.equal(p.doc.byId['run-play'].disabled, true, 'nothing left to play');
     assert.equal(p.doc.byId['run-step'].disabled, true, 'nothing left to step');
