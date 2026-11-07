@@ -78,13 +78,13 @@ Deferrals:
 | Run | Scheduler x example | aging on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
 | Run | Scheduler x example | aging_reserve on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
 | Run | Scheduler x example | knapsack on tiny_case | Runs to the end; all jobs finish; board and metrics drawn | BLUEPRINT 5 | done 8/8 | PASS |
-| Run | Knapsack option | open the list | Can be chosen | K-34, PR #95 | as expected | PASS |
+| Run | Knapsack card | click | Can be chosen | K-34, PR #95, K-51 | as expected | PASS |
 | Compare | Knapsack option | open the list | Can be ticked | K-34, PR #95 | as expected | PASS |
-| Run | Run | first press | Paused at the start; Play enabled | PRD 7 | as expected | PASS |
+| Run | Run | first press | Starts and plays; label Pause | PRD 7, K-51 | as expected | PASS |
 | Run | Step | once | One event | PRD 7 | as expected | PASS |
 | Run | Play | click | Status playing, label Pause | PRD 7 | as expected | PASS |
 | Run | Pause | click | Stops | PRD 7 | as expected | PASS |
-| Run | Speed slider | 50 | Speed changes, readout follows | PRD 7 | as expected | PASS |
+| Run | Speed | 2x | Speed changes; the 2x button is pressed | PRD 7, K-51 | as expected | PASS |
 | Run | Add a job right now | valid | Accepted, then scheduled | PRD 7 | as expected | PASS |
 | Run | Add a job right now | duplicate id | Refused in plain words | PRD 7 | id: Job id 500 already exists. | PASS |
 | Run | Reset | click | Back to no run; board empty message | PRD 7 | as expected | PASS |
@@ -105,12 +105,12 @@ Deferrals:
 | Run | Show details | during a finished run | Exact engine numbers, raw kinds shown | K-49 | 8.083333333 | PASS |
 | Compare | Stale note | jobs changed after comparing | Says press Compare again | K-27 | as expected | PASS |
 | Run | Step | after the run finished | Ignored, no error | K-50 | as expected | PASS |
-| Run | Play | after the run finished | Disabled, like Step and Jump; stays finished | K-50 | as expected | PASS |
-| Run | Run | double click | One clean new run | K-50 | as expected | PASS |
+| Run | Play | after the run finished | Disabled, like Step and Jump; stays finished | K-50 | disabled true, status finished | PASS |
+| Run | Run | double click | One clean new run, playing from its first event | K-50, K-51 | as expected | PASS |
 | Run | Play | double click | Toggles twice, stays consistent | K-50 | as expected | PASS |
 | Run | Reset | mid-run while playing | Stops at once, no error | K-50 | as expected | PASS |
 | Run | Reset | twice | Second is disabled, no error | K-50 | as expected | PASS |
-| Run | Change scheduler | during a paused run | Current run unaffected; next Run uses the new one | K-50 | as expected | PASS |
+| Run | Change scheduler | during a paused run | Current run unaffected; says Run again; next Run uses the new one | K-50, K-51 | as expected | PASS |
 | Run | Leave the page | to Build during play | Pauses | K-25 | as expected | PASS |
 | Run | Reload | mid-run | Page comes back clean | K-50 | as expected | PASS |
 | Run | Jump to end | during play | Finishes | PRD 8 | as expected | PASS |
@@ -120,7 +120,7 @@ Deferrals:
 | Run | Edge | one job | Runs to the end | K-50 | as expected | PASS |
 | Run | Edge | ties: same arrival and priority | Lower id first (hard rule 5) | Hard rule 5 | as expected | PASS |
 | Run | Edge | job larger than the machine | Plain refusal, page usable | PRD 7 | cpu: Job 1 needs 8 cores; machine has 2 cores. | PASS |
-| Run | Edge | largest case: 5000 jobs | Finishes without freezing | PRD 3, 8 | Time: tick 940. 5000 of 5000 jobs finished. | PASS |
+| Run | Edge | largest case: 5000 jobs | Finishes without freezing | PRD 3, 8 | Time: tick 940 | PASS |
 | Compare | Edge | largest case: 5000 jobs | Finishes without freezing | PRD 3, 8 | as expected | PASS |
 | Compare | All six schedulers | big_job_trap | Table, boards, verdict or tie, exact line | BLUEPRINT 5 | First come, first served (FCFS), Highest priority first, Shortest job first (SJF), Aging and Aging with reservation (EASY) tied for first, finishing at tick 22. | PASS |
 | Compare | All six schedulers | priority_starvation | Table, boards, verdict or tie, exact line | BLUEPRINT 5 | First come, first served (FCFS), Highest priority first, Shortest job first (SJF), Aging and Aging with reservation (EASY) tied for first, finishing at tick 58. | PASS |

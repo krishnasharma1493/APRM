@@ -59,6 +59,9 @@ const step = (m) => ev(`document.querySelector('[data-mode-button="${m}"]').clic
 const preset = (name) => ev(`document.querySelector('#preset-tiles [data-preset="${name}"]').click(); true`);
 const choose = (policy) => ev(`(function(){ const s = document.getElementById('run-policy'); s.value = '${policy}'; s.dispatchEvent(new Event('change', { bubbles: true })); })(); true`);
 const snap = (k) => ev(`APRM.player.snapshot().${k}`);
+/* Run starts and plays (the RunPage design, K-51); most rows want a run that waits at its first event. */
+const runPaused = async () => { await click('run-start'); await ev(`APRM.player.pause(); true`); };
+const choosePolicy = (policy) => ev(`document.querySelector('#run-methods [data-policy="${policy}"]').click(); true`);
 const finished = () => waitFor(`APRM.player.snapshot().status === 'finished'`, 30000);
 const setJobs = (jobs) => ev(`APRM.store.setJobs(${JSON.stringify(jobs)}); true`);
 const J = (id, arrival, duration, cpu, mem, priority) => ({ id, arrival, duration, cpu, mem, priority });
@@ -136,7 +139,7 @@ async function main() {
   for (const p of PRESETS) {
     for (const s of SCHEDULERS) {
       await row('Run', 'Scheduler x example', s + ' on ' + p, 'Runs to the end; all jobs finish; board and metrics drawn', 'BLUEPRINT 5', async () => {
-        await load(); await preset(p); await step('run'); await choose(s); await click('run-start'); await click('run-jump');
+        await load(); await preset(p); await step('run'); await choosePolicy(s); await click('run-start'); await click('run-jump');
         if (!(await finished())) { return [false, 'status ' + (await snap('status'))]; }
         const st = await ev(`JSON.stringify(APRM.player.snapshot().state)`); const j = JSON.parse(st);
         const m = await ev(`document.querySelectorAll('#metrics-list li').length`);
@@ -144,18 +147,18 @@ async function main() {
       });
     }
   }
-  await row('Run', 'Knapsack option', 'open the list', 'Can be chosen', 'K-34, PR #95', async () => { await load(); return (await ev(`document.querySelector('#run-policy option[value="knapsack"]').disabled`)) === false; });
+  await row('Run', 'Knapsack card', 'click', 'Can be chosen', 'K-34, PR #95, K-51', async () => { await load(); await choosePolicy('knapsack'); return (await ev(`document.querySelector('#run-methods [data-policy="knapsack"]').getAttribute('aria-checked')`)) === 'true' && (await ev(`APRM.store.get().policies[0]`)) === 'knapsack'; });
   await row('Compare', 'Knapsack option', 'open the list', 'Can be ticked', 'K-34, PR #95', async () => (await ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`)) === false);
 
   // --- Run controls in order
   await load(); await preset('heavy_load'); await step('run');
-  await row('Run', 'Run', 'first press', 'Paused at the start; Play enabled', 'PRD 7', async () => { await click('run-start'); return (await snap('status')) === 'paused' && !(await ev(`document.getElementById('run-play').disabled`)); });
+  await row('Run', 'Run', 'first press', 'Starts and plays; label Pause', 'PRD 7, K-51', async () => { await click('run-start'); const ok = ['playing', 'finished'].includes(await snap('status')) && (await text('run-play')) === 'Pause'; await ev(`APRM.player.pause(); true`); return ok; });
   await row('Run', 'Step', 'once', 'One event', 'PRD 7', async () => { const a = await snap('events'); await click('run-step'); return (await snap('events')) === a + 1; });
   await row('Run', 'Play', 'click', 'Status playing, label Pause', 'PRD 7', async () => { await click('run-play'); return (await snap('status')) === 'playing' && (await text('run-play')) === 'Pause'; });
   await row('Run', 'Pause', 'click', 'Stops', 'PRD 7', async () => { await click('run-play'); const s = await snap('status'); const a = await snap('events'); await sleep(120); return s === 'paused' && (await snap('events')) === a; });
-  await row('Run', 'Speed slider', '50', 'Speed changes, readout follows', 'PRD 7', async () => { await ev(`(function(){ const r = document.getElementById('run-speed'); r.value = '50'; r.dispatchEvent(new Event('input', { bubbles: true })); })(); true`); return (await snap('speed')) === 50 && (await text('run-speed-out')) === '50'; });
+  await row('Run', 'Speed', '2x', 'Speed changes; the 2x button is pressed', 'PRD 7, K-51', async () => { await ev(`document.querySelector('#run-speed [data-speed="2"]').click(); true`); return (await snap('speed')) === 2 && (await ev(`document.querySelector('#run-speed [data-speed="2"]').getAttribute('aria-pressed')`)) === 'true'; });
   await row('Run', 'Add a job right now', 'valid', 'Accepted, then scheduled', 'PRD 7', async () => {
-    await ev(`document.getElementById('run-add').open = true; document.getElementById('run-speed').value = '1'; document.getElementById('run-speed').dispatchEvent(new Event('input', { bubbles: true })); true`);
+    await click('run-add-open'); if (await hidden('run-add')) { return [false, 'form did not open']; }
     await ev(`document.getElementById('ra-id').value = '500'; true`); await click('ra-submit');
     if (!(await hidden('ra-error'))) { return [false, await text('ra-error')]; }
     await click('run-jump'); await finished();
@@ -168,35 +171,35 @@ async function main() {
   await row('Run', 'Play', 'from the first screen', 'Starts and plays', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); if (await ev(`document.getElementById('run-play').disabled`)) { return [false, 'disabled']; } await click('run-play'); return ['playing', 'finished'].includes(await snap('status')); });
   await row('Run', 'Step', 'from the first screen', 'Starts and takes one event', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-step'); return (await snap('events')) === 1; });
   await row('Run', 'Space', 'from the first screen', 'Starts and plays', 'K-50 #123', async () => { await load(); await preset('heavy_load'); await step('run'); await ev(`document.activeElement.blur(); true`); await key(' ', 'Space', 32); return ['playing', 'finished'].includes(await snap('status')); });
-  await row('Run', 'New example', 'loaded while a run exists', 'Old run ends; no stale board', 'K-50 #122', async () => { await load(); await preset('tiny_case'); await step('run'); await click('run-start'); await click('run-step'); await step('build'); await preset('big_job_trap'); await step('run'); return (await snap('status')) === 'idle' && !(await hidden('canvas-empty')); });
+  await row('Run', 'New example', 'loaded while a run exists', 'Old run ends; no stale board', 'K-50 #122', async () => { await load(); await preset('tiny_case'); await step('run'); await runPaused(); await click('run-step'); await step('build'); await preset('big_job_trap'); await step('run'); return (await snap('status')) === 'idle' && !(await hidden('canvas-empty')); });
   for (const [id, value, good, why] of [['run-alpha', '99999', '100', /alpha_milli must be 0 to 10000/], ['run-alpha', 'abc', '100', /whole number/], ['run-threshold', '-1', '50', /reserve_threshold must be/], ['run-eps', '5', '0.1', /epsilon must be 0\.01 to 1/], ['run-eps', '0.1234', '0.1', /at most 3 decimals/]]) {
     await row('Run', 'More settings', id + ' = ' + value, 'Plain message; More settings opens; Run works after fixing it', 'PRD 3, K-50 #124', async () => {
       await load(); await preset('tiny_case'); await step('run');
       await ev(`document.getElementById('${id}').value = '${value}'; true`); await click('run-start');
       const m = await text('run-error'), open = await ev(`document.getElementById('run-more').open`);
       await ev(`document.getElementById('${id}').value = '${good}'; true`); await click('run-start');
-      return [why.test(m) && m.startsWith('Check More settings.') && open && (await snap('status')) === 'paused' && (await hidden('run-error')), m];
+      return [why.test(m) && m.startsWith('Check More settings.') && open && ['playing', 'paused', 'finished'].includes(await snap('status')) && (await hidden('run-error')), m];
     });
   }
-  await row('Run', 'Tray card', 'click, then again', 'Selects the job, log filters, second click clears', 'BLUEPRINT 5', async () => { await load(); await preset('memory_hog'); await step('run'); await click('run-start'); for (let i = 0; i < 8; i++) { await click('run-step'); } await ev(`document.querySelector('#tray-list li').click(); true`); const on = await snap('selected'); const filt = !(await hidden('whylog-filter')); await ev(`document.querySelector('#tray-list li').click(); true`); return on !== null && filt && (await snap('selected')) === null; });
+  await row('Run', 'Tray card', 'click, then again', 'Selects the job, log filters, second click clears', 'BLUEPRINT 5', async () => { await load(); await preset('memory_hog'); await step('run'); await runPaused(); for (let i = 0; i < 16; i++) { await click('run-step'); } await ev(`document.querySelector('#tray-list li').click(); true`); const on = await snap('selected'); const filt = !(await hidden('whylog-filter')); await ev(`document.querySelector('#tray-list li').click(); true`); return on !== null && filt && (await snap('selected')) === null; });
   await row('Run', 'Why log line', 'click, then Show all jobs', 'Filters to that job, then clears', 'BLUEPRINT 5', async () => { await ev(`document.querySelector('#whylog-list li').click(); true`); const on = await snap('selected'); await click('whylog-clear'); return on !== null && (await snap('selected')) === null; });
   await row('Run', 'Board card', 'click', 'Selects the job', 'BLUEPRINT 5', async () => { const r = await ev(`(function(){ const c = document.getElementById('run-canvas'); const g = c.__regions[0]; const b = c.getBoundingClientRect(); return { x: b.left + g.x + g.w / 2, y: b.top + g.y + g.h / 2 }; })()`); await ev(`document.getElementById('run-canvas').dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: ${r.x}, clientY: ${r.y} })); true`); return (await snap('selected')) !== null; });
   await row('Run', 'All jobs', 'click', 'Opens the job list', 'K-49', async () => { await ev(`document.querySelector('.tray details summary').click(); true`); return ev(`document.querySelector('.tray details').open && document.querySelectorAll('#job-list li').length === 12`); });
-  await row('Run', 'Add a job right now', 'bad priority', 'Refused in plain words, run continues', 'PRD 7', async () => { await ev(`document.getElementById('run-add').open = true; document.getElementById('ra-priority').value = '99'; true`); await click('ra-submit'); const m = await text('ra-error'); await ev(`document.getElementById('ra-priority').value = '5'; true`); return [m.length > 0 && (await snap('status')) !== 'error', m]; });
+  await row('Run', 'Add a job right now', 'bad priority', 'Refused in plain words, run continues', 'PRD 7', async () => { if (await hidden('run-add')) { await click('run-add-open'); } await ev(`document.getElementById('ra-priority').value = '99'; true`); await click('ra-submit'); const m = await text('ra-error'); await ev(`document.getElementById('ra-priority').value = '5'; true`); return [m.length > 0 && (await snap('status')) !== 'error', m]; });
   await row('Run', 'Show details', 'during a finished run', 'Exact engine numbers, raw kinds shown', 'K-49', async () => { await load(); await preset('memory_hog'); await step('run'); await click('run-start'); await click('run-jump'); await finished(); await click('details-switch'); const m = await ev(`APRM.player.snapshot().metrics.avg_wait`); const shown = await text('metrics-list'); await click('details-switch'); return [shown.includes(String(m)), String(m)]; });
   await row('Compare', 'Stale note', 'jobs changed after comparing', 'Says press Compare again', 'K-27', async () => { await load(); await preset('tiny_case'); await step('compare'); await click('compare-start'); await waitFor(`APRM.compare.snapshot().status === 'done'`); await step('build'); await preset('memory_hog'); await step('compare'); return /press Compare again/.test(await text('compare-status')); });
 
   // --- Run controls out of order
-  await row('Run', 'Step', 'after the run finished', 'Ignored, no error', 'K-50', async () => { await click('run-start'); await click('run-jump'); await finished(); const a = await snap('events'); await ev(`(function(){ const b = document.getElementById('run-step'); b.disabled = false; b.click(); })(); true`); return (await snap('status')) === 'finished' && (await snap('events')) === a; });
-  await row('Run', 'Play', 'after the run finished', 'Disabled, like Step and Jump; stays finished', 'K-50', async () => { const off = await ev(`document.getElementById('run-play').disabled && document.getElementById('run-step').disabled`); await ev(`(function(){ const b = document.getElementById('run-play'); b.disabled = false; b.click(); })(); true`); return off === true && (await snap('status')) === 'finished'; });
-  await row('Run', 'Run', 'double click', 'One clean new run', 'K-50', async () => { await ev(`(function(){ const b = document.getElementById('run-start'); b.click(); b.click(); })(); true`); return (await snap('status')) === 'paused' && (await snap('events')) === 0; });
+  await row('Run', 'Step', 'after the run finished', 'Ignored, no error', 'K-50', async () => { await runPaused(); await click('run-jump'); await finished(); const a = await snap('events'); await ev(`(function(){ const b = document.getElementById('run-step'); b.disabled = false; b.click(); })(); true`); return (await snap('status')) === 'finished' && (await snap('events')) === a; });
+  await row('Run', 'Play', 'after the run finished', 'Disabled, like Step and Jump; stays finished', 'K-50', async () => { const off = await ev(`document.getElementById('run-play').disabled && document.getElementById('run-step').disabled`); await ev(`(function(){ const b = document.getElementById('run-play'); b.disabled = false; b.click(); })(); true`); const st = await snap('status'); return [off === true && st === 'finished', 'disabled ' + off + ', status ' + st]; });
+  await row('Run', 'Run', 'double click', 'One clean new run, playing from its first event', 'K-50, K-51', async () => { await ev(`(function(){ const b = document.getElementById('run-start'); b.click(); b.click(); APRM.player.pause(); })(); true`); return (await snap('status')) === 'paused' && (await snap('events')) <= 1 && (await ev(`APRM.player.snapshot().jobs.length`)) > 0; });
   await row('Run', 'Play', 'double click', 'Toggles twice, stays consistent', 'K-50', async () => { await ev(`(function(){ const b = document.getElementById('run-play'); b.click(); b.click(); })(); true`); return (await snap('status')) === 'paused'; });
   await row('Run', 'Reset', 'mid-run while playing', 'Stops at once, no error', 'K-50', async () => { await click('run-play'); await sleep(40); await click('run-reset'); return (await snap('status')) === 'idle'; });
   await row('Run', 'Reset', 'twice', 'Second is disabled, no error', 'K-50', async () => { const off = await ev(`document.getElementById('run-reset').disabled`); await ev(`(function(){ const b = document.getElementById('run-reset'); b.disabled = false; b.click(); })(); true`); return off && (await snap('status')) === 'idle'; });
-  await row('Run', 'Change scheduler', 'during a paused run', 'Current run unaffected; next Run uses the new one', 'K-50', async () => { await click('run-start'); await click('run-step'); await choose('sjf'); const ok = (await snap('status')) === 'paused'; await click('run-start'); return ok && (await ev(`APRM.player.snapshot().status`)) === 'paused'; });
+  await row('Run', 'Change scheduler', 'during a paused run', 'Current run unaffected; says Run again; next Run uses the new one', 'K-50, K-51', async () => { await runPaused(); await click('run-step'); await choosePolicy('sjf'); const ok = (await snap('status')) === 'paused' && !(await hidden('run-stale')) && (await text('run-start')) === 'Run again'; await runPaused(); return ok && (await ev(`APRM.player.snapshot().status`)) === 'paused' && (await hidden('run-stale')) && (await ev(`APRM.store.get().policies[0]`)) === 'sjf'; });
   await row('Run', 'Leave the page', 'to Build during play', 'Pauses', 'K-25', async () => { await click('run-play'); await step('build'); const s = await snap('status'); await step('run'); return ['paused', 'finished'].includes(s); });
   await row('Run', 'Reload', 'mid-run', 'Page comes back clean', 'K-50', async () => { await send('Page.reload'); await sleep(200); await waitFor(`(document.getElementById('engine-status') || {}).textContent === 'Engine ready'`); return (await snap('status')) === 'idle'; });
-  await row('Run', 'Jump to end', 'during play', 'Finishes', 'PRD 8', async () => { await preset('heavy_load'); await step('run'); await click('run-start'); await click('run-play'); await click('run-jump'); return finished(); });
+  await row('Run', 'Jump to end', 'during play', 'Finishes', 'PRD 8', async () => { await preset('heavy_load'); await step('run'); await click('run-start'); await click('run-jump'); return finished(); });
 
   // --- Edge inputs
   await row('Run', 'Run', 'no jobs', 'Plain message, no engine error', 'PRD 7', async () => { await load(); await step('run'); await click('run-start'); return [!(await hidden('run-error')), await text('run-error')]; });
@@ -258,7 +261,7 @@ async function main() {
   }
 
   // --- Keyboard
-  await row('Run', 'Keyboard', 'Space, Right arrow, Esc', 'Play or pause, step, clear', 'BLUEPRINT 5', async () => { await load(); await preset('heavy_load'); await step('run'); await click('run-start'); await ev(`document.activeElement.blur(); true`); await key('ArrowRight', 'ArrowRight', 39); const a = await snap('events'); await key(' ', 'Space', 32); const s = await snap('status'); await key(' ', 'Space', 32); const t = await snap('status'); await ev(`APRM.player.select(APRM.player.snapshot().jobs[0].id); document.activeElement.blur(); true`); const on = await snap('selected'); await key('Escape', 'Escape', 27); return a === 1 && s === 'playing' && t === 'paused' && on !== null && (await snap('selected')) === null; });
+  await row('Run', 'Keyboard', 'Space, Right arrow, Esc', 'Play or pause, step, clear', 'BLUEPRINT 5', async () => { await load(); await preset('heavy_load'); await step('run'); await runPaused(); await ev(`document.activeElement.blur(); true`); const a0 = await snap('events'); await key('ArrowRight', 'ArrowRight', 39); const a = (await snap('events')) - a0; await key(' ', 'Space', 32); const s = await snap('status'); await key(' ', 'Space', 32); const t = await snap('status'); await ev(`APRM.player.select(APRM.player.snapshot().jobs[0].id); document.activeElement.blur(); true`); const on = await snap('selected'); await key('Escape', 'Escape', 27); return a === 1 && s === 'playing' && t === 'paused' && on !== null && (await snap('selected')) === null; });
 }
 
 let code = 0;
