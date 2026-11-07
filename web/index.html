@@ -269,8 +269,55 @@
       <span class="event-words"><span id="run-event-text" hidden></span><span id="run-event-raw" class="event-raw" hidden></span></span>
       <span id="run-event-idle" class="muted">Press Run.</span>
     </div>
+    <p class="hint run-keys" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
 
     <div class="run-analysis">
+    <main id="app-main" class="analysis" data-engine="loading" data-mode="build" hidden>
+      <div class="an-row" id="an-top">
+        <section id="run-machine" class="rs-panel" aria-labelledby="machine-use-title">
+          <h3 id="machine-use-title" class="label-caps"><span data-copy="run.machine">Machine use</span> <span id="machine-tick"></span></h3>
+          <div class="use-line">
+            <p><span class="res-name cpu" data-copy="run.res.cpu">CPU</span>: <span id="res-cpu-text" class="num"></span></p>
+            <div class="use-track" aria-hidden="true"><div id="res-cpu-bar" class="use-bar cpu"></div></div>
+          </div>
+          <div class="use-line">
+            <p><span class="res-name mem" data-copy="run.res.mem">Memory</span>: <span id="res-mem-text" class="num"></span></p>
+            <div class="use-track" aria-hidden="true"><div id="res-mem-bar" class="use-bar mem"></div></div>
+          </div>
+        </section>
+        <section id="reserve-card" class="rs-panel reserve-card" role="status" aria-labelledby="reserve-title" hidden>
+          <h3 id="reserve-title" class="label-caps" data-copy="run.reserve.title">Spot saved (reservation)</h3>
+          <p id="reserve-line" class="reserve-line"></p>
+          <p id="reserve-note" class="hint"></p>
+        </section>
+      </div>
+      <div class="an-row an-two">
+        <section class="rs-panel" aria-labelledby="wait-title">
+          <h3 id="wait-title" class="label-caps sand"></h3>
+          <div class="table-box">
+            <table class="an-table" id="wait-table">
+              <thead><tr id="wait-head"></tr></thead>
+              <tbody id="wait-body"></tbody>
+            </table>
+          </div>
+          <p id="wait-empty" class="empty" data-copy="run.wait.empty">No jobs waiting.</p>
+          <p id="wait-more" class="hint" hidden></p>
+        </section>
+        <section class="rs-panel" aria-labelledby="running-title">
+          <h3 id="running-title" class="label-caps amber"></h3>
+          <div class="table-box">
+            <table class="an-table" id="running-table">
+              <thead><tr>
+                <th scope="col" data-copy="run.col.job">Job</th><th scope="col" data-copy="run.col.start">Start tick</th><th scope="col" data-copy="run.col.finish">Finish tick</th>
+                <th scope="col" data-copy="run.col.cores">Cores</th><th scope="col" data-copy="run.col.mem">Memory (MB)</th>
+              </tr></thead>
+              <tbody id="running-body"></tbody>
+            </table>
+          </div>
+          <p id="running-empty" class="empty" data-copy="run.running.empty">Nothing running.</p>
+          <p id="running-more" class="hint" hidden></p>
+        </section>
+      </div>
       <section id="run-strip" class="rs-panel strip" aria-labelledby="strip-title">
         <div class="strip-head">
           <h3 id="strip-title" class="label-caps" data-copy="strip.title">Timeline</h3>
@@ -306,46 +353,30 @@
         </div>
         <p class="hint detail-only" data-copy="strip.note">Bands under the rows: CPU use (amber) and memory use (sand) over time, on the same tick axis. Diamond = a saved spot&rsquo;s guaranteed start.</p>
       </section>
-    <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
-      <section class="module tray" aria-labelledby="tray-title">
-        <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
-        <p id="tray-empty" class="empty" data-copy="run.tray.empty">Nobody is waiting.</p>
-        <ol id="tray-list" class="tray-list"></ol>
-        <p id="tray-more" class="hint" hidden></p>
-        <details class="disclosure">
-          <summary data-copy="run.alljobs">All jobs</summary>
-          <p id="machine-text" class="hint">CPU 16 cores, memory 32768 MB</p>
-          <p id="jobs-empty" class="empty">No jobs yet. Add one, or start with an example.</p>
-          <ul id="job-list" class="job-list"></ul>
-        </details>
-      </section>
-
-      <section class="module board" aria-labelledby="board-title">
-        <h3 id="board-title" class="tab" data-copy="run.timeline">The board</h3>
-        <div class="board-lines" role="group" aria-label="Machine resources">
-          <p><span class="res-name" data-copy="run.res.cpu">CPU</span> <span id="res-cpu-text" class="num"></span></p>
-          <p><span class="res-name" data-copy="run.res.mem">Memory</span> <span id="res-mem-text" class="num"></span></p>
-          <p id="reserve-card" class="reserve-line" role="status" hidden></p>
-        </div>
-        <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
-        <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
-        <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
-      </section>
-
-      <section class="module log" aria-labelledby="log-title">
-        <h3 id="log-title" class="tab" data-copy="run.why">Why</h3>
-        <p id="whylog-empty" class="empty">Each decision is explained here once the run starts.</p>
-        <p id="whylog-filter" class="empty" hidden></p>
-        <button type="button" class="btn btn-small" id="whylog-clear" hidden data-copy="run.why.all">Show all jobs</button>
-        <ol id="whylog-list" class="why-list"></ol>
-      </section>
+      <div class="an-row an-two">
+        <section class="rs-panel why-panel" aria-labelledby="log-title">
+          <div class="panel-head">
+            <h3 id="log-title" class="label-caps" data-copy="run.why">Why (decision log)</h3>
+            <span><span id="whylog-filter" class="hint" hidden></span> <button type="button" class="btn-link" id="whylog-clear" hidden data-copy="run.why.all">Show all</button></span>
+          </div>
+          <p id="whylog-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
+          <ol id="whylog-list" class="why-list"></ol>
+          <p id="whylog-more" class="hint" hidden></p>
+        </section>
+        <section id="app-footer" class="rs-panel metrics-panel" aria-labelledby="metrics-title">
+          <div class="panel-head">
+            <h3 id="metrics-title" class="label-caps" data-copy="run.metrics">How it went</h3>
+            <span id="metrics-note" class="hint"></span>
+          </div>
+          <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
+          <ul id="metrics-list" class="metrics-tiles"></ul>
+          <div id="prio-box" class="prio-box" hidden>
+            <p class="hint" data-copy="run.prio.title">Average wait by priority (0 least, 9 most important)</p>
+            <ol id="prio-list" class="prio-tiles"></ol>
+          </div>
+        </section>
+      </div>
     </main>
-
-    <footer id="app-footer" class="module" aria-labelledby="metrics-title" hidden>
-      <h3 id="metrics-title" class="tab" data-copy="run.metrics">How it went</h3>
-      <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
-      <ul id="metrics-list" class="metrics-list"></ul>
-    </footer>
       <p class="next-row run-next"><button type="button" class="btn" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
     </div>
   </section>
@@ -406,7 +437,7 @@
   <script src="js/whylog.js"></script>
   <script src="js/runmodel.js"></script>
   <script src="js/player.js"></script>
-  <script src="js/runboard.js"></script>
+  <script src="js/runpanels.js"></script>
   <script src="js/runanim.js"></script>
   <script src="js/runstage.js"></script>
   <script src="js/strip.js"></script>

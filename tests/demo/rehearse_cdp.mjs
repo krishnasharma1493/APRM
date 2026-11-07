@@ -107,7 +107,7 @@ try {
 
   // --- Row 4: big-job trap, FCFS vs ours in Compare
   await ev(`__h.loadPreset('big_job_trap'); true`);
-  check('row 4: big_job_trap loads 10 jobs on 10 cores / 10240 MB', (await ev(`APRM.store.get().jobs.length`)) === 10 && (await ev(`__h.text('machine-text')`)).includes('CPU 10 cores, memory 10240 MB'), await ev(`__h.text('machine-text')`));
+  check('row 4: big_job_trap loads 10 jobs on 10 cores / 10240 MB', (await ev(`APRM.store.get().jobs.length`)) === 10 && (await ev(`__h.text('run-dataline')`)).includes('10 jobs on 10 cores and 10240 MB'), await ev(`__h.text('run-dataline')`));
   await ev(`__h.mode('compare'); __h.tick('aging', false); __h.tick('aging_reserve', true); true`);
   await ev(`__h.click('compare-start'); true`);
   check('row 4: Compare finishes', await waitFor(`APRM.compare.snapshot().status === 'done'`));

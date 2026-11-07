@@ -170,12 +170,12 @@ try {
 
   // 3d. keyboard on job rows: Enter filters, focus stays on the list, Esc shows all again
   await load(1280);
-  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 16; i++) APRM.player.stepOnce(); document.querySelector('#tray-list li').focus(); true`);
+  await ev(`document.querySelector('#preset-tiles [data-preset="heavy_load"]').click(); document.querySelector('[data-mode-button="run"]').click(); document.getElementById('run-start').click(); APRM.player.pause(); for (let i = 0; i < 16; i++) APRM.player.stepOnce(); document.querySelector('#wait-body tr').focus(); true`);
   await key('Enter', 'Enter', 13);
-  check('Enter on a tray row selects that job', (await ev(`APRM.player.snapshot().selected`)) !== null);
-  check('focus stays on a tray row after the pick', await ev(`document.activeElement.parentNode === document.getElementById('tray-list')`));
+  check('Enter on a waiting-table row selects that job', (await ev(`APRM.player.snapshot().selected`)) !== null);
+  check('focus stays on a table row after the pick', await ev(`document.activeElement.parentNode === document.getElementById('wait-body')`));
   await key('Escape', 'Escape', 27);
-  check('Esc on a tray row clears the selection', (await ev(`APRM.player.snapshot().selected`)) === null);
+  check('Esc on a table row clears the selection', (await ev(`APRM.player.snapshot().selected`)) === null);
 
   // 3e. the demo path by keyboard alone, in day and night, with no console error (PRD 10A rows 4 to 6)
   const tabTo = async (expr) => {

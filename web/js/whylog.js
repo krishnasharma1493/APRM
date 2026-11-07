@@ -18,13 +18,13 @@
   var lastSig = '';
 
   /* The entries to show: all of them, or only those about job `selected`.
-   * Returns at most MAX_ROWS, the newest, oldest first. O(entries). */
+   * Returns at most MAX_ROWS, newest first (the design's decision log). O(entries). */
   function visible(entries, selected) {
     var out = [];
     for (var i = entries.length - 1; i >= 0 && out.length < MAX_ROWS; i--) {
       if (selected === null || selected === undefined || entries[i].job === selected) { out.push(entries[i]); }
     }
-    return out.reverse();
+    return out;
   }
 
   /* One line: "t=12: Job 7 skipped: needs 3 cores, only 1 core free." */
@@ -65,24 +65,40 @@
     var keep = APRM.keys ? APRM.keys.focusedJob(list) : null;
     clear(list);
     for (var i = 0; i < shown.length; i++) {
+      var e = shown[i];
       var li = document.createElement('li');
+      var t = document.createElement('span');
+      t.setAttribute('class', 'why-t');
+      t.textContent = String(e.t);
+      li.appendChild(t);
       var kind = document.createElement('span');
-      kind.setAttribute('class', 'why-kind kind-' + String(shown[i].kind).toLowerCase());
-      kind.textContent = words('kind.' + shown[i].kind, String(shown[i].kind));
-      li.appendChild(kind);
+      kind.setAttribute('class', 'why-kind kind-' + String(e.kind).toLowerCase());
+      kind.textContent = words('kind.' + e.kind, String(e.kind));
       var raw = document.createElement('span');
       raw.setAttribute('class', 'why-raw detail-only');
-      raw.textContent = String(shown[i].kind);
-      li.appendChild(raw);
-      li.appendChild(document.createTextNode(lineText(shown[i])));
-      li.setAttribute('class', 'why-' + String(shown[i].kind).toLowerCase() + (shown[i].job === selected ? ' why-selected' : ''));
-      li.setAttribute('data-job', String(shown[i].job));
+      raw.textContent = String(e.kind);
+      kind.appendChild(raw);
+      li.appendChild(kind);
+      var msg = document.createElement('span');
+      msg.setAttribute('class', 'why-text');
+      msg.appendChild(document.createTextNode(String(e.msg)));
+      li.appendChild(msg);
+      li.setAttribute('class', 'why-' + String(e.kind).toLowerCase() + (i === 0 && (selected === null || selected === undefined) ? ' why-now' : '') + (e.job === selected ? ' why-selected' : ''));
+      li.setAttribute('data-job', String(e.job));
       li.setAttribute('role', 'button');
-      li.setAttribute('tabindex', i === shown.length - 1 ? '0' : '-1');
+      li.setAttribute('aria-label', words('run.why.line', lineText(e), { t: e.t, kind: words('kind.' + e.kind, String(e.kind)), msg: e.msg }));
+      li.setAttribute('tabindex', i === 0 ? '0' : '-1');
       list.appendChild(li);
     }
     if (APRM.keys) { APRM.keys.refocus(list, keep); }
-    if (selected === null || selected === undefined) { list.scrollTop = list.scrollHeight || 0; }   /* newest line in view */
+    if (selected === null || selected === undefined) { list.scrollTop = 0; }   /* newest line first, in view */
+    var more = document.getElementById('whylog-more');
+    if (more) {
+      var total = 0;
+      if (selected === null || selected === undefined) { total = entries.length; } else { for (var k = 0; k < entries.length; k++) { if (entries[k].job === selected) { total++; } } }
+      more.hidden = total <= shown.length;
+      more.textContent = words('run.why.more', '', { n: shown.length, total: total });
+    }
     return shown.length;
   }
 
@@ -99,7 +115,7 @@
     if (list) {
       list.addEventListener('click', function (ev) {
         var t = ev.target;
-        if (t && t.parentNode && typeof t.getAttribute === 'function' && t.getAttribute('data-job') === null) { t = t.parentNode; }
+        while (t && t !== list && t.parentNode && typeof t.getAttribute === 'function' && t.getAttribute('data-job') === null) { t = t.parentNode; }
         var id = t && typeof t.getAttribute === 'function' ? t.getAttribute('data-job') : null;
         if (id !== null && id !== '' && APRM.player) { APRM.player.select(Number(id)); }
       });
