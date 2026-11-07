@@ -109,7 +109,121 @@
   .run-bar-in, .run-add, .run-note { padding-left: var(--s-4); padding-right: var(--s-4); }
   .run-analysis { padding: var(--s-4) var(--s-4) 0; }
   .run-bar-end { flex-basis: 100%; justify-content: flex-start; }
+  .run-bar { position: static; }   /* wrapped to four rows, a sticky bar would hide a third of a phone screen */
 }
 @media (prefers-reduced-motion: reduce) {
   .method, .chev, .method-dot::after { transition: none; }
+}
+
+/* ---------- The Run laptop and its columns (K-52) ---------- */
+.run-stage { position: relative; }
+.rs-wrap { position: relative; max-width: 90rem; margin: 0 auto; padding: 0 var(--s-6); display: flex; justify-content: center; gap: var(--s-6); overflow-x: clip; }
+.rs-wrap[data-side="off"] { flex-direction: column; gap: var(--s-4); padding-top: var(--s-4); }
+.rs-stage { position: relative; flex: 1 1 auto; min-width: 0; max-width: 46rem; }
+.rs-wrap[data-side="off"] .rs-stage { max-width: none; }
+.rs-hero { top: 0; left: 0; pointer-events: none; }
+.rs-hero .lt-board { pointer-events: none; cursor: default; }
+.rs-wrap[data-lit="on"] .lt-key { color: var(--key-lit); transition: color 400ms linear; }
+
+/* Side columns: waiting on the left, finished on the right */
+.rs-col { position: relative; z-index: 2; flex: none; padding-top: var(--s-6); display: flex; flex-direction: column; gap: var(--s-2); transition: opacity 300ms linear; }
+.rs-queue { width: 15.5rem; }
+.rs-done { width: 12.5rem; }
+.rs-wrap[data-side="off"] .rs-done { display: none; }
+.rs-wrap[data-side="off"] .rs-queue { width: auto; padding-top: 0; }
+.rs-wrap[data-side="off"] .rs-queue .rs-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.rs-col-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-2); }
+.rs-col .rs-sand { color: var(--sand); }
+.rs-col .rs-sage { color: var(--sage); }
+.rs-col .rs-muted, .rs-col-note, .rs-col-empty, .rs-col-more { color: var(--muted); }
+.rs-col-note { font-size: 0.75rem; }
+.rs-col-empty, .rs-col-more { margin: 0; font-size: var(--fs-caption); }
+.rs-col-empty { padding: var(--s-3) 0; }
+.rs-col-empty[hidden], .rs-col-more[hidden] { display: none; }
+.rs-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.rs-card { position: relative; padding: var(--s-2) var(--s-3); border-radius: var(--r-2); background: var(--surface); border: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.rs-card.sel { background: var(--raised); border-color: var(--text); }
+.rs-card.saved { border: 1.5px solid var(--amber); }
+.rs-card.skipped { border-style: dashed; border-color: var(--sand); }
+.rs-card.chosen { border-color: var(--sand); }
+.rs-card-row { display: flex; align-items: center; gap: var(--s-2); }
+.rs-order { width: 1.125rem; font-size: 0.75rem; }
+.rs-card-name { font-weight: 600; font-size: 0.875rem; white-space: nowrap; }
+.rs-pri { margin-left: auto; font-size: 0.75rem; padding: 0 6px; border-radius: 4px; border: 1px solid var(--control-border); }
+.rs-score { font-size: 0.75rem; font-weight: 600; color: var(--amber-ink); min-width: 2.75rem; text-align: right; }
+.rs-score[hidden] { display: none; }
+.rs-card-line { font-size: 0.75rem; padding-left: 1.625rem; }
+.rs-card-line[hidden] { display: none; }
+.rs-saved { color: var(--amber-ink); font-weight: 600; }
+.rs-skip { color: var(--sand); }
+.rs-corner { position: absolute; right: -1px; top: -1px; width: 0; height: 0; border-top: 10px solid var(--sand); border-left: 10px solid transparent; border-top-right-radius: var(--r-2); }
+.rs-corner[hidden] { display: none; }
+.rs-wrap[data-side="off"] .rs-card-line { padding-left: 0; }
+.rs-wrap[data-side="off"] .rs-order { display: none; }
+.rs-done-row { display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; border-radius: var(--r-1); border: 1px solid var(--hairline); background: var(--surface); font-size: var(--fs-caption); cursor: pointer; }
+.rs-done-row .rs-muted { margin-left: auto; }
+.rs-done-row.sel { border-color: var(--text); }
+
+/* The screen: laid out at 600 x 391 px and scaled into the lid; the same colours in both themes */
+.rs-screen-hold { position: absolute; left: 0; top: 0; width: 600px; height: 391px; transform-origin: 0 0; }
+.rs-screen { position: absolute; left: 0; top: 0; width: 600px; height: 391px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+  color: var(--screen-text); background: var(--screen); font-size: 12px; line-height: 1.3; transform-origin: 0 0; }
+.rs-scr-head { display: flex; justify-content: space-between; align-items: baseline; }
+.rs-scr-caps { font-size: 11px; line-height: 1.2; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.rs-scr-tick { font-size: 14px; font-weight: 600; }
+.rs-screen .rs-muted { color: var(--screen-muted); }
+.rs-screen .rs-amber { color: var(--screen-amber); }
+.rs-screen .rs-sand { color: var(--screen-sand); }
+.rs-scr-body { display: flex; gap: 18px; flex: 1 1 auto; min-height: 0; }
+.rs-scr-left { width: 300px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+.rs-scr-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.rs-scr-group { display: flex; flex-direction: column; gap: 6px; }
+.rs-scr-note { font-size: 11px; color: var(--screen-muted); }
+.rs-scr-note[hidden], .rs-scr-idle[hidden], .rs-spot[hidden], .rs-tag[hidden] { display: none; }
+.rs-cells { display: flex; flex-wrap: wrap; gap: 4px; width: 300px; }
+.rs-cell { position: relative; width: var(--cell-w, 34px); height: var(--cell-h, 26px); border-radius: 3px; border: 1px solid var(--screen-line); }
+.rs-cell[hidden] { display: none; }
+.rs-cell.on { border-color: transparent; }
+.rs-cell.held { border: 1px dashed var(--screen-amber); }
+.rs-cell-fill { position: absolute; inset: -1px; border-radius: 3px; opacity: 0; color: var(--screen-ink); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.rs-cell.on .rs-cell-fill { opacity: 1; }
+.rs-cell-held { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; color: var(--screen-amber); }
+.rs-mem { position: relative; width: 300px; height: 34px; }
+.rs-mem-slots { position: absolute; inset: 0; display: flex; gap: 3px; }
+.rs-mem-slot { flex: 1 1 0; border-radius: 3px; border: 1px dashed var(--screen-line); }
+.rs-mem-slot[hidden] { display: none; }
+.rs-mem-segs { position: absolute; inset: 0; }
+.rs-seg { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; border: 1px solid var(--screen-ink); color: var(--screen-ink); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rs-seg.held { border: 1px dashed var(--screen-amber); background: transparent; }
+.rs-spot { margin-top: auto; padding: 6px 10px; border-radius: 6px; border: 1.5px solid var(--screen-amber); font-size: 12px; font-weight: 600; color: var(--screen-amber); }
+.rs-tiles { display: flex; flex-direction: column; gap: 6px; }
+.rs-tile { padding: 6px 8px; border-radius: 6px; background: var(--screen-raised); border: 1px solid var(--screen-track); display: flex; flex-direction: column; gap: 4px; }
+.rs-tile.sel { border-color: var(--screen-text); }
+.rs-tile-row { display: flex; align-items: center; gap: 6px; font-size: 12px; min-width: 0; }
+.rs-badge { flex: none; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 3px; color: var(--screen-ink); font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.rs-tile-name { font-weight: 600; white-space: nowrap; }
+.rs-tile-need { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-track { position: relative; flex: 1 1 auto; height: 4px; border-radius: 2px; background: var(--screen-track); overflow: hidden; }
+.rs-bar { position: absolute; inset: 0; transform-origin: 0 50%; transition: transform 300ms linear; }
+.rs-ends { font-size: 11px; white-space: nowrap; }
+.rs-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--screen-amber); color: var(--screen-amber); white-space: nowrap; }
+.rs-scr-idle { font-size: 12px; color: var(--screen-muted); }
+.rs-wrap .tone-0 { background: var(--screen-job-0); } .rs-wrap .tone-1 { background: var(--screen-job-1); }
+.rs-wrap .tone-2 { background: var(--screen-job-2); } .rs-wrap .tone-3 { background: var(--screen-job-3); }
+.rs-wrap .tone-4 { background: var(--screen-job-4); } .rs-wrap .tone-5 { background: var(--screen-job-5); }
+.rs-wrap .tone-6 { background: var(--screen-job-6); } .rs-wrap .tone-7 { background: var(--screen-job-7); }
+.rs-wrap .tone-8 { background: var(--screen-job-8); } .rs-wrap .tone-9 { background: var(--screen-job-9); }
+
+/* Without 3D transforms: a flat laptop seen from the front */
+.rs-flat { position: absolute; top: var(--s-6); display: flex; flex-direction: column; align-items: center; }
+.rs-flat-lid { position: relative; width: 100%; aspect-ratio: 400 / 272; border-radius: 12px 12px 4px 4px; background: var(--metal-deep); box-shadow: inset 0 0 0 1px var(--metal-hi), inset 0 0 0 2px var(--metal-void); }
+.rs-flat-screen { position: absolute; left: 1.75%; top: 3.3%; right: 1.75%; bottom: 4.4%; border-radius: 3px; background: var(--screen); overflow: hidden; }
+.rs-flat-base { position: relative; width: 114%; height: 16px; border-radius: 2px 2px 12px 12px; background: var(--metal); box-shadow: inset 0 0 0 1px var(--metal-edge), inset 0 1px 0 var(--metal-hi); }
+
+/* Arriving from Build: only the laptop shows while it closes up and glides in */
+.run-panel > * { transition: opacity 300ms linear; }
+.run-panel[data-arriving="on"] > :not(#run-stage), .run-panel[data-arriving="on"] .rs-col { opacity: 0; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-bar, .rs-col, .run-panel > *, .rs-wrap[data-lit="on"] .lt-key { transition: none; }
 }
