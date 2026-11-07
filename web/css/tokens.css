@@ -49,6 +49,19 @@
   --metal-ink: #C8C6CE;
   --metal-dim: #8A8794;
   --screen: #0C0C0D;           /* the laptop's lit screen stays dark in both themes */
+  /* The Run laptop's screen content (K-52): the same in both themes, because the screen stays dark. */
+  --screen-text: #F2EEE6;
+  --screen-muted: #A8A39A;
+  --screen-amber: #E9C987;
+  --screen-sand: #C8B9A0;
+  --screen-sage: #8FB8A8;
+  --screen-raised: #1E1E21;
+  --screen-track: #2A2A2E;
+  --screen-line: #3A3C42;
+  --screen-ink: #0C0C0D;       /* numbers on a job tone */
+  --screen-job-0: #E9C987; --screen-job-1: #8FB8A8; --screen-job-2: #C8B9A0; --screen-job-3: #B9803F; --screen-job-4: #D98579;
+  --screen-job-5: #A7A57A; --screen-job-6: #B08F8B; --screen-job-7: #A7D9CB; --screen-job-8: #E3B467; --screen-job-9: #C49A7C;
+  --key-lit: #F6EAD4;          /* key legends while jobs run: the backlit keyboard */
   --core-on: #C9A867;          /* a CPU core in the socket */
   --core-lit: #F3DCA8;         /* a core while CPU is highlighted */
   --chip-fill: #A3957D;        /* a memory chip */

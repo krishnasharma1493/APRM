@@ -84,7 +84,7 @@ The tokens live in `web/css/tokens.css` (dark default and the warm-paper light s
 **North star: "One amber light in a dark room."** A near-black void, warm stone greys, and one soft amber light. Colour means a state, never decoration. Everything is flat: no gradients, glows, neon or glass blur, with one exception, a faint static amber spotlight behind the Build laptop so the black-metal laptop reads on the dark page.
 
 - **Build** is a split page. Left (55%): the machine drawn as a laptop pulled apart into five layers (lid, keyboard, logic board with the CPU socket, memory carrier, bottom case), each with a leader line to a label holding the exact number. Right: the settings (machine, examples, jobs, more ways) and a sticky bar with the one primary button.
-- **Run** and **Compare** keep their layouts and take the new palette and type.
+- **Run** shows the same laptop assembled, with the run on its screen (K-52, D83); the one spotlight moves with the laptop. **Compare** keeps its layout and takes the new palette and type.
 
 ## Colours
 
