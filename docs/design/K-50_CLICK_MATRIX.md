@@ -86,8 +86,8 @@ Deferrals:
 | Run | Pause | click | Stops | PRD 7 | as expected | PASS |
 | Run | Speed | 2x | Speed changes; the 2x button is pressed | PRD 7, K-51 | as expected | PASS |
 | Run | Add a job right now | valid | Accepted, then scheduled | PRD 7 | as expected | PASS |
-| Run | Add a job right now | duplicate id | Refused in plain words | PRD 7 | id: Job id 500 already exists. | PASS |
-| Run | Reset | click | Back to no run; board empty message | PRD 7 | as expected | PASS |
+| Run | Add a job right now | duplicate id | Refused in plain words | PRD 7 | arrival: Arrival 5 is before current time 59. | PASS |
+| Run | Reset | click | Back to no run; timeline empty message | PRD 7 | as expected | PASS |
 | Run | Play | from the first screen | Starts and plays | K-50 #123 | as expected | PASS |
 | Run | Step | from the first screen | Starts and takes one event | K-50 #123 | as expected | PASS |
 | Run | Space | from the first screen | Starts and plays | K-50 #123 | as expected | PASS |
@@ -97,10 +97,10 @@ Deferrals:
 | Run | More settings | run-threshold = -1 | Plain message; More settings opens; Run works after fixing it | PRD 3, K-50 #124 | Check More settings. reserve_threshold must be 0 to 1000000. | PASS |
 | Run | More settings | run-eps = 5 | Plain message; More settings opens; Run works after fixing it | PRD 3, K-50 #124 | Check More settings. epsilon must be 0.01 to 1. | PASS |
 | Run | More settings | run-eps = 0.1234 | Plain message; More settings opens; Run works after fixing it | PRD 3, K-50 #124 | Check More settings. epsilon must be a decimal number like 0.1 with at most 3 decimals (no exponent, no sign). | PASS |
-| Run | Tray card | click, then again | Selects the job, log filters, second click clears | BLUEPRINT 5 | as expected | PASS |
+| Run | Waiting row | click, then again | Selects the job, log filters, second click clears | BLUEPRINT 5 | as expected | PASS |
 | Run | Why log line | click, then Show all jobs | Filters to that job, then clears | BLUEPRINT 5 | as expected | PASS |
-| Run | Board card | click | Selects the job | BLUEPRINT 5 | as expected | PASS |
-| Run | All jobs | click | Opens the job list | K-49 | as expected | PASS |
+| Run | Timeline row | click | Selects the job | BLUEPRINT 5, K-53 | as expected | PASS |
+| Run | Running and waiting tables | after steps | Rows equal the engine state | K-54 | as expected | PASS |
 | Run | Add a job right now | bad priority | Refused in plain words, run continues | PRD 7 | priority must be 0 to 9. | PASS |
 | Run | Show details | during a finished run | Exact engine numbers, raw kinds shown | K-49 | 8.083333333 | PASS |
 | Compare | Stale note | jobs changed after comparing | Says press Compare again | K-27 | as expected | PASS |
