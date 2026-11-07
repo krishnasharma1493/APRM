@@ -1,4 +1,4 @@
-// test_player.mjs: tests for Run mode (K-25, event cursor K-51): player.js, runboard.js, canvas.js, whylog.js.
+// test_player.mjs: tests for Run mode (K-25, event cursor K-51): player.js, runpanels.js, whylog.js, and canvas.js (still used by Compare).
 // Run: node tests/web/test_player.mjs
 // The real web/js scripts run in a node:vm context with a small fake DOM built from the ids in
 // the real index.html. Logic tests use a fake engine behind the APRM.wasm wrapper interface and a
@@ -28,7 +28,7 @@ class Text { constructor(t) { this._t = t; } get textContent() { return this._t;
 class El {
   constructor(tag, id = '') {
     this.tag = tag; this.id = id; this.attrs = {}; this.children = []; this.listeners = {};
-    this.hidden = false; this.value = ''; this.disabled = false;
+    this.hidden = false; this.value = ''; this.disabled = false; this.style = {};
   }
   get textContent() { return this.children.map((c) => c.textContent).join(''); }
   set textContent(v) { this.children = String(v) === '' ? [] : [new Text(String(v))]; }
@@ -65,7 +65,7 @@ function fakeDocument() {
     if (v) el.value = v[1];
     byId[m[2]] = el;
   }
-  const cv = byId['run-canvas'];
+  const cv = byId['run-canvas'] || (byId['run-canvas'] = new El('canvas', 'run-canvas'));   // canvas.js is tested on a stand-alone canvas
   cv.clientWidth = 800; cv.width = 640; cv.height = 420;
   cv.ctx = fakeCtx();
   cv.getContext = () => cv.ctx;
@@ -156,17 +156,18 @@ function ready(opts) {
   p.A.wasm = p.fe;
   p.A.whylog.mount();
   p.A.player.mount();
-  p.A.runboard.mount();
+  p.A.runpanels.mount();
   p.A.store.setJobs(JOBS.map((j) => ({ ...j })));
   return p;
 }
 
 // ---------- static ----------
-test('index.html loads runmodel, player and runboard after whylog and before app.js', () => {
+test('index.html loads runmodel, player and runpanels after whylog and before app.js', () => {
   const i = (n) => srcs.indexOf(n);
   assert.ok(i('js/canvas.js') > i('js/generator.js') && i('js/canvas.js') < i('js/whylog.js'));
   assert.ok(i('js/whylog.js') < i('js/runmodel.js') && i('js/runmodel.js') < i('js/player.js'));
-  assert.ok(i('js/player.js') < i('js/runboard.js') && i('js/runboard.js') < i('js/app.js'));
+  assert.ok(i('js/player.js') < i('js/runpanels.js') && i('js/runpanels.js') < i('js/app.js'));
+  assert.equal(i('js/runboard.js'), -1, 'the old board is gone from the Run page');
 });
 
 // ---------- player state machine ----------
@@ -200,7 +201,7 @@ test('state machine: idle -> paused -> playing -> paused -> finished -> reset', 
   P.reset();
   assert.equal(P.snapshot().status, 'idle');
   assert.equal(p.fe.live.size, 0);
-  assert.equal(p.doc.byId['canvas-empty'].hidden, false);
+  assert.equal(p.doc.byId['wait-empty'].textContent, 'Nothing to show yet. Press Run.');
 });
 
 test('Step shows exactly one log entry; the engine is stepped only when the queued moment is used up', () => {
@@ -340,9 +341,13 @@ test('log: entries are pulled with since = last seq, never twice, shown as text'
   const list = p.doc.byId['whylog-list'];
   assert.equal(list.children.length, 3);
   const line = list.children[0].children;
-  assert.equal(line.length, 3, 'a plain kind label, the raw kind, and the engine sentence');
-  assert.equal(line[2].constructor.name, 'Text', 'the engine sentence is a text node, never parsed markup');
-  assert.equal(line[2].textContent, 't=1: <img src=x onerror=alert(1)>');
+  assert.equal(line.length, 3, 'the tick, the kind (with the raw kind inside), and the engine sentence');
+  assert.equal(line[0].textContent, '2', 'newest first: the third entry is at tick 2');
+  assert.equal(line[1].children[0].textContent, 'Skipped');
+  assert.equal(line[1].children[1].textContent, 'SKIP');
+  assert.equal(line[2].children[0].constructor.name, 'Text', 'the engine sentence is a text node, never parsed markup');
+  assert.equal(line[2].textContent, '<img src=x onerror=alert(1)>');
+  assert.equal(list.children[2].children[0].textContent, '1', 'the oldest last');
   assert.equal(p.doc.byId['run-event-text'].textContent, '<img src=x onerror=alert(1)>', 'the banner shows the engine words as text');
 });
 
@@ -354,11 +359,10 @@ test('why log: only the newest MAX_ROWS rows exist as page elements', () => {
   assert.equal(p.doc.byId['whylog-list'].children.length, p.A.whylog.MAX_ROWS);
 });
 
-test('selecting a job filters the log and highlights it in the job list; Show all clears', () => {
+test('selecting a job filters the log and highlights its table row; Show all clears', () => {
   const p = ready({ totalSteps: 8 });
   const P = p.A.player;
   P.start();
-  p.doc.byId['job-list'].children = JOBS.map((j) => { const li = new El('li'); li.textContent = 'Job ' + j.id + ': arrives 0'; return li; });
   for (let i = 0; i < 8; i++) P.stepOnce();
   assert.equal(p.doc.byId['whylog-list'].children.length, 8);
   P.select(2);
@@ -367,8 +371,10 @@ test('selecting a job filters the log and highlights it in the job list; Show al
   assert.ok(rows.every((r) => r.getAttribute('data-job') === '2'));
   assert.match(p.doc.byId['whylog-filter'].textContent, /job 2/);
   assert.equal(p.doc.byId['whylog-clear'].hidden, false);
-  assert.equal(p.doc.byId['job-list'].children[1].getAttribute('class'), 'sel');
-  assert.equal(p.doc.byId['job-list'].children[0].getAttribute('class'), '');
+  const rows2 = p.doc.byId['wait-body'].children;
+  const selRow = rows2.find((r) => r.getAttribute('data-job') === '2');
+  if (selRow) assert.equal(selRow.getAttribute('aria-current'), 'true');
+  assert.ok(rows2.filter((r) => r.getAttribute('data-job') !== '2').every((r) => r.getAttribute('aria-current') === null));
   p.doc.byId['whylog-list'].fire('click', { target: rows[0] });
   assert.equal(P.snapshot().selected, 2);
   p.doc.byId['whylog-clear'].click();
@@ -483,10 +489,16 @@ test('metrics are shown from the engine, null as n/a', () => {
   const p = ready({ totalSteps: 10 });
   const P = p.A.player;
   P.start(); for (let i = 0; i < 6; i++) P.stepOnce();
-  const items = p.doc.byId['metrics-list'].children.map((li) => li.textContent);
-  assert.ok(items.includes('Average wait: 1.500'));
-  assert.ok(items.includes('Longest wait: 3'));
-  assert.ok(items.some((t) => t.startsWith('CPU busy (utilization): no value yet')));
+  const tile = (k) => p.doc.byId['metrics-list'].children.find((li) => li.getAttribute('data-metric') === k);
+  assert.equal(p.doc.byId['metrics-list'].children.length, 7, 'every metric of the engine');
+  assert.equal(tile('avg_wait').children[1].textContent, '1.5 ticks');
+  assert.equal(tile('max_wait').children[1].textContent, '3 ticks');
+  assert.equal(tile('util_mem').children[1].textContent, '50.0%');
+  assert.match(tile('util_cpu').children[1].textContent, /^no value yet/);
+  p.A.store.setDetails(true);
+  assert.equal(tile('avg_wait').children[1].textContent, '1.5 ticks', 'Show details: the engine value unchanged');
+  assert.equal(tile('util_mem').children[1].textContent, '0.5');
+  assert.equal(p.doc.byId['prio-list'].children.length, 10);
 });
 
 test('the head line, the settings line and the machine lines show the case and the engine numbers', () => {
@@ -689,67 +701,50 @@ test('board: no 2D context returns false; 5000 cards lay out inside the board', 
   assert.ok(L.lanes[0].cards.every((c) => c.x + c.w <= L.lanes[0].x + L.lanes[0].w + 1e-6));
 });
 
-test('tray: waiting jobs in engine order with score, next and saved stamps, click selects', () => {
+test('waiting table: engine order, priority, score, saved tag; a click selects, a second clears', () => {
   const p = ready({ totalSteps: 10 });
-  p.A.player.start();
-  const list = p.doc.byId['tray-list'];
+  p.A.store.setPolicies(['aging']);
+  p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce(); p.A.player.stepOnce(); p.A.player.stepOnce();
+  const body = p.doc.byId['wait-body'];
   const st = p.A.player.snapshot().state;
-  assert.equal(list.children.length, st.waiting.length);
-  assert.equal(p.doc.byId['tray-count'].textContent, '(' + st.waiting.length + ')');
-  assert.deepEqual(plain(list.children.map((c) => Number(c.getAttribute('data-job')))), plain(st.waiting.map((w) => w.id)));
-  const first = list.children[0], w0 = st.waiting[0];
-  assert.equal(first.children[0].children[0].textContent, String(w0.id), 'stamped number');
-  const texts = first.children[1].children.map((c) => c.textContent);
-  assert.ok(texts.includes('Job ' + w0.id));
-  assert.ok(texts.some((t) => t === 'Next' || t === 'Spot saved'));
-  if (typeof w0.score === 'number') assert.ok(texts.some((t) => t.includes('score ' + w0.score.toFixed(3))));
-  assert.equal(first.getAttribute('tabindex'), '0', 'one Tab stop for the list');
-  list.fire('click', { target: first });
-  assert.equal(p.A.player.snapshot().selected, w0.id);
-  list.fire('click', { target: first });
+  assert.equal(p.doc.byId['wait-title'].textContent, 'Waiting (' + st.waiting.length + ')');
+  assert.deepEqual(plain(body.children.map((r) => Number(r.getAttribute('data-job')))), plain(st.waiting.map((w) => w.id)));
+  const first = body.children[0];
+  assert.equal(first.children[0].textContent, '1');
+  assert.equal(first.children[1].tag, 'th', 'the job cell heads its row');
+  assert.match(first.children[1].textContent, /^Job 7 · spot saved$/);
+  assert.equal(first.children[3].textContent, '6.200', 'the engine score, three decimals');
+  assert.equal(first.getAttribute('tabindex'), '0', 'one Tab stop for the table');
+  body.fire('click', { target: first });
+  assert.equal(p.A.player.snapshot().selected, 7);
+  body.fire('click', { target: first });
   assert.equal(p.A.player.snapshot().selected, null);
+  p.A.store.setDetails(true);
+  const head = p.doc.byId['wait-head'].children.map((c) => c.textContent);
+  assert.deepEqual(plain(head), ['Queue order', 'Job', 'Priority', 'Score', 'Sort key']);
+  assert.equal(body.children[0].children[4].textContent, 'K = 1000 × 2 − 100 × 0 = 2000 (lowest first), then arrival, id');
 });
 
-function trayWith(waiting, reservation) {
+test('running table and machine use: the engine numbers; the saved-spot card says when', () => {
   const p = ready({ totalSteps: 10 });
-  p.A.player.start();
-  const s = p.A.player.snapshot().state;
-  s.waiting = waiting; s.reservation = reservation;
-  p.A.player.select(null); p.A.player.select(waiting.length ? waiting[0].id : null);
-  return p;
-}
-const W = (id, score) => ({ id, score, priority: 3, arrival: 0, duration: 5, cpu: 1, mem: 10 });
-
-test('tray: a null score shows no score; the first job is Next, the reserved job is Spot saved', () => {
-  const p = trayWith([W(4, null), W(7, 2.5)], { id: 7, shadow_time: 40 });
-  const [a, b] = p.doc.byId['tray-list'].children;
-  const texts = (li) => li.children[1].children.map((c) => c.textContent);
-  assert.ok(!texts(a).join(' ').includes('score'), 'null score');
-  assert.ok(texts(a).includes('Next'));
-  assert.ok(texts(b).includes('Spot saved') && texts(b).join(' ').includes('score 2.500'));
-  assert.equal(b.children[1].children[1].getAttribute('class'), 'stamp stamp-saved');
-  assert.match(a.getAttribute('class'), /selected/);
-  assert.equal(a.getAttribute('aria-pressed'), 'true');
+  p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce(); p.A.player.stepOnce(); p.A.player.stepOnce();
+  const rows = p.doc.byId['running-body'].children;
+  assert.equal(p.doc.byId['running-title'].textContent, 'Running (2)');
+  assert.deepEqual(plain(rows[0].children.map((c) => c.textContent)), ['Job 1', '0', '5', '8', '4096']);
+  assert.equal(p.doc.byId['res-cpu-bar'].style.transform, 'scaleX(0.7500)');
+  assert.equal(p.doc.byId['reserve-card'].hidden, false);
+  assert.equal(p.doc.byId['reserve-line'].textContent, 'Job 7 starts by tick 9.');
 });
 
-test('tray: only 40 cards on the page, but the count and "more" line stay true', () => {
-  const p = trayWith(Array.from({ length: 95 }, (_, i) => W(i + 1, 1)), null);
-  assert.equal(p.doc.byId['tray-list'].children.length, 40);
-  assert.equal(p.doc.byId['tray-count'].textContent, '(95)');
-  assert.equal(p.doc.byId['tray-more'].hidden, false);
-  assert.equal(p.doc.byId['tray-more'].textContent, 'and 55 more');
-});
-
-test('board click selects the card under the cursor and a second click clears it', () => {
+test('tables keep only 100 rows on the page, but the heading and the note stay true', () => {
   const p = ready({ totalSteps: 10 });
-  p.A.player.start(); for (let i = 0; i < 4; i++) p.A.player.stepOnce();
-  const regs = p.canvas.__regions;
-  if (!regs.length) return;
-  const r = regs[0];
-  p.canvas.fire('click', { clientX: r.x + 1, clientY: r.y + 1 });
-  assert.equal(p.A.player.snapshot().selected, r.id);
-  p.canvas.fire('click', { clientX: r.x + 1, clientY: r.y + 1 });
-  assert.equal(p.A.player.snapshot().selected, null);
+  p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
+  const st = p.A.player.snapshot().state;
+  st.waiting = Array.from({ length: 140 }, (_, i) => ({ id: i + 100, score: null, priority: 1, arrival: 0, duration: 1, cpu: 1, mem: 1 }));
+  p.A.player.select(100);
+  assert.equal(p.doc.byId['wait-body'].children.length, 100);
+  assert.equal(p.doc.byId['wait-title'].textContent, 'Waiting (140)');
+  assert.equal(p.doc.byId['wait-more'].textContent, 'Showing the first 100 of 140.');
 });
 
 // ---------- the real engine ----------
@@ -762,7 +757,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     await p.A.wasm.init();
     p.A.whylog.mount();
     p.A.player.mount();
-    p.A.runboard.mount();
+    p.A.runpanels.mount();
     return p;
   };
   const drain = (p) => { let n = 0; while (p.sched.timers.length) { p.sched.run(); n++; } return n; };
@@ -889,11 +884,11 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
       const P = p.A.player;
       assert.equal(P.start(), true, preset.name + ': ' + P.snapshot().error);
       P.stepOnce(); P.stepOnce();
-      p.canvas.ctx.calls.length = 0;
       P.setSpeed(4); P.play(); drain(p);
       assert.equal(P.snapshot().status, 'finished', preset.name);
       assert.equal(P.snapshot().state.done, preset.jobs.length, preset.name);
-      assert.ok(p.canvas.ctx.calls.length > 20, 'drawn');
+      assert.equal(p.doc.byId['metrics-list'].children.length, 7, 'drawn');
+      assert.equal(p.doc.byId['metrics-note'].textContent, 'All jobs finished');
     }
     p.A.player.reset();
   });

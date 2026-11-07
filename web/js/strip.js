@@ -382,6 +382,11 @@
   /* The view player.js calls after every change. */
   function onFrame(f, why) {
     last = f;
+    if (ui) {   /* the empty state follows at once; the drawing waits for the next frame */
+      var live = !!(f.state && f.hist && f.events > 0);
+      ui.empty.hidden = live;
+      ui.scroll.hidden = !live;
+    }
     if (why === 'reset' || why === 'start') { cache = null; if (ui) { ui.scroll.scrollLeft = 0; ui.scroll.scrollTop = 0; } }
     if (why === 'details' || why === 'mode') { colours = null; cache = null; }
     hideTip();

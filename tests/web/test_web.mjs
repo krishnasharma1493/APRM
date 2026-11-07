@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 // ---------- static checks on the files ----------
 
 const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
-  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/runmodel.js', 'js/player.js', 'js/runboard.js', 'js/runanim.js', 'js/runstage.js', 'js/strip.js', 'js/compare.js',
+  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/runmodel.js', 'js/player.js', 'js/runpanels.js', 'js/runanim.js', 'js/runstage.js', 'js/strip.js', 'js/compare.js',
   'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
@@ -386,8 +386,7 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.equal(doc.byId['engine-status'].textContent, 'Starting the engine…');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'loading');
   assert.equal(doc.byId['engine-error'].hidden, true);
-  assert.equal(doc.byId['jobs-empty'].textContent, 'No jobs yet. Add one, or start with an example.');
-  assert.equal(doc.byId['jobs-empty'].hidden, false);
+  assert.equal(doc.byId['run-source-yours'].textContent, 'Your jobs \u00b7 0');
   release(); await tick(); await tick();
   assert.equal(doc.byId['engine-status'].textContent, 'Engine ready');
   assert.equal(doc.byId['app-main'].getAttribute('data-engine'), 'ready');
@@ -399,10 +398,10 @@ test('app: loading text first, then ready; empty state text; mode switch', async
   assert.equal(doc.buttons[0].getAttribute('aria-pressed'), 'false');
   // jobs hide the empty text and are shown as text (engine/user text via textContent)
   APRM.store.setJobs([{ id: 3, arrival: 0, duration: 5, cpu: 1, mem: 2, priority: 1 }]);
-  assert.equal(doc.byId['jobs-empty'].hidden, true);
-  assert.match(doc.byId['job-list'].children[0].textContent, /^Job 3:/);
+  assert.equal(doc.byId['run-source-yours'].textContent, 'Your jobs \u00b7 1');
+  assert.equal(doc.byId['run-dataline'].textContent, '1 job on 16 cores and 32768 MB (32 GB).');
   APRM.store.setJobs([]);
-  assert.equal(doc.byId['jobs-empty'].hidden, false);
+  assert.equal(doc.byId['run-source-yours'].textContent, 'Your jobs \u00b7 0');
 });
 
 test('shell: one step at a time, Next buttons move on, Show details switch works without storage', async () => {
@@ -532,9 +531,11 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
       const snap = A.player.snapshot();
       assert.equal(snap.state.done, snap.state.total, name + ' finished');
       A.store.setDetails(true);
-      const rows = page.doc.byId['metrics-list'].children.map((c) => c.textContent);
-      assert.ok(rows.includes('Average wait: ' + String(snap.metrics.avg_wait)), name + ': exact average wait');
-      assert.ok(rows.includes('Time until everything finished (makespan): ' + String(snap.metrics.makespan)), name + ': exact makespan');
+      const tile = (k) => page.doc.byId['metrics-list'].children.find((c) => c.getAttribute('data-metric') === k).children[1].textContent;
+      for (const k of ['avg_wait', 'max_wait', 'avg_turnaround', 'makespan']) assert.equal(tile(k), String(snap.metrics[k]) + ' ticks', name + ': exact ' + k);
+      for (const k of ['weighted_completion', 'util_cpu', 'util_mem']) assert.equal(tile(k), String(snap.metrics[k]), name + ': exact ' + k);
+      const prio = page.doc.byId['prio-list'].children.map((c) => c.children[1].textContent);
+      snap.metrics.avg_wait_by_priority.forEach((v, i) => assert.equal(prio[i], v === null ? '\u2014' : String(v), name + ': exact wait of priority ' + i));
     }
   });
 

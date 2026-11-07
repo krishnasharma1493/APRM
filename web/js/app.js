@@ -44,12 +44,6 @@
     target.hidden = true;
   }
 
-  /* One job as a line of text. Plain list until the editor (K-24) replaces it. */
-  function jobLine(job) {
-    return 'Job ' + job.id + ': arrives ' + job.arrival + ', runs ' + job.duration +
-      ', CPU ' + job.cpu + ', memory ' + job.mem + ' MB, priority ' + job.priority;
-  }
-
   /* Draw everything from the state. Cheap enough to call on every change. */
   function render(st) {
     var status = byId('engine-status');
@@ -89,24 +83,7 @@
       modeButtons[i].setAttribute('aria-current', on ? 'step' : 'false');
     }
 
-    byId('machine-text').textContent = 'CPU ' + st.machine.cpu + ' cores, memory ' + st.machine.mem + ' MB';
-
-    var list = byId('job-list');
-    var empty = byId('jobs-empty');
-    clear(list);
-    if (st.jobs.length === 0) {
-      empty.textContent = TEXT_EMPTY;
-      empty.hidden = false;
-    } else {
-      empty.hidden = true;
-      for (var j = 0; j < st.jobs.length; j++) {
-        var li = document.createElement('li');
-        li.textContent = jobLine(st.jobs[j]);
-        list.appendChild(li);
-      }
-    }
-
-    /* canvas-empty, whylog-empty and metrics-empty are owned by player.js once mounted. */
+    /* The Run page's empty states are owned by player.js and its views once mounted. */
   }
 
   /* The big error state for a failed engine: a clear message plus the backup video link. */
@@ -222,7 +199,7 @@
 
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
-    ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'runboard', 'runstage', 'strip', 'compare', 'share'].forEach(function (name) {
+    ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'runpanels', 'runstage', 'strip', 'compare', 'share'].forEach(function (name) {
       if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
     });
   }
