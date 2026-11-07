@@ -62,3 +62,4 @@ Every use of an AI assistant that produced something we kept. One row per piece 
 | 2026-11-02 | Krishna | K-50 | Play and Step disabled on a finished run; regression test and matrix row | K-50 follow-up PR, issue #121 | to confirm |
 | 2026-11-02 | Krishna | K-50 | Click matrix updated for knapsack: six schedulers on every example, console comparison with epsilon | K-50 follow-up PR, issue #121 | to confirm |
 | 2026-11-02 | Krishna | Cleanup | Repository cleanup: tool folders untracked, run logs removed, design docs moved, LICENSE, CONTRIBUTING, docs index, README rewrite | Cleanup PR | to confirm |
+| 2026-11-07 | Krishna | Design | Warm dark palette and Inter Tight across the site; Build page ported from the Claude Design project "APRM Build" with Claude Code (exploded laptop, machine controls), slower front-facing intro; contrast, laptop and font checks | Redesign PR | to confirm |

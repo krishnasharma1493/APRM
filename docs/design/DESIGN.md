@@ -1,61 +1,71 @@
 ---
 name: APRM scheduler
-description: A production planning board that the engine fills card by card, with every decision explained.
+description: A near-black void with warm stone greys and one soft amber light; the Build step shows the machine as an exploded laptop.
 colors:
-  canvas: "#F2F3F1"
-  surface: "#FFFFFF"
-  text: "#1B1F1D"
-  muted: "#5B625E"
-  border: "#CFD3D0"
-  teal-rail: "#0B5E6B"
-  on-teal: "#FFFFFF"
-  stamp-red: "#B42318"
-  stamp-amber: "#8A4B00"
-  stamp-green: "#1D7A34"
-  chart-gray: "#8A918D"
-  error-wash: "#FBEDEB"
-  warn-wash: "#FBF1E3"
-  ok-wash: "#E9F5EC"
-  job-0: "#3A6EA5"
-  job-1: "#C27A1A"
-  job-2: "#2E8B6A"
-  job-3: "#B4483C"
-  job-4: "#8A6D2E"
-  job-5: "#5E8FA8"
-  job-6: "#A8567A"
-  job-7: "#6E7F2A"
-  job-8: "#6B7280"
-  job-9: "#94741A"
+  bg: "#0C0C0D"
+  surface: "#151517"
+  raised: "#1E1E21"
+  hairline: "#2A2A2E"
+  control-border: "#75716A"
+  text: "#F2EEE6"
+  muted: "#A8A39A"
+  amber: "#E9C987"
+  amber-ink: "#E9C987"
+  on-amber: "#0C0C0D"
+  amber-hover: "#F0D6A2"
+  amber-pressed: "#D8B46C"
+  amber-soft: "#2A2419"
+  sand: "#C8B9A0"
+  sage: "#8FB8A8"
+  error: "#E07A6B"
+  stone: "#8E8A84"
+  job-0: "#E9C987"
+  job-1: "#8FB8A8"
+  job-2: "#C8B9A0"
+  job-3: "#B9803F"
+  job-4: "#D98579"
+  job-5: "#807924"
+  job-6: "#8A6A67"
+  job-7: "#A7D9CB"
+  job-8: "#E3B467"
+  job-9: "#9D7356"
 typography:
+  hero:
+    fontFamily: "'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "3.5rem"
+    fontWeight: 800
+    lineHeight: 0.95
+    letterSpacing: "-0.03em"
+    textTransform: "uppercase"
   title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif"
-    fontSize: "1.75rem"
-    fontWeight: 650
-    lineHeight: 1.15
+    fontSize: "2.5rem"
+    fontWeight: 800
+    lineHeight: 1
     letterSpacing: "-0.02em"
+    textTransform: "uppercase"
   section:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.25
     letterSpacing: "-0.01em"
+  label:
+    fontSize: "0.6875rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "0.14em"
+    textTransform: "uppercase"
   body:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: "0"
+    lineHeight: 1.55
     fontFeature: "tabular-nums"
   caption:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 400
-    lineHeight: 1.4
-    letterSpacing: "0.01em"
+    lineHeight: 1.45
 rounded:
   sm: "0.375rem"
   md: "0.625rem"
-  lg: "0.875rem"
 spacing:
   s-1: "0.25rem"
   s-2: "0.5rem"
@@ -63,187 +73,93 @@ spacing:
   s-4: "1rem"
   s-6: "1.5rem"
   s-10: "2.5rem"
-components:
-  button:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.md}"
-    padding: "0.5rem 1rem"
-    height: "2.25rem"
-  button-primary:
-    backgroundColor: "{colors.teal-rail}"
-    textColor: "{colors.on-teal}"
-    rounded: "{rounded.md}"
-    padding: "0.5rem 1rem"
-  button-quiet:
-    backgroundColor: "transparent"
-    textColor: "{colors.teal-rail}"
-  module:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.md}"
-    padding: "0.75rem"
-  input:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.sm}"
-    padding: "0.25rem 0.5rem"
-    height: "2.25rem"
-  magnet:
-    backgroundColor: "{colors.job-0}"
-    textColor: "{colors.text}"
-    rounded: "3px"
-    height: "1.625rem"
-  stamp:
-    textColor: "{colors.teal-rail}"
-    rounded: "3px"
-    padding: "0 0.25rem"
-  stamp-reserve:
-    backgroundColor: "{colors.warn-wash}"
-    textColor: "{colors.stamp-amber}"
 ---
 
 # Design System: APRM scheduler
 
-Impeccable (`PRODUCT.md` in this folder and this file) is the design authority (D76). `APPLE_DESIGN.md` in this folder is reference only. The built site is plain HTML, CSS and classic scripts, so it works offline from `file://`, with no web fonts and no network. Engine, user, file and URL text is never injected as raw HTML, and colour is never the only signal.
+The tokens live in `web/css/tokens.css` (dark default and the warm-paper light set); this file records why they are what they are. The Build page follows the design project "APRM Build" (its `BuildPage` prototype and design board, direction 1a). Decision record: `DECISIONS.md` D81.
 
 ## Overview
 
-**Creative North Star: "The Production Planning Board"**
+**North star: "One amber light in a dark room."** A near-black void, warm stone greys, and one soft amber light. Colour means a state, never decoration. Everything is flat: no gradients, glows, neon or glass blur, with one exception, a faint static amber spotlight behind the Build laptop so the black-metal laptop reads on the dark page.
 
-The machine is a planning board that the engine fills, card by card. Jobs wait in a tray on the left. The engine places each one into a CPU lane and a memory lane over one shared time axis. A shift log on the right gives the engine's reason for each move. The board refuses the dashboard of stat cards, charts and sidebars: the page sits directly on an enamel ground, and a step is not a card.
+- **Build** is a split page. Left (55%): the machine drawn as a laptop pulled apart into five layers (lid, keyboard, logic board with the CPU socket, memory carrier, bottom case), each with a leader line to a label holding the exact number. Right: the settings (machine, examples, jobs, more ways) and a sticky bar with the one primary button.
+- **Run** and **Compare** keep their layouts and take the new palette and type.
 
-The world is built from a pale grey-green enamel ground (canvas), white slot surfaces ruled in hairlines, job magnets in ten muted hues, each with a stamped number and a hatch pattern, a teal rail that marks "now", and red, amber and green stamps for outcomes. Density is moderate and calm; text is plain sentence case. Numbers are tabular everywhere so columns hold their edges.
+## Colours
 
-Build is the job rack (a ruled sheet; on a phone, one card per job). Run is the board proper (three columns: tray, board, log). Compare is two or more boards side by side as a ruled results table plus timelines.
+| Token | Dark (default) | Light (warm paper) | Use |
+| --- | --- | --- | --- |
+| `--bg` | `#0C0C0D` | `#F5F1E8` | Page background |
+| `--surface` | `#151517` | `#FBF8F2` | Cards, panels, inputs |
+| `--raised` | `#1E1E21` | `#ECE6DA` | Hover surfaces, popovers, selected rows |
+| `--hairline` | `#2A2A2E` | `#DDD5C6` | Decorative borders and dividers only |
+| `--control-border` | `#75716A` (3.8:1 on surface, 3.4:1 on raised) | `#857D71` (3.8:1, 3.3:1) | Input and button outlines (WCAG 1.4.11) |
+| `--text` | `#F2EEE6` (16.9:1 on bg) | `#1C1A17` | Main text |
+| `--muted` | `#A8A39A` (7.8:1 on bg) | `#5C574F` | Secondary text, hints |
+| `--amber` | `#E9C987` | `#E9C987` | Primary fill, current step, running jobs, CPU, slider, selection |
+| `--amber-ink` | `#E9C987` | `#7A5714` (6.2:1) | Amber as text or a thin line |
+| `--on-amber` | `#0C0C0D` (12.3:1) | `#1C1A17` | Text on amber |
+| `--amber-hover` / `--amber-pressed` | `#F0D6A2` (13.8:1) / `#D8B46C` (9.9:1) | `#EFD49C` / `#D8B46C` | Primary button states |
+| `--amber-soft` | `#2A2419` | `#F2E4C4` | Selected-card wash |
+| `--sand` | `#C8B9A0` | `#7D6D52` | Memory, reservations, secondary highlights |
+| `--sage` | `#8FB8A8` | `#3F6B5B` | Success labels ("12 jobs on 8 cores and 32 GB", "Started", "Best") |
+| `--error` | `#E07A6B` | `#A8402F` | Error text and outlines |
+| `--stone` | `#8E8A84` | `#857D71` | Chart marks and rules only, never text |
 
-**Key Characteristics:**
-- Flat enamel and white surfaces, hairline borders, one whisper shadow.
-- Job identity is colour plus stamped number plus hatch, never colour alone.
-- One teal accent, used for "now", primary action, selection and focus.
-- System sans-serif only; tabular numerals.
-- Light and dark values for every colour; solid materials under reduced transparency or more contrast.
+**Choices that differ from the brief.** The design board proposed `--control-border: #6B6862`; it is 3.28:1 on surface but only 2.99:1 on raised, so `#75716A` is used (3:1 or more on every surface). The light `--sand-soft` and `--series-4` were adjusted until every pair passed (`tests/web/check_contrast.mjs`, 106 pairs, both themes).
 
-## Colors
+**Dark is the default** whatever the system's colour scheme. The top-bar button switches to warm paper and the choice is remembered (`localStorage`, wrapped in `try`).
 
-Restrained: tinted neutrals, one teal accent, and three status stamps; the ten job hues are the only chromatic variety and appear only on magnets and chart marks.
+### Job tones
 
-### Primary
-- **Teal Rail** (`colors.teal-rail`, dark `#5FB6C4`): the primary button, the "now" rail on the board canvas, selected tiles, links, switch on-state, focus ring, and the arrive and batch stamps.
+Ten muted warm tones derived from amber, sand, sage and stone (`--job-0` to `--job-9`, lighter on dark, deeper on paper). They were chosen by a small search that spreads lightness across the set: the smallest CIE76 distance between any two tones is 8.5 (dark) and 9.8 (light) under normal vision and simulated deuteranopia, protanopia and tritanopia (Machado 2009). Colour is still never the only signal: every block keeps its job number on a surface plate and one of three hatch patterns.
 
-### Secondary (status stamps)
-- **Stamp Green** (`colors.stamp-green`, dark `#6FCB87`): start and backfill stamps, the "Best" stamp in Compare, ok text.
-- **Stamp Amber** (`colors.stamp-amber`, dark `#E0A24A`): the reservation line and reserve and "saved" stamps.
-- **Stamp Red** (`colors.stamp-red`, dark `#F0877C`): skip stamps, field errors, bad rows, and the canvas mark.
-- Each has a wash (`error-wash`, `warn-wash`, `ok-wash`; dark `#3A1F1C`, `#38290F`, `#14301C`) used as the stamp or message background.
+### Compare charts
 
-### Neutral
-- **Enamel Ground** (`colors.canvas`, dark `#121513`): page ground, segmented-control track, selected tray card.
-- **Slot White** (`colors.surface`, dark `#1B1F1D`): modules, tables, inputs, buttons, magnet number plates.
-- **Ink** (`colors.text`, dark `#ECEFED`) and **Muted Ink** (`colors.muted`, dark `#A3ABA6`): body and secondary text, captions, labels.
-- **Hairline** (`colors.border`, dark `#343A37`): every rule and border; darkened further under `prefers-contrast: more`.
-- **Chart Gray** (`colors.chart-gray`, `#8A918D`): switch track, dashed separators, scrollbar, chart marks and rules only.
-
-### Job hues
-Ten muted hues `job-0` to `job-9` (dark values retuned lighter, defined in `tokens.css`). Job index maps to hue by id modulo ten.
-
-### Named Rules
-**The Never-Alone Rule.** Colour is never the only signal. A magnet carries its number on a surface plate, and hues 0 to 9 are paired with hatch patterns; status stamps carry words; "Best" is a word.
-**The Chart Gray Rule.** Chart Gray is for marks and rules, never for text.
-**The One Rail Rule.** Teal is the single accent. Status colours appear as stamps, not as surfaces or decoration.
+Bars for the first three schedulers are amber, sand and sage; the fourth on are stone shades with a diagonal hatch (a bar chart has no line to dash, so the hatch is its equivalent).
 
 ## Typography
 
-**Display, Body and Label Font:** the system sans-serif stack (`-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`, `system-ui`, `sans-serif`). No web fonts, no monospace.
+**Inter Tight** (SIL OFL 1.1), from Google Fonts (`intertight` v9, Latin subset, font version 3.004, one variable file for weights 400 to 800), embedded as a base64 woff2 in `web/css/fonts.css` by `web/fonts/embed_font.mjs`. The licence is in `web/fonts/OFL.txt`. No font link and no network request; `tests/demo/check_layout_cdp.mjs` checks `document.fonts.check('800 40px "Inter Tight"')` from `file://` with the network off. Fallback: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`.
 
-**Character:** neutral and plain, like printed planning-sheet type; hierarchy comes from weight and size steps, not from face changes.
+| Role | Size / line-height | Weight | Case and tracking |
+| --- | --- | --- | --- |
+| Hero (Build only) | 56px / 0.95 (48px under 1360px wide, 36px under 640px) | 800 | ALL CAPS, -0.03em |
+| Page title (Run, Compare) | 40px / 1.0 (32px under 640px) | 800 | ALL CAPS, -0.02em |
+| Section title | 20px / 1.25 | 600 | Sentence case, -0.01em |
+| Small label ("STEP 1 · YOUR MACHINE", "CPU", module tabs) | 11px / 1.2 | 600 | ALL CAPS, +0.14em |
+| Body | 15px / 1.55 | 400 | Sentence case |
+| Caption, hints | 13px / 1.45 | 400 | Sentence case |
+| Numbers | inherit | 600 | `tabular-nums` |
 
-### Hierarchy
-- **Title** (650, 1.75rem, 1.15, -0.02em): step titles (Build, Run, Compare).
-- **Section** (600, 1.25rem, 1.25, -0.01em): sub-sections and the Compare verdict sentence (max 46rem).
-- **Body** (400, 0.9375rem, 1.5): all running text; h3 is body size at 600.
-- **Caption** (400, 0.8125rem, 1.4, 0.01em): labels, hints, table headings (600), module tabs (650), log lines.
-- The top bar title is a one-off 1.0625rem at 650.
-- Stamps and magnet-kind tags use 0.75rem at 650.
+Only weights 400, 500, 600 and 800 appear (a test enforces it). No monospace anywhere and no bracket-style "[ LABEL ]" tags.
 
-### Named Rules
-**The Tabular Rule.** Numbers use `tabular-nums` globally; changing figures never shift their neighbours.
-**The Plain Words Rule.** Sentence case; plain words first with the technical term beside it.
+## The Build laptop
 
-## Layout
-
-Page width is capped at 78rem and centred, with `1rem` side padding and `2.5rem` bottom. Spacing steps are 0.25, 0.5, 0.75, 1, 1.5 and 2.5rem; gaps between modules are 0.75rem.
-
-Run is a three-column grid: tray `13rem`-`15rem`, board `1fr`, log `14rem`-`19rem`, top-aligned. Under 62rem it collapses to one column with the board first. The board canvas is 360px high; the control rail sits under it, divided by a hairline, with Play primary and status pushed right.
-
-Build uses an auto-fit grid of boxes (min 16rem) and a job table with a sticky footer; under 45rem each table row becomes a four-column grid card with data-label captions, and the Next row is sticky at the bottom. Example tiles are one ruled rack (3 columns, 2 under 60rem, 1 under 36rem) divided by 1px hairline gaps. Compare table keeps a right edge for numbers by reserving `3.25rem` for the Best stamp, and turns into per-row blocks under 45rem.
-
-The top bar is sticky, wraps to two rows on a phone, and carries title, step control, and view controls (theme, Show details). "Engine ready" is announced but not displayed.
-
-## Elevation & Depth
-
-Flat. Depth is conveyed by tonal steps (enamel ground, white slot) and hairline borders. There is exactly one shadow, the whisper, used on the pressed segmented option, the flying magnet, the toast and the sticky Next button. The top bar is a translucent material (blur 20px, saturate 180%, hairline bottom and inset top edge) that becomes solid under reduced transparency or more contrast.
-
-### Shadow Vocabulary
-- **Whisper** (`box-shadow: 0 1px 2px rgba(27, 31, 29, 0.06)`; dark `0 1px 2px rgba(0, 0, 0, 0.4)`): the only drop shadow.
-- **Selection inset** (`box-shadow: inset 0 0 0 2px var(--accent)` for tiles, `var(--text)` for selected tray cards): selection is an inset ring, not elevation.
-
-### Named Rules
-**The Flat Enamel Rule.** Surfaces are flat at rest; the whisper appears only on things that are raised or moving.
-
-## Shapes
-
-Small, practical radii: `0.375rem` for inputs and error blocks, `0.625rem` for buttons, modules, tables and the tile rack, `0.875rem` reserved in the scale. Magnets, stamps and kind tags are tighter, `3px`, like die-cut cards. The switch track is a pill. Hairlines are 1px; selection rings are 2px; the focus ring is `2px` solid teal with `2px` offset (inset on tiles). Dashed hairlines mark a "new" group in the job table.
+- **Layers** (footprint 400 × 272 px): bottom case z 0, memory carrier 70, logic board 170, keyboard 272, lid 322 (lid upright at rotateX 100°). Closed, they sit 0 to 9.5 px apart.
+- **Camera:** three-quarter view, perspective 2200px, stage `rotateX(54°) rotateZ(-32°)`. The intro starts facing the front (`rotateX(60°)`, no turn) and turns to the three-quarter view as it glides left.
+- **Rules:** 1 cell = 1 core in a fixed 8 × 8 socket (above 64: a full grid and "grid × N = cores"); 1 chip = 4096 MB in 16 slots, the last chip part-filled (above 65536 MB: 16 chips and "+ N GB more"). Invalid input keeps the last valid picture and shakes the part once.
+- **Linking:** pointing at the CPU, memory or keyboard part (or its label) lights its setting card, and the other way round; clicking jumps to the setting.
+- **Intro (once per visit, `sessionStorage`):** closed (300 ms) → lid opens over 1100 ms → glide left and turn over 900 ms → layers separate over 900 ms, top-down, 90 ms apart (so a rising layer never passes through the one above) → labels fade in → settings rise in at 3.0 s; done at 3.5 s. Skip and Replay buttons. Reduced motion: a 300 ms cross-fade only, with no parallax, lift or shake.
+- **Pointer parallax:** at most 2.5° and 3°.
+- **Fallbacks:** narrow screens put the laptop on top with a two-column label list; without 3D transforms the drawing is left out and the labels show as a list.
 
 ## Components
 
-### Buttons
-- **Shape:** gently rounded (0.625rem), min height 2.25rem (small: 2rem), `0.5rem 1rem` padding.
-- **Default:** white surface, ink text, hairline border.
-- **Primary:** teal fill, on-teal text, weight 600; one per screen.
-- **Quiet:** transparent, teal text.
-- **Press:** instant scale to 0.97 over 100ms on `:active`; disabled is 0.5 opacity. Snaps under reduced motion.
-
-### Segmented control (the three steps)
-Enamel track in a hairline pill-rect; the pressed option is a white surface with the whisper shadow and weight 600; colour transitions 240ms.
-
-### Modules
-White surface, hairline border, `0.625rem` radius, `0.75rem` padding. Each has a caption-size tab title at 650. Modules are not nested inside cards.
-
-### Job magnet (signature)
-A rounded 3px block in its job hue, three sizes by share (heights 1.375, 1.625, 2rem), holding a white number plate in 650 caption. Two hatch patterns (135 degree and 90 degree 1px lines at `rgba(255,255,255,0.45)`, dark `rgba(0,0,0,0.3)`) differentiate hues. On the board canvas, magnets are drawn with the same tokens read from computed styles; the selected magnet gets a 2px ink outline. A started job's magnet flies from the tray to its slot (fixed position, whisper shadow) and snaps in under reduced motion.
-
-### Stamps and kind tags
-1px bordered, 3px radius, 0.75rem at 650. Start and backfill are green, skip is red, reserve and saved are amber, arrive, batch select and promote info are teal, anything else is muted. Washes sit behind green, red and amber ones.
-
-### Inputs
-White, hairline, `0.375rem` radius, 2.25rem min height. Errors use the error wash with a red border; a lead error is fused to the list under it. Labels are muted captions above.
-
-### Tables and tray
-Collapsed borders, bottom hairlines only, sticky muted caption headers, right-aligned numeric cells. The tray list is rows divided by hairlines; the selected card has an enamel fill and a 2px ink inset ring.
-
-### Other
-Disclosure (a CSS-drawn chevron that rotates 90 degrees, opens in one click), switch (pill track with a sliding thumb), toast (inverted ink on canvas, centred under the bar), empty state (one muted sentence plus one action).
-
-### Motion
-Press 100ms; move 240ms with `cubic-bezier(0.2, 0, 0, 1)`. All animation and transition collapse under `prefers-reduced-motion`.
+- **Buttons:** outlined in `--control-border`, transparent, 6px radius; hover `--raised`. **Primary:** amber fill, on-amber text, hover and pressed ambers; one per screen. Quiet: amber-ink text.
+- **Step control:** surface track; the current step is filled amber (it is the selected state).
+- **Inputs:** surface fill, control-border outline, 600 tabular numbers; errors outline in `--error` with the message next to the field.
+- **Setting cards:** hairline border; highlighted with an amber border and a 3px amber-soft ring.
+- **Examples:** one card per example, hairline border; hover border amber; selected = amber-soft fill, amber border, amber-ink title.
+- **Top bar:** solid `--bg` with a hairline under it (no glass).
+- **Toast:** `--raised` with a hairline.
 
 ## Do's and Don'ts
 
-### Do:
-- **Do** read every colour from the tokens; give any new colour light and dark values.
-- **Do** pair a hue with its number plate and hatch for anything that identifies a job.
-- **Do** keep one primary teal button per screen.
-- **Do** use hairlines and tonal steps to separate regions; use a ruled rack for related cells rather than separate cards.
-- **Do** keep engine numbers and sentences verbatim, with `tabular-nums`.
-- **Do** keep the focus ring visible on every control and honor reduced motion, transparency and contrast.
-
-### Don't:
-- **Don't** build a dashboard of stat cards, sidebars or decorative charts on top of the board.
-- **Don't** nest cards in cards.
-- **Don't** use Chart Gray for text or use status colours as page decoration.
-- **Don't** add a second shadow style or web fonts.
-- **Don't** signal state by colour alone.
-
-### Not canonized
-The build carries a handful of one-off sizes (top bar title 1.0625rem, 0.75rem stamps, the 360px/260px/220px canvas heights, `3.25rem` stamp reserve) and a glass blur on the top bar taken from the reference file. They are recorded in Layout and Elevation as observed values, not as extension rules; new surfaces should use the four type steps and the solid whisper-shadow vocabulary first.
+- **Do** read every colour from the tokens; a new colour needs a dark and a light value and a contrast pair in the check.
+- **Do** pair a job tone with its number and hatch.
+- **Do** keep one amber primary button per screen.
+- **Don't** add gradients, glows or blur (the Build spotlight is the only light effect, and it goes under `prefers-contrast: more`).
+- **Don't** use all caps outside the hero, page titles and small labels.
+- **Don't** use monospace or a second typeface.
