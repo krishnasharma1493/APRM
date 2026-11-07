@@ -222,7 +222,7 @@
 
   /* Connect the Build mode scripts (K-24) and the Run mode scripts (K-25) that are present on the page. */
   function mountBuildMode() {
-    ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'compare', 'share'].forEach(function (name) {
+    ['presets', 'editor', 'generator', 'machine', 'laptop', 'whylog', 'player', 'runboard', 'compare', 'share'].forEach(function (name) {
       if (APRM[name] && typeof APRM[name].mount === 'function') { APRM[name].mount(); }
     });
   }

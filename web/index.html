@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/run.css">
 </head>
 <body>
   <header class="topbar material">
@@ -183,38 +184,93 @@
   </section>
 
   <section id="run-panel" class="panel run-panel" aria-label="Run" hidden>
-    <h2 data-copy="run.heading">Run your jobs</h2>
-
-    <div class="run-setup">
-      <div class="run-choice">
-        <label for="run-policy" class="label" data-copy="run.policy">How to choose the next job</label>
-        <select id="run-policy"></select>
+    <div class="run-top">
+      <div class="run-head">
+        <div class="run-head-words">
+          <p class="label-caps" data-copy="run.kicker">Step 2 · Run</p>
+          <h2 data-copy="run.heading">Run your jobs</h2>
+          <p id="run-dataline" class="muted"></p>
+        </div>
+        <div id="run-source" class="segmented run-source" role="group" data-copy-label="run.source" aria-label="Which jobs">
+          <button type="button" id="run-source-yours" aria-pressed="true">Your jobs</button>
+          <button type="button" id="run-source-big" aria-pressed="false" data-copy="run.source.big">Big case · 500 jobs</button>
+        </div>
       </div>
-      <button type="button" class="btn" id="run-start" data-copy="run.start">Run</button>
-      <p id="run-settings-summary" class="hint"></p>
-      <details class="disclosure" id="run-more">
-        <summary data-copy="run.more">More settings</summary>
-        <div class="settings-grid">
-          <div>
-            <label for="run-alpha" class="label" data-copy="run.alpha">Aging rate &alpha; (alpha_milli)</label>
-            <input id="run-alpha" type="text" inputmode="numeric" value="100">
-            <p class="hint" data-copy="run.alpha.hint"></p>
+      <div class="run-choose">
+        <p class="label-caps" id="run-policy-label" data-copy="run.policy">How to choose the next job</p>
+        <div id="run-methods" class="methods" role="radiogroup" aria-labelledby="run-policy-label"></div>
+        <select id="run-policy" class="visually-hidden" tabindex="-1" aria-hidden="true"></select>
+        <details class="more-card" id="run-more">
+          <summary><span class="more-title" data-copy="run.more">More settings</span><span class="more-line"><span id="run-settings-summary"></span><span class="chev" aria-hidden="true"></span></span></summary>
+          <div class="settings-grid">
+            <div>
+              <label for="run-alpha" class="field-label" data-copy="run.alpha">Aging rate &alpha; &times; 1000 (alpha_milli)</label>
+              <input id="run-alpha" type="text" inputmode="numeric" value="100">
+              <p class="hint" data-copy="run.alpha.hint"></p>
+            </div>
+            <div>
+              <label for="run-threshold" class="field-label" data-copy="run.threshold">Spot-saving threshold T, in ticks</label>
+              <input id="run-threshold" type="text" inputmode="numeric" value="50">
+              <p class="hint" data-copy="run.threshold.hint"></p>
+            </div>
+            <div>
+              <label for="run-eps" class="field-label" data-copy="run.eps">Knapsack accuracy &epsilon;</label>
+              <input id="run-eps" type="text" inputmode="decimal" value="0.1">
+              <p class="hint" data-copy="run.eps.hint"></p>
+            </div>
           </div>
-          <div>
-            <label for="run-threshold" class="label" data-copy="run.threshold">Reservation threshold T (ticks)</label>
-            <input id="run-threshold" type="text" inputmode="numeric" value="50">
-            <p class="hint" data-copy="run.threshold.hint"></p>
-          </div>
-          <div>
-            <label for="run-eps" class="label" data-copy="run.eps">Knapsack &epsilon; (epsilon)</label>
-            <input id="run-eps" type="text" inputmode="decimal" value="0.1">
-            <p class="hint" data-copy="run.eps.hint"></p>
+        </details>
+      </div>
+    </div>
+
+    <div class="run-bar" id="run-bar">
+      <div class="run-bar-in" role="group" data-copy-label="run.controls" aria-label="Run controls">
+        <button type="button" class="btn btn-primary" id="run-start" data-copy="run.start">Run</button>
+        <button type="button" class="btn run-play" id="run-play" aria-keyshortcuts="Space" disabled>Play</button>
+        <button type="button" class="btn" id="run-step" aria-keyshortcuts="ArrowRight" disabled data-copy="run.step">Step</button>
+        <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
+        <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
+        <div id="run-speed" class="segmented speed-group" role="group" data-copy-label="run.speed" aria-label="Speed">
+          <button type="button" data-speed="0.5" aria-pressed="false">0.5&times;</button>
+          <button type="button" data-speed="1" aria-pressed="true">1&times;</button>
+          <button type="button" data-speed="2" aria-pressed="false">2&times;</button>
+          <button type="button" data-speed="4" aria-pressed="false">4&times;</button>
+        </div>
+        <button type="button" class="btn" id="run-add-open" aria-expanded="false" aria-controls="run-add" disabled data-copy="run.add">Add a job right now</button>
+        <div class="run-bar-end">
+          <p id="run-status" class="pill" role="status" data-status="idle"><span class="pill-dot" aria-hidden="true"></span><span id="run-status-text">Not started</span></p>
+          <p id="run-clock" class="clock" aria-live="off">Time: tick 0</p>
+        </div>
+      </div>
+      <div id="run-add" class="run-add" hidden>
+        <p id="ra-note" class="hint"></p>
+        <div class="add-grid">
+          <input id="ra-id" type="hidden" value="1">
+          <label><span data-copy="run.add.arrival">Arrives at (tick)</span><input id="ra-arrival" type="text" inputmode="numeric" value="0"></label>
+          <label><span data-copy="run.add.duration">Runs for (ticks)</span><input id="ra-duration" type="text" inputmode="numeric" value="4"></label>
+          <label><span data-copy="run.add.cpu">Cores (CPU)</span><input id="ra-cpu" type="text" inputmode="numeric" value="2"></label>
+          <label><span data-copy="run.add.mem">Memory (MB)</span><input id="ra-mem" type="text" inputmode="numeric" value="2048"></label>
+          <label><span data-copy="run.add.priority">Priority (0&ndash;9)</span><input id="ra-priority" type="text" inputmode="numeric" value="5"></label>
+          <div class="add-actions">
+            <button type="button" class="btn btn-quiet" id="ra-submit" disabled>Add job</button>
+            <button type="button" class="btn" id="ra-cancel" data-copy="run.add.cancel">Cancel</button>
           </div>
         </div>
-      </details>
+        <p id="ra-error" class="field-error" role="alert" hidden></p>
+      </div>
+      <p id="run-stale" class="run-note" hidden data-copy="run.stale">You changed how jobs are chosen. Press Run again to run with the new choice.</p>
+      <p id="run-error" class="field-error run-note" role="alert" hidden></p>
     </div>
-    <p id="run-error" class="field-error" role="alert" hidden></p>
 
+    <div id="run-stage" class="run-stage"></div>
+
+    <div id="run-event" class="run-event" aria-live="polite">
+      <span id="run-event-kind" class="event-kind" hidden></span>
+      <span class="event-words"><span id="run-event-text" hidden></span><span id="run-event-raw" class="event-raw" hidden></span></span>
+      <span id="run-event-idle" class="muted">Press Run.</span>
+    </div>
+
+    <div class="run-analysis">
     <main id="app-main" class="board-grid" data-engine="loading" data-mode="build" hidden>
       <section class="module tray" aria-labelledby="tray-title">
         <h3 id="tray-title" class="tab"><span data-copy="run.tray">Waiting</span> <span id="tray-count" class="num"></span></h3>
@@ -238,16 +294,6 @@
         </div>
         <p id="canvas-empty" class="empty" data-copy="run.canvas.empty">Nothing to show yet. Add jobs, then press Run.</p>
         <canvas id="run-canvas" class="run-canvas" width="640" height="420" role="img" aria-label="Planning board: CPU and memory lanes over time, one card per started job" hidden></canvas>
-        <div class="control-rail" role="group" aria-label="Run controls">
-          <button type="button" class="btn btn-primary" id="run-play" disabled>Play</button>
-          <button type="button" class="btn" id="run-step" disabled data-copy="run.step">Step</button>
-          <button type="button" class="btn" id="run-jump" disabled data-copy="run.jump">Jump to end</button>
-          <button type="button" class="btn" id="run-reset" disabled data-copy="run.reset">Reset</button>
-          <label for="run-speed" class="speed"><span data-copy="run.speed">Speed</span> <output id="run-speed-out">1</output></label>
-          <input id="run-speed" type="range" min="1" max="200" value="1">
-          <p id="run-status" class="status" role="status">idle</p>
-        </div>
-        <p id="run-clock" class="hint" aria-live="off" data-copy="run.clock.none">No run yet. Press Run.</p>
         <p class="hint" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
       </section>
 
@@ -265,23 +311,8 @@
       <p id="metrics-empty" class="empty" data-copy="run.metrics.empty">Numbers appear once some jobs have finished.</p>
       <ul id="metrics-list" class="metrics-list"></ul>
     </footer>
-
-    <details class="disclosure" id="run-add">
-      <summary data-copy="run.add">Add a job right now</summary>
-      <div class="add-grid">
-        <label for="ra-id">id</label><input id="ra-id" type="text" inputmode="numeric" value="1">
-        <label for="ra-arrival">arrival</label><input id="ra-arrival" type="text" inputmode="numeric" value="0">
-        <label for="ra-duration">duration</label><input id="ra-duration" type="text" inputmode="numeric" value="1">
-        <label for="ra-cpu">cpu</label><input id="ra-cpu" type="text" inputmode="numeric" value="1">
-        <label for="ra-mem">mem (MB)</label><input id="ra-mem" type="text" inputmode="numeric" value="1024">
-        <label for="ra-priority">priority</label><input id="ra-priority" type="text" inputmode="numeric" value="5">
-      </div>
-      <button type="button" class="btn" id="ra-submit" disabled data-copy="run.add.submit">Add job (pauses first)</button>
-      <p id="ra-note" class="hint" data-copy="run.add.note"></p>
-      <p id="ra-error" class="field-error" role="alert" hidden></p>
-    </details>
-
-    <p class="next-row"><button type="button" class="btn btn-primary" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
+      <p class="next-row run-next"><button type="button" class="btn" data-next="compare" data-copy="next.run">Next: compare schedulers</button></p>
+    </div>
   </section>
 
   <section id="compare-panel" class="panel compare-panel" aria-label="Compare" hidden>
@@ -338,7 +369,9 @@
   <script src="js/laptop.js"></script>
   <script src="js/canvas.js"></script>
   <script src="js/whylog.js"></script>
+  <script src="js/runmodel.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/runboard.js"></script>
   <script src="js/compare.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/keys.js"></script>

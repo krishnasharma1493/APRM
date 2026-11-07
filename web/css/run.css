@@ -1,0 +1,115 @@
+/* Run page (K-51 to K-55): the "APRM Build" RunPage design. Colours, type and spacing come from
+ * tokens.css; this file only lays the page out. Animations change transform and opacity only. */
+
+.run-panel { max-width: none; padding: 0 0 var(--s-10); }
+.run-top, .run-bar-in, .run-add, .run-note, .run-analysis { max-width: 80rem; margin-left: auto; margin-right: auto; }
+
+/* Head: kicker, title, the job and machine line, and "Which jobs" */
+.run-top { padding: var(--s-10) var(--s-10) 0; display: flex; flex-direction: column; gap: var(--s-6); }
+.run-head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s-6); flex-wrap: wrap; }
+.run-head-words { display: flex; flex-direction: column; gap: 0.625rem; }
+.run-head h2 { font-size: var(--fs-title); line-height: var(--lh-title); letter-spacing: var(--ls-title); font-weight: var(--fw-title); text-transform: uppercase; margin: 0; }
+.run-head p { margin: 0; }
+.run-source { border: 1px solid var(--hairline); background: transparent; flex-wrap: wrap; }
+.run-source button { font-weight: 500; }
+.run-source button[aria-pressed="true"] { background: var(--raised); color: var(--amber-ink); font-weight: 500; }
+
+/* The six schedulers as radio cards */
+.run-choose { display: flex; flex-direction: column; gap: 0.625rem; }
+.run-choose > .label-caps { margin: 0; }
+.methods { display: grid; grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr)); gap: var(--s-2); }
+.method {
+  display: flex; align-items: center; gap: 0.625rem; text-align: left; min-height: 2.75rem; padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-1); border: 1px solid var(--hairline); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 0.875rem; line-height: 1.3; cursor: pointer;
+  transition: background-color var(--press) ease-out, border-color var(--press) ease-out;
+}
+.method:hover:not(:disabled) { background: var(--raised); }
+.method[aria-checked="true"] { border-color: var(--amber); background: var(--raised); }
+.method:disabled { opacity: 0.5; cursor: not-allowed; }
+.method-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--control-border); display: flex; align-items: center; justify-content: center; }
+.method-dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); opacity: 0; transition: opacity var(--press) ease-out; }
+.method[aria-checked="true"] .method-dot { border-color: var(--amber); }
+.method[aria-checked="true"] .method-dot::after { opacity: 1; }
+.method-term { color: var(--muted); }
+
+/* More settings: one card with the settings line always visible */
+.more-card { border: 1px solid var(--hairline); border-radius: var(--r-2); }
+.more-card > summary {
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap;
+  padding: 0.625rem 0.875rem; cursor: pointer; border-radius: var(--r-2); font-size: 0.875rem;
+}
+.more-card > summary::-webkit-details-marker { display: none; }
+.more-title { font-weight: 600; }
+.more-line { display: flex; align-items: center; gap: 0.625rem; color: var(--muted); font-size: var(--fs-caption); }
+.chev { width: 7px; height: 7px; border-right: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); transform: translateY(-2px) rotate(45deg); transition: transform 200ms var(--ease); }
+.more-card[open] .chev { transform: translateY(1px) rotate(225deg); }
+.more-card .settings-grid { padding: var(--s-1) 0.875rem var(--s-4); display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--s-4); }
+.more-card .field-label { display: block; font-size: var(--fs-caption); margin-bottom: var(--s-1); }
+.more-card input { width: 100%; }
+.more-card .hint { margin: var(--s-1) 0 0; }
+
+/* The sticky control bar */
+.run-bar { position: sticky; top: 3.5rem; z-index: 15; background: var(--bg); border-bottom: 1px solid var(--hairline); margin-top: var(--s-6); }
+.run-bar-in { padding: var(--s-3) var(--s-10); display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.run-bar .btn { min-height: 2.5rem; padding: 0 0.875rem; font-size: 0.875rem; }
+.run-bar #run-start { padding: 0 1.25rem; font-size: var(--fs-body); }
+.run-bar .run-play { min-width: 5.25rem; }
+.speed-group { border: 1px solid var(--hairline); background: transparent; }
+.speed-group button { min-width: 2.5rem; min-height: 2rem; padding: 0 var(--s-2); font-weight: 600; }
+.speed-group button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.run-bar-end { flex: 1 1 auto; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-3); }
+.pill { margin: 0; display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--fs-caption); padding: var(--s-1) 0.625rem; border-radius: var(--r-1); border: 1px solid var(--hairline); color: var(--muted); }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill[data-status="playing"], .pill[data-status="jumping"] { color: var(--amber-ink); }
+.pill[data-status="paused"] { color: var(--text); }
+.pill[data-status="finished"] { color: var(--sage); }
+.pill[data-status="error"] { color: var(--error); }
+.clock { margin: 0; font-size: var(--fs-body); font-weight: 600; white-space: nowrap; }
+
+/* Add a job right now: an inline form under the bar */
+.run-add { padding: 0 var(--s-10) var(--s-4); display: flex; flex-direction: column; gap: 0.625rem; }
+.run-add[hidden] { display: none; }
+.run-add .hint { margin: 0; }
+.run-add .add-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.375rem, 1fr)); gap: var(--s-3); align-items: end; }
+.run-add label { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-caption); }
+.run-add input { width: 100%; }
+.add-actions { display: flex; gap: var(--s-2); }
+.add-actions .btn-quiet { border-color: var(--amber); font-weight: 600; }
+.run-note { padding: 0 var(--s-10) var(--s-3); margin-top: 0; margin-bottom: 0; font-size: var(--fs-caption); }
+#run-stale { color: var(--amber-ink); }
+.run-bar .field-error.run-note { margin: 0 auto var(--s-3); max-width: calc(80rem - 2 * var(--s-10)); }
+
+/* The event banner under the laptop */
+.run-event { max-width: 56.25rem; margin: 0 auto; padding: var(--s-2) var(--s-6) 0; min-height: 3.5rem; display: flex; align-items: flex-start; justify-content: center; gap: 0.625rem; }
+.event-kind {
+  flex: none; margin-top: 2px; font-size: var(--fs-label); line-height: var(--lh-label); font-weight: var(--fw-label); letter-spacing: var(--ls-label);
+  text-transform: uppercase; padding: 5px var(--s-2); border-radius: 4px; border: 1px solid var(--control-border); color: var(--muted);
+}
+.event-kind[data-kind="START"], .event-kind[data-kind="RESERVE"], .event-kind[data-kind="BACKFILL"] { border-color: var(--amber); color: var(--amber-ink); }
+.event-kind[data-kind="FINISH"] { border-color: var(--sage); color: var(--sage); }
+.event-kind[data-kind="SKIP"], .event-kind[data-kind="BATCH_SELECT"] { border-color: var(--sand); color: var(--sand); }
+.event-words { font-size: 1rem; text-wrap: pretty; }
+.event-raw { color: var(--muted); font-size: var(--fs-caption); }
+.event-raw::before { content: " \00b7 "; }
+
+/* Analysis below */
+.run-analysis { padding: var(--s-6) var(--s-10) 0; }
+.run-next { border-top: 1px solid var(--hairline); padding-top: var(--s-6); }
+
+@media (max-width: 56.25rem) {
+  .run-top { padding: var(--s-6) var(--s-6) 0; }
+  .run-head h2 { font-size: 1.875rem; }
+  .run-bar-in, .run-add, .run-note { padding-left: var(--s-6); padding-right: var(--s-6); }
+  .run-analysis { padding: var(--s-4) var(--s-6) 0; }
+  .methods { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 40rem) {
+  .run-top { padding: var(--s-6) var(--s-4) 0; }
+  .run-bar-in, .run-add, .run-note { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .run-analysis { padding: var(--s-4) var(--s-4) 0; }
+  .run-bar-end { flex-basis: 100%; justify-content: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .method, .chev, .method-dot::after { transition: none; }
+}
