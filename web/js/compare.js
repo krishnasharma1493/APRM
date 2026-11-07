@@ -445,15 +445,49 @@
 
   /* Colours from the CSS variables, with fixed fallbacks. */
   function themeColours() {
-    var out = { text: '#1B1F1D', muted: '#5B625E', border: '#CFD3D0', accent: '#0B5E6B', jobs: ['#3A6EA5', '#C27A1A', '#2E8B6A', '#B4483C', '#8A6D2E', '#5E8FA8', '#A8567A', '#6E7F2A', '#6B7280', '#94741A'] };
+    var out = { text: '#F2EEE6', muted: '#A8A39A', border: '#2A2A2E', accent: '#E9C987',
+      jobs: ['#E9C987', '#8FB8A8', '#C8B9A0', '#B9803F', '#D98579', '#807924', '#8A6A67', '#A7D9CB', '#E3B467', '#9D7356'],
+      series: ['#E9C987', '#C8B9A0', '#8FB8A8', '#8E8A84', '#B3AEA6', '#6F6B66'] };
     if (typeof getComputedStyle !== 'function' || !document.documentElement) { return out; }
     try {
       var cs = getComputedStyle(document.documentElement);
       var pick = function (n, fb) { var v = String(cs.getPropertyValue(n) || '').trim(); return v || fb; };
-      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--border', out.border); out.accent = pick('--accent', out.accent);
+      out.text = pick('--text', out.text); out.muted = pick('--muted', out.muted); out.border = pick('--hairline', out.border); out.accent = pick('--amber', out.accent);
       for (var i = 0; i < 10; i++) { out.jobs[i] = pick('--job-' + i, out.jobs[i]); }
+      for (var k = 0; k < SERIES; k++) { out.series[k] = pick('--series-' + k, out.series[k]); }
     } catch (e) { /* keep the fallbacks */ }
     return out;
+  }
+
+  var SERIES = 6;
+
+  /* A scheduler name as short lines for a chart axis: words joined while a line stays within `max`
+   * characters, so neighbouring names never run into each other. O(length). */
+  function wrapWords(text, max) {
+    var words = String(text).split(' '), lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      if (line && (line + ' ' + words[i]).length > max) { lines.push(line); line = words[i]; }
+      else { line = line ? line + ' ' + words[i] : words[i]; }
+    }
+    if (line) { lines.push(line); }
+    return lines;
+  }
+
+  /* The fill for scheduler number i in a chart: amber, sand and sage for the first three, then stone
+   * shades with a diagonal hatch, so the fourth scheduler on is told apart by pattern as well as shade.
+   * Falls back to the plain colour when a pattern cannot be made. O(1). */
+  function seriesFill(col, i) {
+    var colour = col.series[i % SERIES];
+    if (i < 3 || typeof document.createElement !== 'function') { return colour; }
+    try {
+      var tile = document.createElement('canvas');
+      tile.width = 8; tile.height = 8;
+      var g = tile.getContext('2d');
+      g.fillStyle = colour; g.fillRect(0, 0, 8, 8);
+      g.strokeStyle = col.text; g.globalAlpha = 0.35; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(0, 8); g.lineTo(8, 0); g.stroke();
+      return g.createPattern(tile, 'repeat') || colour;
+    } catch (e) { return colour; }
   }
 
   /* One finished board, in the same form as the Run page: the engine's start and finish times, on the
@@ -509,7 +543,7 @@
     }
     var col = themeColours();
     try {
-      var labels = model.columns.map(function (c) { return labelOf(c.policy).split(' ('); });   /* two short lines, never slanted */
+      var labels = model.columns.map(function (c) { return wrapWords(labelOf(c.policy), 12); });   /* short lines, never slanted */
       for (var m = 0; m < CHART_METRICS.length; m++) {
         var key = CHART_METRICS[m];
         var title = '';
@@ -524,12 +558,12 @@
         var data = model.columns.map(function (c) { var v = c.metrics[key]; return (typeof v === 'number') ? v : null; });
         charts.push(new window.Chart(cv, {
           type: 'bar',
-          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: col.accent }] },
+          data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: model.columns.map(function (c, i) { return seriesFill(col, i); }) }] },
           options: {
             animation: false, responsive: true, maintainAspectRatio: false, color: col.text,
             plugins: { legend: { display: false }, title: { display: true, text: title + ' (ticks)', color: col.text } },
             scales: {
-              x: { ticks: { color: col.muted, maxRotation: 0, minRotation: 0, autoSkip: false }, grid: { color: col.border } },
+              x: { ticks: { color: col.muted, maxRotation: 0, minRotation: 0, autoSkip: false, font: { size: 11 } }, grid: { color: col.border } },
               y: { beginAtZero: true, ticks: { color: col.muted }, grid: { color: col.border } }
             }
           }
