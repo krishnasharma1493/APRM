@@ -133,7 +133,7 @@ function fakeWasm({ totalSteps = 10, msg } = {}) {
   };
   f.state = (h) => {
     const s = f.sims.get(h);
-    return { now: s.steps, done: Math.floor(s.steps / 3), total: s.jobs.length, cap: { cpu: 16, mem: 32768 }, free: { cpu: 4, mem: 8192 },
+    return { now: s.steps, done: s.steps >= totalSteps ? s.jobs.length : Math.min(Math.floor(s.steps / 3), Math.max(0, s.jobs.length - 1)), total: s.jobs.length, cap: { cpu: 16, mem: 32768 }, free: { cpu: 4, mem: 8192 },
       waiting: [{ id: 7, score: 6.2, priority: 2, arrival: 0, duration: 30, cpu: 8, mem: 20480 }, { id: 8, score: 5, priority: 5, arrival: 1, duration: 3, cpu: 1, mem: 10 }],
       running: [{ id: 1, start: 0, finish: 5, cpu: 8, mem: 4096 }, { id: 2, start: 1, finish: 9, cpu: 4, mem: 8192 }],
       reservation: s.steps >= 2 ? { id: 7, shadow_time: 9 } : null };
@@ -365,7 +365,10 @@ test('selecting a job filters the log and highlights it in the job list; Show al
   const rows = p.doc.byId['whylog-list'].children;
   assert.ok(rows.length > 0 && rows.length < 8);
   assert.ok(rows.every((r) => r.getAttribute('data-job') === '2'));
+  assert.match(p.doc.byId['whylog-filter'].textContent, /job 2/);
+  assert.equal(p.doc.byId['whylog-clear'].hidden, false);
   assert.equal(p.doc.byId['job-list'].children[1].getAttribute('class'), 'sel');
+  assert.equal(p.doc.byId['job-list'].children[0].getAttribute('class'), '');
   p.doc.byId['whylog-list'].fire('click', { target: rows[0] });
   assert.equal(P.snapshot().selected, 2);
   p.doc.byId['whylog-clear'].click();
@@ -441,6 +444,17 @@ test('mid-run add errors are shown by the add form and the run survives', () => 
   p.doc.byId['ra-duration'].value = 'x';
   p.doc.byId['ra-submit'].click();
   assert.equal(p.doc.byId['ra-error'].textContent, 'Use whole numbers only. Check “Runs for (ticks)”.');
+});
+
+test('opening the add form on the last moment shows its last entry and finishes the run', () => {
+  const p = ready({ totalSteps: 1 });
+  const P = p.A.player;
+  P.start(); P.stepOnce();
+  assert.equal(P.snapshot().pending, 1);
+  p.doc.byId['run-add-open'].click();
+  assert.equal(P.snapshot().pending, 0);
+  assert.equal(P.snapshot().status, 'finished');
+  assert.equal(p.doc.byId['run-step'].disabled, true);
 });
 
 test('adding a job after the run finished re-opens it', () => {
@@ -814,6 +828,22 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
       }
     }
     assert.ok(checked > 200, checked + ' moment ends checked');
+    P.reset();
+  });
+
+  test('real engine: pausing in the middle of a jump shows exactly the engine state', async () => {
+    const p = await realPage();
+    const jobs = [];
+    for (let i = 0; i < 3000; i++) jobs.push({ id: i + 1, arrival: Math.floor(i / 3), duration: 1 + (i % 7), cpu: 1 + (i % 3), mem: 64, priority: i % 10 });
+    p.A.store.setJobs(jobs);
+    p.A.store.setPolicies(['aging']);
+    const P = p.A.player;
+    P.start(); P.jumpToEnd(); p.sched.run();
+    assert.equal(P.snapshot().status, 'jumping');
+    P.pause();
+    const s = P.snapshot();
+    assert.deepEqual(plain(p.A.runmodel.diff(s.state, p.A.wasm.state(P.handle()))), []);
+    assert.deepEqual(plain(s.metrics), plain(p.A.wasm.metrics(P.handle())));
     P.reset();
   });
 

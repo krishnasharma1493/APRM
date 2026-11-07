@@ -186,7 +186,7 @@
     'run.controls': 'Run controls',
     'run.stale': 'You changed how jobs are chosen. Press Run again to run with the new choice.',
     'run.nojobs': 'There are no jobs. Add some in Build mode first.',
-    'run.event.none': 'Press Run. The engine decides; the laptop shows each decision.',
+    'run.event.none': 'Press Run. The engine decides; this page shows each decision.',
     'run.event.ready': 'Press Play to start, or Step to see one event.',
     'run.event.raw': '{kind} \u00b7 event {n} \u00b7 tick {t}',
     'method.fcfs': 'First come, first served',

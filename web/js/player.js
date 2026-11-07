@@ -20,7 +20,7 @@
  *
  * Views register with addView(fn); fn(frame, why) is called after every change with a read-only
  * frame (see frame()) and a reason: 'start', 'event', 'events', 'jump', 'select', 'reset',
- * 'settings', 'details', 'add', 'error'. Elements are made with createElement and textContent only.
+ * 'settings', 'details', 'add', 'error', 'status' (play, pause or speed), 'mode' (the Run step opened). Elements are made with createElement and textContent only.
  *
  * Classic script: attaches APRM.player only. Nothing runs at load time.
  */
@@ -36,7 +36,7 @@
   var LARGE_BEAT_MS = 120;     /* a big case advances a few ticks every beat */
   var MAX_EVENTS_PER_BEAT = 2000;
   var SLICE_STEPS = 500;       /* engine moments per jump slice */
-  var MAX_STEPS_PER_FRAME = 200;   /* kept for old callers: the hard cap on moments in one beat */
+  var MAX_STEPS_PER_FRAME = 200;   /* the most engine moments one beat of a big case may fetch */
 
   /* ---------- the run ---------- */
 
@@ -190,7 +190,7 @@
   function frame() {
     return {
       status: status, speed: speed, selected: selected, error: errorText, source: source, stale: stale,
-      large: run ? run.jobs.length > LARGE : caseOf(source).jobs.length > LARGE,
+      large: run ? run.jobs.length > LARGE : (source === 'big' || APRM.store.get().jobs.length > LARGE),
       events: run ? run.entries.length : 0,
       state: run ? run.view : null,
       engineState: run ? run.state : null,
@@ -227,7 +227,7 @@
 
   /* The head line, scheduler cards, settings line, bar, status pill, clock and event banner. */
   function drawShell(f) {
-    var c = caseOf(source);
+    var c = run ? null : caseOf(source);
     var n = run ? run.jobs.length : c.jobs.length;
     var cpu = run ? run.cpu : c.cpu, mem = run ? run.mem : c.mem;
     var gb = Math.round(mem / 1024 * 100) / 100;
@@ -317,7 +317,7 @@
     var play = byId('run-play');
     if (play) { play.textContent = status === 'playing' ? copyText('run.pause', 'Pause') : copyText('run.play', 'Play'); }
     var live = run !== null;
-    var hasJobs = caseOf(source).jobs.length > 0;      /* Play, Step and Jump start the run themselves */
+    var hasJobs = live || caseOf(source).jobs.length > 0;      /* Play, Step and Jump start the run themselves */
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
     set('run-play', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping' || status === 'finished');
@@ -524,6 +524,10 @@
         render('jump');
         return;
       }
+      /* between slices the page shows the engine's own state, so a pause mid-jump is exact */
+      run.state = APRM.wasm.state(run.handle);
+      APRM.runmodel.snap(run.view, run.state);
+      run.metrics = APRM.wasm.metrics(run.handle);
     } catch (err) { fail(err); return; }
     render('jump');
     timerId = scheduler.wait(slice, 0);
@@ -547,6 +551,7 @@
     var wasPlaying = status === 'playing';
     if (status === 'playing' || status === 'jumping') { pause(); }
     while (run.queue.length > 0) { showNext(); }     /* the page now shows exactly where the engine is */
+    if (allShown()) { status = 'finished'; }
     var machine = { cpu: run.cpu, mem: run.mem };
     if (APRM.editor && typeof APRM.editor.jobProblems === 'function') {
       var ps = APRM.editor.jobProblems(job, machine);
@@ -691,7 +696,7 @@
     var btn = byId('run-add-open');
     if (!box) { return; }
     if (on && status === 'playing') { pause(); }
-    if (on && run) { while (run.queue.length > 0) { showNext(); } render('event'); }
+    if (on && run) { while (run.queue.length > 0) { showNext(); } if (allShown()) { status = 'finished'; } render('event'); }
     box.hidden = !on;
     if (btn) { btn.setAttribute('aria-expanded', on ? 'true' : 'false'); }
     if (on) { prepareAddForm(); var first = byId('ra-arrival'); if (first && first.focus) { first.focus(); } }
