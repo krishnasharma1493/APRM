@@ -144,10 +144,12 @@ test('no colour literals in the new scripts; gradients only for the spotlight an
   }
   const css = read('css/style.css') + read('css/components.css') + read('css/run.css');
   const smooth = [...css.matchAll(/(?<!repeating-)(radial|linear)-gradient\(/g)];
-  assert.equal(smooth.length, 1, 'one smooth gradient: the Build spotlight');
+  assert.equal(smooth.length, 3, 'smooth gradients: the spotlight and the Run key-well glow (idle and lit), allowed by Krishna 2026-11-08');
   assert.match(css, /\.lt-spot \{[^}]*radial-gradient\(closest-side, var\(--spot\)/);
   assert.match(css, /@media \(prefers-contrast: more\) \{ \.lt-spot \{ display: none; \} \}/, 'spotlight removed under more contrast');
-  assert.ok(!/backdrop-filter|filter:\s*blur/.test(css), 'no glass blur');
+  assert.ok(!/backdrop-filter/.test(css), 'no glass blur');
+  assert.deepEqual([...css.matchAll(/filter:\s*blur/g)].length, 1, 'one blur: the soft shadow under the Run laptop (D86)');
+  assert.match(css, /\.rs-shadow \{[^}]*filter: blur\(18px\)/);
 });
 
 let failed = 0;

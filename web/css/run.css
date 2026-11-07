@@ -123,7 +123,13 @@
 .rs-wrap[data-side="off"] .rs-stage { max-width: none; }
 .rs-hero { top: 0; left: 0; pointer-events: none; }
 .rs-hero .lt-board { pointer-events: none; cursor: default; }
-.rs-wrap[data-lit="on"] .lt-key { color: var(--key-lit); }
+/* Backlit keyboard and the shadow under the laptop (the design's glow, allowed by Krishna 2026-11-08) */
+.rs-wrap .lt-key { box-shadow: inset 0 1px 0 var(--metal-edge), 0 0 1.5px var(--key-glow-idle); text-shadow: 0 0 2px var(--key-text-glow); }
+.rs-wrap[data-lit="on"] .lt-key { color: var(--key-lit); box-shadow: inset 0 1px 0 var(--metal-edge), 0 0 1.5px var(--key-glow-on); }
+.rs-wrap .rs-well { background-image: radial-gradient(ellipse 70% 80% at 50% 60%, var(--well-glow-idle) 0%, var(--well-glow-none) 70%); }
+.rs-wrap[data-lit="on"] .rs-well { background-image: radial-gradient(ellipse 70% 80% at 50% 60%, var(--well-glow-on) 0%, var(--well-glow-none) 70%); }
+.rs-shadow { left: -16px; top: -4px; width: 432px; height: 292px; border-radius: 30px; background: var(--laptop-shadow); filter: blur(18px); transform: translateZ(-12px); pointer-events: none; }
+@media (prefers-contrast: more) { .rs-wrap .rs-well { background-image: none; } .rs-wrap .lt-key { text-shadow: none; } }
 
 /* Side columns: waiting on the left, finished on the right */
 .rs-col { position: relative; z-index: 2; flex: none; padding-top: var(--s-6); display: flex; flex-direction: column; gap: var(--s-2); transition: opacity 300ms linear; }
