@@ -36,7 +36,7 @@ class El {
   appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
   removeChild(c) { this.children.splice(this.children.indexOf(c), 1); c.parentNode = null; return c; }
   replaceChild(n, o) { const i = this.children.indexOf(o); this.children[i] = n; n.parentNode = this; o.parentNode = null; return o; }
-  focus() {}
+  focus() { if (this.ownerDoc) { this.ownerDoc.activeElement = this; } else { globalThis.__focused = this; } }
   setAttribute(k, v) { this.attrs[k] = String(v); if (k === 'id') { this.id = String(v); } if (k === 'hidden') { this.hidden = true; } }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
@@ -339,8 +339,14 @@ test('keyboard: measure tabs move with the arrow keys; gap and per-job rows are 
   p.A.compare.start(); p.sched.drain();
   const res = p.el('cmp-results');
   const tab = res.all().find((e) => e.getAttribute('data-metric') === 'maxw');
+  p.doc.activeElement = tab;
   tab.fire('keydown', { key: 'ArrowRight', currentTarget: tab });
   assert.equal(p.A.compare.snapshot().metric, 'avgw');
+  const nowOn = p.el('cmp-results').all().find((e) => e.getAttribute('data-metric') === 'avgw');
+  assert.equal(globalThis.__focused, nowOn, 'focus follows to the new tab after the redraw');
+  p.doc.activeElement = nowOn;
+  nowOn.fire('keydown', { key: 'End', currentTarget: nowOn });
+  assert.equal(p.A.compare.snapshot().metric, 'mem', 'a second key press still works');
   const rows = res.all().filter((e) => /cmp-gaprow|cmp-dumb/.test(e.getAttribute('class') || '') && e.getAttribute('role') === 'button');
   assert.ok(rows.length >= 6 && rows.every((r) => r.getAttribute('tabindex') === '0'));
   rows[0].fire('keydown', { key: 'Enter' });

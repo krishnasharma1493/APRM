@@ -541,8 +541,10 @@
     var s = byId(sectionId);
     if (!s || !s.querySelectorAll) { return; }
     var b = Array.prototype.slice.call(s.querySelectorAll('[role="tab"]')).filter(function (x) { return x.getAttribute('data-metric') === val || x.getAttribute('data-use') === val; })[0];
-    if (b && b.focus && document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('role') === 'tab') { b.focus(); }
+    if (b && b.focus) { b.focus(); }
   }
+  /* Read before a redraw removes the focused tab: was the keyboard on a tab? */
+  function tabHadFocus() { var a = document.activeElement; return !!(a && a.getAttribute && a.getAttribute('role') === 'tab'); }
   /* A clickable row that keyboards can reach: Enter or Space acts like a click. */
   function keyRow(fn) {
     return { click: fn, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } } };
@@ -757,7 +759,7 @@
     });
     var tabs = h('div', { cls: 'cmp-tabs center', role: 'tablist', 'aria-label': W('cmp.hero.tabs') }, M().MET.map(function (m2) {
       return h('button', { type: 'button', role: 'tab', 'aria-selected': view.metric === m2.id ? 'true' : 'false', tabindex: view.metric === m2.id ? '0' : '-1', text: mlabel(m2.id), 'data-metric': m2.id,
-        on: { click: function () { if (view.metric === m2.id) { return; } view.metric = m2.id; redrawSection('cmp-verdict', verdictSection, reduced() ? null : 'hero'); focusTab('cmp-verdict', m2.id); },
+        on: { click: function () { if (view.metric === m2.id) { return; } var had = tabHadFocus(); view.metric = m2.id; redrawSection('cmp-verdict', verdictSection, reduced() ? null : 'hero'); if (had) { focusTab('cmp-verdict', m2.id); } },
           keydown: tabKeys } });
     }));
     var kids = [
@@ -1410,7 +1412,7 @@
       mouseleave: function () { cross.setAttribute('visibility', 'hidden'); hideTip(); } } }));
     var tabs = h('div', { cls: 'cmp-tabs', role: 'tablist', 'aria-label': W('cmp.use.tabs') }, ['cpu', 'mem', 'q'].map(function (k) {
       return h('button', { type: 'button', role: 'tab', 'aria-selected': uk === k ? 'true' : 'false', tabindex: uk === k ? '0' : '-1', 'data-use': k, text: W('cmp.use.t.' + k),
-        on: { click: function () { view.useK = k; redrawSection('cmp-use', useSection, null); focusTab('cmp-use', k); }, keydown: tabKeys } });
+        on: { click: function () { var had = tabHadFocus(); view.useK = k; redrawSection('cmp-use', useSection, null); if (had) { focusTab('cmp-use', k); } }, keydown: tabKeys } });
     }));
     var kids = [h('div', { cls: 'cmp-usehead' }, [sectionHead(title, scol(hiId), W('cmp.use.sub.' + uk)), tabs]), svg,
       h('div', { cls: 'cmp-legendrow' }, [legend(ctx), h('span', { cls: 'cmp-note', text: g === 1 ? W('cmp.use.exact') : W('cmp.use.avg', { g: g }) })])];
