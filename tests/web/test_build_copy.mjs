@@ -49,7 +49,7 @@ test('the example tiles come first, before the job table', () => {
 
 test('column labels give the plain word with the technical name in brackets', () => {
   const copy = readFileSync(join(web, 'js', 'copy.js'), 'utf8');
-  for (const [k, re] of [['col.id', /\(id\)/], ['col.arrival', /\(arrival\)/], ['col.duration', /\(duration\)/], ['col.cpu', /\(CPU\)/], ['col.priority', /higher runs first/]]) {
+  for (const [k, re] of [['col.id', /\(id\)/], ['col.arrival', /\(tick\)/], ['col.duration', /\(ticks\)/], ['col.cpu', /\(CPU\)/], ['col.priority', /higher is more important/]]) {
     assert.match(copy.slice(copy.indexOf("'" + k + "'")).split('\n')[0], re, k);
   }
 });
