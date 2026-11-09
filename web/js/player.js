@@ -715,9 +715,9 @@
    * first event, as the design replays its run. */
   function replay() {
     if (run === null) { onStart(true); return; }
-    var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob), settings: settingsFor(source) };
     var bad = readSettings();
     if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
+    var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob), settings: settingsFor(source) };
     showMessage('run-settings-error', '');
     var added = run.added;
     if (start(c)) { run.added = added; play(); }
@@ -940,8 +940,8 @@
       if (changed === 'details' || changed === 'theme') { render('details'); }
       if (changed === 'mode' && s.mode === 'run') { enterRun(s); render('mode'); }
     });
-    syncInputs(APRM.store.get());
     if (APRM.store.get().jobs.length > 0) { source = 'yours'; }
+    syncInputs(APRM.store.get());
     var sp = Number(APRM.store.get().settings.speed);
     speed = SPEEDS.indexOf(sp) >= 0 ? sp : 1;
     prepareAddForm();
