@@ -25,12 +25,12 @@ Never copy version numbers from this document or from memory into `requirements.
 1. At project start, check the official source for each tool below and take the latest stable release. Avoid alpha, beta and release-candidate versions.
 2. Once the walking skeleton works (Gate 2), freeze: write the exact versions into `docs/TOOLCHAIN.md`, `requirements.lock.txt` (`pip freeze`) and the CI workflow. Both laptops install from those.
 3. Upgrade after the freeze only when a bug forces it, and then both members upgrade together.
-4. Before the final submission, run `pip-audit` on the Python environment and check Chart.js for security advisories.
+4. Before the final submission, run `pip-audit` on the Python environment. (The website has no runtime dependency since K-57, D88.)
 
 **For AI assistants (mandatory).** Before writing or editing `requirements.txt`, `requirements.lock.txt`, `TOOLCHAIN.md`, the CI workflow, or any CDN `<script>` URL, or recommending install commands:
 
 1. Web search each tool for its latest stable release and any security advisory.
-2. Cross-check with the registry or official page when a shell is available (`pip index versions <pkg>`, `emsdk list`, the npm or jsDelivr page for Chart.js).
+2. Cross-check with the registry or official page when a shell is available (`pip index versions <pkg>`, `emsdk list`, the npm registry for any web dependency).
 3. Pin CDN scripts to an exact version that has been published for at least two weeks, with a Subresource Integrity hash.
 4. State briefly what you verified. Never invent versions.
 5. In `requirements.txt`, list names only until the freeze; the lock file holds exact versions.
@@ -43,7 +43,7 @@ Never copy version numbers from this document or from memory into `requirements.
 | Node.js (only to run WebAssembly tests in CI) | Current Active LTS from nodejs.org. Exception: the emsdk-bundled Node is kept for laptop/CI parity (DECISIONS D65) |
 | Python | python.org, a release still in bugfix or security support |
 | `numpy`, `pandas`, `matplotlib`, `pytest` | PyPI latest stable + advisories |
-| Chart.js (bundled by `make web`; CDN only for the unbuilt page) | npm registry `time` field; exact version in `web/package.json` and the lockfile; same version as the CDN pin + SRI hash |
+| Web dependencies (none since K-57, D88) | npm registry `time` field; exact version in `web/package.json` and the lockfile |
 
 ## 0. Project brief and assumptions
 
@@ -114,7 +114,7 @@ C for every algorithm, compiled twice; a bundled HTML, CSS and JavaScript websit
 | Console program | C, `cli/main.c` | Krishna | The synopsis deliverable; reads and writes CSV |
 | Website | HTML + CSS + JavaScript, built and bundled by a frontend build tool (`make web`; tool and libraries chosen and justified in DECISIONS.md, D76 onward) | Krishna | Frameworks, ES modules and self-hosted web fonts allowed; the built `index.html` works from `file://` with no network; design authority Impeccable (`docs/design/PRODUCT.md`, `docs/design/DESIGN.md`) |
 | Live visuals | HTML Canvas 2D | Krishna | Resource bars, waiting line, running jobs, Gantt timeline |
-| Comparison charts | A charting library bundled into the build (no CDN at runtime once K-49 lands; until then Chart.js from a CDN, pinned with SRI) | Krishna | Compare mode only; a table fallback always shows the same numbers |
+| Comparison charts | Hand-drawn SVG and canvas in `compare.js` (K-57, D88; Chart.js was removed) | Krishna | Compare mode only; Show details adds a table with the same numbers under every chart |
 | Workload generation | Python 3 + `numpy` | Krishna | Seeded random workloads and presets written as CSV |
 | Experiment runner | Python 3 `subprocess` | Krishna | Calls the console program; never schedules in Python |
 | Metrics, statistics and summaries | `pandas` + `numpy` | Krishna | Means, 95% confidence intervals, summary CSVs in the §5 formats (`tools/summarize.py`) |
@@ -193,13 +193,13 @@ aprm/
 │   └── run_wasm.mjs             K  Headless runner for CI conformance
 ├── web/                         K
 │   ├── index.html                  Page source; `make web` bundles it for file:// (D76)
-│   ├── package.json, package-lock.json  K  Website dependencies (chart library), exact versions (D78)
-│   ├── build.mjs                K  Inlines every script, stylesheet and the chart library into dist/index.html (D77)
+│   ├── package.json, package-lock.json  K  Website build manifest; no runtime dependency (D78, D88)
+│   ├── build.mjs                K  Inlines every script and stylesheet into dist/index.html (D77)
 │   ├── dist/index.html          K  The built single file for the demo (never committed)
 │   ├── css/  tokens.css components.css style.css
 │   ├── vendor/aprm.js           K  Generated WebAssembly bundle (CI builds it)
 │   └── js/  wasm.js store.js editor.js presets_data.js presets.js
-│            generator.js player.js canvas.js whylog.js compare.js
+│            generator.js player.js canvas.js whylog.js comparemodel.js compare.js
 │            share.js app.js     K  Page scripts (bundled by make web)
 ├── tools/                       K  Python (except plot_figures.py)
 │   ├── config.py                K  Paths, default seeds, experiment grid
@@ -600,7 +600,8 @@ The website is bundled JavaScript around the WebAssembly engine (D76). It builds
 | `strip.js` | The heat-strip timeline: one row per job and one cell per tick (grouped when long), waiting, running, saved and finished from the job history; zoom, pan, sort, hover card, row selection; draws only the rows on screen (K-53) |
 | `canvas.js` | Draws the planning board: CPU and memory lanes over one time axis, a card per started job, the "now" rail |
 | `whylog.js` | Shows the engine's event-log sentences, newest first, with tick and kind; filters to a selected job |
-| `compare.js` | Creates one simulation per selected policy on the same jobs; side-by-side timelines, metrics table, Chart.js charts, exact optimum for 9 jobs or fewer |
+| `comparemodel.js` | Pure numbers for Compare from the engine's metrics and results JSON: measures, verdict order, wait spread, use per tick, the "Who ran when" peak shapes |
+| `compare.js` | Creates one simulation per selected policy on the same jobs (plus the exact optimum for 9 jobs or fewer) and draws the ComparePage design: verdict and peaks chart, full results, wait spread, fairness, gap to the exact best, who ran when (one glowing peak per job), timelines, use over time, per job |
 | `motion.js` | Small critically damped spring helper; only `transform` and `opacity`; applies the end state at once under reduced motion |
 | `keys.js` | Space plays or pauses, Right arrow steps; ignored in fields, buttons and with modifier keys |
 | `share.js` | Encodes and decodes a case in the URL hash (N4) |
@@ -632,7 +633,7 @@ The website has no accounts or stored data, so the risks are bad input from file
 - [x] All text from users, files, URLs or the engine is shown as text, never as raw HTML (`textContent`; no `innerHTML`, `dangerouslySetInnerHTML` or `v-html`).
 - [x] CSV upload: size limit (1 MB), row limit (§3), every field validated before calling C; bad rows listed, not silently dropped.
 - [x] Shared-case links: the URL hash is size-limited, decoded inside `try/catch`, and every field validated exactly like a CSV row.
-- [x] No runtime network request from the built page: the chart library is bundled into `web/dist/index.html` (K-49, D78). The unbuilt `web/index.html` still loads it lazily from the CDN, pinned with an integrity hash, with a table fallback.
+- [x] No runtime network request from the built page or the source page: every chart is drawn by the page's own code (K-57, D88).
 - [x] No `eval`, no `new Function`, no inline event-handler attributes.
 - [x] `web/index.html` works from `file://` today: no `fetch`, nothing loaded from a server.
 - [x] The built page (`make web`) works from `file://` with the network off (`tests/demo/rehearse_cdp.mjs web/dist/index.html --offline`, also run in CI); dependencies verified per the version safety rule, lockfile committed.

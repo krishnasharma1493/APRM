@@ -117,7 +117,7 @@ Ten muted warm tones derived from amber, sand, sage and stone (`--job-0` to `--j
 
 ### Compare charts
 
-Bars for the first three schedulers are amber, sand and sage; the fourth on are stone shades with a diagonal hatch (a bar chart has no line to dash, so the hatch is its equivalent).
+Compare follows the "APRM Build" ComparePage design (K-57): dark chart stages in both themes (like the laptop screen), one colour per scheduler (`--sch-*`), glowing translucent peaks on a glossy platform with a reflection, dot line and leaders (the verdict chart), ridges for the wait spread, glowing lines for fairness and use over time. "Who ran when" shows one glowing peak per job over the ticks it ran (height = its share of cores or memory) under the exact total-use line, instead of the design's packed blocks (Krishna, 2026-11-10: no box look). Show details adds a table with the same numbers under each chart.
 
 ## Typography
 

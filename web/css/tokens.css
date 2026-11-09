@@ -93,6 +93,24 @@
   --glass-glare: linear-gradient(128deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.035) 26%, rgba(255, 255, 255, 0) 26.5%);
   --camera: #141418;
   --camera-ring: #24242A;
+  /* Compare (K-57): the scheduler colours and the dark chart stage, the same in both themes, like
+   * the laptop screen. Text on the stage uses the --screen-* tokens. */
+  --sch-fcfs: #F08A6E; --sch-priority: #9AA6F5; --sch-sjf: #D6C77C; --sch-aging: #B9B6AE;
+  --sch-easy: #4FD6E8; --sch-knap: #E59AC8; --sch-opt: #F2EEE6;
+  --cmp-stage: #09090A;
+  --cmp-glow: rgba(242, 238, 230, 0.07); --cmp-glow-none: rgba(242, 238, 230, 0); --cmp-scrim: rgba(12, 12, 13, 0.86);
+  --cmp-grid: rgba(242, 238, 230, 0.06);
+  --cmp-lead: #E9A26E;
+  --cmp-dotline: #7FC9D6;
+  --cmp-plat-top: #26272B; --cmp-plat-mid: #121214; --cmp-plat-bot: #060607;
+  --cmp-plat-hi: rgba(255, 255, 255, 0.22); --cmp-plat-lo: rgba(255, 255, 255, 0.10);
+  --cmp-streak: #FFFFFF;
+  --cmp-gloss: rgba(255, 255, 255, 0.22); --cmp-gloss-none: rgba(255, 255, 255, 0);
+  --cmp-halo: rgba(242, 238, 230, 0.06); --cmp-halo-none: rgba(242, 238, 230, 0);
+  --cmp-rim: rgba(255, 255, 255, 0.35);
+  --cmp-cut: rgba(9, 9, 10, 0.55);
+  --cmp-best: #8FB8A8;
+  --cmp-lost: #E07A6B;
   --strip-wait: rgba(200, 185, 160, 0.45);   /* timeline: a waiting cell, under the hatch */
   --strip-hatch: rgba(12, 12, 13, 0.6);
   --strip-done: #2A2A2E;                     /* timeline: a finished cell */

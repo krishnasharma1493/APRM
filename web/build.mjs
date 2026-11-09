@@ -2,11 +2,11 @@
 //
 // Idea: browsers refuse to load ES modules and to fetch files from a page opened with file://, so
 // the demo copy must carry everything inside itself. This script reads web/index.html and writes
-// web/dist/index.html with every stylesheet and every local script copied inline, in the same order,
-// plus the chart library from node_modules just before compare.js. Nothing is rewritten or minified:
-// the built page runs exactly the source code. No eval; Node standard library only.
+// web/dist/index.html with every stylesheet and every local script copied inline, in the same order.
+// Nothing is rewritten or minified: the built page runs exactly the source code. No eval; Node
+// standard library only. The site has no runtime dependency (D88); `npm ci` only checks the lockfile.
 //
-// Usage: node build.mjs (or `make web`). Needs web/vendor/aprm.js (`make wasm`) and `npm ci`.
+// Usage: node build.mjs (or `make web`). Needs web/vendor/aprm.js (`make wasm`).
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +34,6 @@ function readWeb(rel, hint) {
 /* Build the single-file page from index.html. Returns the HTML text. O(size of all inputs). */
 export function build() {
   let html = readWeb('index.html');
-  const chart = readWeb(join('node_modules', 'chart.js', 'dist', 'chart.umd.min.js'), 'run npm ci in web/');
   let scripts = 0, styles = 0;
 
   html = html.replace(/<link rel="stylesheet" href="([^"]+)">/g, (m, href) => {
@@ -46,12 +45,7 @@ export function build() {
     if (/^https?:/.test(src)) { throw new Error('external script in index.html: ' + src); }
     scripts++;
     const hint = src === 'vendor/aprm.js' ? 'run make wasm' : '';
-    let out = '<script>\n' + inlineSafe(readWeb(src, hint), src) + '\n</script>';
-    if (src === 'js/compare.js') {
-      // The chart library goes first, so compare.js finds window.Chart and never asks the network.
-      out = '<script>\n' + inlineSafe(chart, 'chart.umd.min.js') + '\n</script>\n  ' + out;
-    }
-    return out;
+    return '<script>\n' + inlineSafe(readWeb(src, hint), src) + '\n</script>';
   });
 
   if (/<script\s[^>]*src=/.test(html) || /<link\s[^>]*rel="stylesheet"/.test(html)) {
@@ -65,7 +59,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const { html, scripts, styles } = build();
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(join(OUT_DIR, 'index.html'), html);
-    console.log('built web/dist/index.html (' + scripts + ' scripts, ' + styles + ' stylesheets, chart library bundled, ' + Math.round(html.length / 1024) + ' KB)');
+    console.log('built web/dist/index.html (' + scripts + ' scripts, ' + styles + ' stylesheets, ' + Math.round(html.length / 1024) + ' KB)');
   } catch (e) {
     console.error('web build failed: ' + e.message);
     process.exit(1);
