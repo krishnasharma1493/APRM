@@ -78,7 +78,7 @@
   /* The Run page's sample case (K-56): the design's 8 jobs on 16 cores and 32768 MB, written out by
    * hand. Each row is [id, arrival, duration, cores, memory MB, priority]. Input only: the engine
    * schedules it. Returns { cpu, mem, jobs } the caller owns. O(8). */
-  var SAMPLE = { cpu: 16, mem: 32768, rows: [[1, 0, 20, 8, 8192, 5], [2, 0, 14, 6, 12288, 6], [3, 2, 16, 12, 16384, 7], [4, 4, 6, 2, 2048, 3],
+  var SAMPLE = { cpu: 16, mem: 32768, threshold: 12, rows: [[1, 0, 20, 8, 8192, 5], [2, 0, 14, 6, 12288, 6], [3, 2, 16, 12, 16384, 7], [4, 4, 6, 2, 2048, 3],
     [5, 6, 10, 4, 4096, 4], [6, 12, 3, 2, 2048, 2], [7, 15, 18, 6, 20480, 8], [8, 16, 3, 2, 2048, 1]] };
   function sampleCase() {
     var jobs = [];

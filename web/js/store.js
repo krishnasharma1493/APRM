@@ -19,7 +19,7 @@
     machine: { cpu: 16, mem: 32768 },
     jobs: [],
     policies: ['aging_reserve'],
-    settings: { alphaMilli: 100, threshold: 12, eps: 0.1, speed: 1 },
+    settings: { alphaMilli: 100, threshold: 50, eps: 0.1, speed: 1 },
     mode: 'build',
     details: false,
     theme: 'dark',

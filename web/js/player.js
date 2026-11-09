@@ -386,7 +386,9 @@
 
   /* Start (or restart) from the chosen source: destroy the old simulation, create a new one, add
    * every job, read the first state. Paused before the first event. Returns true on success. O(jobs). */
-  function start() {
+  /* override: { cpu, mem, jobs } to run instead of the chosen source (Play after the end replays
+   * the run just shown, jobs added during it included). */
+  function start(override) {
     cancelTimers();
     destroyRun();
     selected = null;
@@ -394,7 +396,7 @@
     stale = false;
     showMessage('run-error', '');
     showMessage('ra-error', '');
-    var c = caseOf(source);
+    var c = override && override.jobs ? override : caseOf(source);
     if (c.jobs.length === 0) {
       status = 'idle';
       showMessage('run-error', copyText('run.nojobs', 'There are no jobs. Add some in Build mode first.'));
@@ -640,7 +642,7 @@
   function enterRun(s) {
     if (run !== null) { return; }
     if (s.jobs.length > 0 && source !== 'big') { source = 'yours'; }
-    if (s.jobs.length === 0 && source === 'yours') { source = 'sample'; }
+    if (s.jobs.length === 0 && source === 'yours') { source = 'sample'; useSampleSettings(); }
   }
 
   var ownChange = false;
@@ -662,8 +664,8 @@
     return Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
   }
 
-  /* The design's settings rules: alpha and epsilon above 0 and up to 1, T a whole number of ticks.
-   * The engine checks its own wider limits again (PRD section 3). */
+  /* The settings rules: alpha 0 to 10 (PRD section 3), epsilon above 0 and up to 1 (0.01 at least),
+   * T a whole number of ticks. The engine checks its own limits again. */
   function epsFromText(t) {
     var milli = milliFromText(t);
     if (milli === null || milli < 1 || milli > 1000) { return copyText('run.err.eps', 'epsilon must be above 0 and up to 1.'); }
@@ -680,7 +682,7 @@
     var thr = numberOf('run-threshold');
     var epsText = byId('run-eps') ? String(byId('run-eps').value).trim() : '';
     var eps = epsFromText(epsText);
-    if (alpha === null || alpha < 1 || alpha > 1000) { return copyText('run.err.alpha', 'alpha must be above 0 and up to 1.'); }
+    if (alpha === null || alpha > 10000) { return copyText('run.err.alpha', 'alpha must be a number from 0 to 10.'); }   /* PRD section 3: alpha_milli 0 to 10,000 */
     if (!isFinite(thr) || Math.floor(thr) !== thr || thr < 0) { return copyText('run.err.t', 'T must be a whole number of ticks, 0 or more.'); }
     if (typeof eps === 'string') { return eps; }
     selfChange = true;
@@ -704,6 +706,18 @@
     if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
     showMessage('run-settings-error', '');
     if (start() && andPlay !== false) { play(); }
+  }
+
+  /* Play after the end: the same machine, scheduler, settings and jobs (added ones too), from the
+   * first event, as the design replays its run. */
+  function replay() {
+    if (run === null) { onStart(true); return; }
+    var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob) };
+    var bad = readSettings();
+    if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
+    showMessage('run-settings-error', '');
+    var added = run.added;
+    if (start(c)) { run.added = added; play(); }
   }
 
   var ADD_FIELDS = ['arrival', 'duration', 'cpu', 'mem', 'priority'];
@@ -782,7 +796,17 @@
     if (src !== 'yours' && src !== 'sample' && src !== 'big') { return; }
     if (src === source) { return; }
     source = src;
+    if (src === 'sample') { useSampleSettings(); }
     reset();
+  }
+
+  /* The Sample case is the design's case: like a preset it brings its own threshold (T = 12), so its
+   * job 3 gets a saved spot; the store's default stays the PRD's T = 50 (D87). */
+  function useSampleSettings() {
+    var S = APRM.generator && APRM.generator.SAMPLE;
+    if (S && S.threshold !== undefined && APRM.store.get().settings.threshold !== S.threshold) {
+      APRM.store.setSettings({ threshold: S.threshold });
+    }
   }
 
   /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
@@ -845,7 +869,7 @@
     var on = function (id, fn) { var el = byId(id); if (el) { el.addEventListener('click', fn); } };
     on('run-start', function () { onStart(true); });
     /* Play after the end replays the run from the start, as the design does (the engine runs it again). */
-    on('run-play', function () { if (status === 'playing') { pause(); } else if (status === 'finished') { onStart(true); } else if (ensureRun()) { play(); } });
+    on('run-play', function () { if (status === 'playing') { pause(); } else if (status === 'finished') { replay(); } else if (ensureRun()) { play(); } });
     on('run-step', function () { if (ensureRun()) { stepOnce(); } });
     on('run-jump', function () { if (ensureRun()) { jumpToEnd(); } });
     on('run-reset', reset);
@@ -911,7 +935,7 @@
       if (changed === 'mode' && s.mode === 'run') { enterRun(s); render('mode'); }
     });
     syncInputs(APRM.store.get());
-    if (APRM.store.get().jobs.length > 0) { source = 'yours'; }
+    if (APRM.store.get().jobs.length > 0) { source = 'yours'; } else { useSampleSettings(); }
     var sp = Number(APRM.store.get().settings.speed);
     speed = SPEEDS.indexOf(sp) >= 0 ? sp : 1;
     prepareAddForm();

@@ -126,7 +126,7 @@
     'run.policy': 'How to choose the next job',
     'run.more': 'More settings',
     'run.error.settings': '{why}',
-    'run.err.alpha': '\u03b1 must be a number above 0 and up to 1, like 0.1.',
+    'run.err.alpha': '\u03b1 must be a number from 0 to 10, like 0.1.',
     'run.err.eps': '\u03b5 must be a number above 0 and up to 1, like 0.1.',
     'run.err.eps.min': '\u03b5 must be at least 0.01 (the engine\u2019s smallest step).',
     'run.err.t': 'T must be a whole number of ticks, 0 or more.',

@@ -506,7 +506,7 @@ test('the head line, the settings line and the machine lines show the case and t
   const p = ready({ totalSteps: 10 });
   assert.equal(p.doc.byId['run-dataline'].textContent, '3 jobs on 16 cores and 32768 MB (32 GB).');
   assert.equal(p.doc.byId['run-source-yours'].textContent, 'Your jobs · 3');
-  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 12 ticks · ε = 0.1');
+  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 12 ticks · ε = 0.1', 'the page opened on the Sample case, which brings T = 12');
   p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
   assert.equal(p.doc.byId['res-cpu-text'].textContent, '12 of 16 cores busy, 4 free');
   assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick 1');
@@ -521,8 +521,30 @@ test('a bad setting names the problem once and opens More settings', () => {
   p.doc.byId['run-alpha'].value = 'abc';
   p.doc.byId['run-start'].click();
   assert.equal(p.fe.created, 0);
-  assert.equal(p.doc.byId['run-settings-error'].textContent, 'α must be a number above 0 and up to 1, like 0.1.');
+  assert.equal(p.doc.byId['run-settings-error'].textContent, 'α must be a number from 0 to 10, like 0.1.');
   assert.equal(p.doc.byId['run-more'].open, true);
+});
+
+test('alpha is entered as a decimal from 0 to 10 (PRD 3); the Sample case brings T = 12', () => {
+  for (const [text, milli] of [['0', 0], ['0.1', 100], ['2.5', 2500], ['10', 10000]]) {
+    const p = ready();
+    p.doc.byId['run-alpha'].value = text;
+    p.doc.byId['run-start'].click();
+    assert.equal(p.fe.created, 1, text);
+    assert.equal(p.A.store.get().settings.alphaMilli, milli, text);
+  }
+  for (const text of ['10.001', '-1', '.5', 'abc']) {
+    const p = ready();
+    p.doc.byId['run-alpha'].value = text;
+    p.doc.byId['run-start'].click();
+    assert.equal(p.fe.created, 0, text);
+  }
+  const p = ready();
+  p.A.store.setSettings({ threshold: 50 });
+  p.A.player.setSource('big');
+  assert.equal(p.A.store.get().settings.threshold, 50, 'other cases keep the setting');
+  p.A.player.setSource('sample');
+  assert.equal(p.A.store.get().settings.threshold, 12, 'the design case brings its own T');
 });
 
 test('with no jobs the controls stay off and say why', () => {
