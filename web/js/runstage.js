@@ -20,7 +20,7 @@
 
   var Q_MAX = 7, Q_MAX_SMALL = 6, DONE_MAX = 6, TILES_MAX = 5;
   var SCREEN_W = 600, SCREEN_H = 391;      /* the screen content is laid out at this size, then scaled */
-  var LID_SCREEN_W = 382;                  /* the lid's screen opening (laptop.js: W - 18) */
+  var LID_SCREEN_W = 386;                  /* the design's screen: 7 px from each side, 9 px top, 12 px bottom (386 x 251) */
   var ARRIVE = { collapse: 120, glide: 600, settle: 1380, done: 1760, glideMs: 700, layerMs: 440 };
 
   var ui = null;           /* the elements, made once in mount() */
@@ -45,7 +45,7 @@
     return vars ? C.fill(key, vars) : C.get(key);
   }
   function reduced() { return !!(mq && mq.matches); }
-  function tone(id) { return APRM.canvas && APRM.canvas.paletteIndex ? APRM.canvas.paletteIndex(id) : ((id % 10) + 10) % 10; }
+  function tone(id) { return (((id - 1) % 10) + 10) % 10; }   /* the design: job N has tone (N - 1) mod 10 */
   function plural(n, one, many) { return n === 1 ? one : many; }
   function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
 
@@ -132,14 +132,52 @@
 
   /* ---------- geometry ---------- */
 
-  /* Sizes for a stage this wide, following the design: the screen is about 600 to 640 px wide on a
-   * desktop and the side columns sit outside it. Returns the laptop scale and anchor point. O(1). */
+  /* Sizes for a stage this wide, exactly the design's: the screen is 640 px wide on a desktop with
+   * side columns (600 px between 900 and 1100 px, 74% of the width on a phone), the stage is
+   * 470 x scale + 40 px tall, the waiting column (248 px) sits left of the screen and the finished
+   * column (200 px) right of it. s is the first guess at the laptop's scale (a scale-1 laptop's
+   * screen projects about 361 px wide); calibrate() then corrects it from the measured corners. O(1). */
   function geometry(w) {
-    var narrow = w < 900, side = w >= 1100;
-    var center = side ? w - 2 * (248 + 32) : w;
-    var screenW = narrow ? Math.min(560, (w - 32) * 0.72) : side ? Math.min(600, center - 40) : Math.min(600, (w - 64) * 0.76);
-    var s = Math.max(0.5, screenW / 400);    /* the projected screen of a scale-1 laptop is about 400 px wide */
-    return { w: w, s: s, screenW: screenW, narrow: narrow, side: side, heroX: w / 2, heroY: 48 + 330 * s, h: Math.round(450 * s + 48) };
+    var narrow = w < 900, side = w >= 1100 && !narrow;
+    var screenW = narrow ? Math.min(560, (w - 32) * 0.74) : side ? Math.min(640, w - 2 * 290 - 40) : Math.min(600, (w - 64) * 0.76);
+    var s = screenW / 361;
+    return {
+      w: w, s: s, screenW: screenW, narrow: narrow, side: side,
+      heroX: w / 2, heroY: 24 + 300 * s, h: Math.round(470 * s + 40),
+      qLeft: Math.max(24, w / 2 - screenW / 2 - 24 - 248 - 40),
+      dLeft: Math.min(w - 224, w / 2 + screenW / 2 * 1.06 + 40)
+    };
+  }
+
+  /* Where the lid's screen corners are drawn now, relative to the stage (four [x, y]). */
+  function corners() {
+    if (!parts || !parts.corners || !ui.stage.getBoundingClientRect) { return null; }
+    var r = ui.stage.getBoundingClientRect();
+    return parts.corners.map(function (c) { var b = c.getBoundingClientRect(); return [b.left - r.left, b.top - r.top]; });
+  }
+
+  /* The design's measure loop: scale the laptop until its projected screen is screenW wide, then
+   * move it so the screen's top edge is 24 px below the stage top and its middle is the stage's
+   * middle. A few rounds settle it (each round reads four rectangles). O(1). */
+  function calibrate() {
+    var x = geo.heroX, y = geo.heroY, s = geo.s;
+    for (var round = 0; round < 4; round++) {
+      placeHero(x, y, s, false);
+      var q = corners();
+      if (!q) { break; }
+      var left = Math.min(q[0][0], q[3][0]), right = Math.max(q[1][0], q[2][0]);
+      var top = Math.min(q[0][1], q[1][1], q[2][1], q[3][1]);
+      var wNow = right - left;
+      if (!(wNow > 1)) { break; }
+      var k = geo.screenW / wNow;
+      var dy = 24 - top, dx = geo.w / 2 - (left + right) / 2;
+      if (Math.abs(k - 1) < 0.003 && Math.abs(dy) < 0.5 && Math.abs(dx) < 0.5) { break; }
+      /* scaling about the hero's anchor moves every corner by (corner - anchor) x (k - 1) */
+      dy += (top - y) * (1 - k); dx += ((left + right) / 2 - x) * (1 - k);
+      s *= k; x += dx; y += dy;
+    }
+    geo.heroX = x; geo.heroY = y; geo.s = s;
+    placeHero(x, y, s, false);
   }
 
   function layout() {
@@ -147,14 +185,15 @@
     var w = ui.wrap.clientWidth || (window.innerWidth || 1280);
     geo = geometry(w);
     ui.wrap.setAttribute('data-side', geo.side ? 'on' : 'off');
-    var sw = ui.stage.clientWidth || w;
-    geo.heroX = sw / 2 + 42 * geo.s;        /* the turned lid sits left of the base centre; this centres the screen */
-    ui.stage.style.height = (flat ? Math.round(geo.screenW * 1.05 * 0.72 + 60) : geo.h) + 'px';
-    if (parts && !arriving) { placeHero(geo.heroX, geo.heroY, geo.s, false); }
+    ui.wrap.setAttribute('data-narrow', geo.narrow ? 'on' : 'off');
+    ui.stage.style.height = geo.h + 'px';
+    ui.queue.col.style.left = geo.side ? geo.qLeft.toFixed(1) + 'px' : '';
+    ui.done.col.style.left = geo.side ? geo.dLeft.toFixed(1) + 'px' : '';
+    if (parts && !arriving) { calibrate(); }
     if (flat && ui.flat) {
       var fw = geo.screenW * 1.05;
       ui.flat.style.width = fw.toFixed(1) + 'px';
-      ui.flat.style.left = (((ui.stage.clientWidth || w) - fw) / 2).toFixed(1) + 'px';
+      ui.flat.style.left = ((w - fw) / 2).toFixed(1) + 'px';
       var inner = fw * (1 - 0.035);
       ui.screen.root.style.transform = 'scale(' + (inner / SCREEN_W).toFixed(4) + ')';
     }
@@ -361,7 +400,7 @@
       setText(p.name, copyText('stage.job', 'Job ' + j.id, { id: j.id }));
       setText(p.pri, 'P' + j.priority);
       p.score.hidden = !aging || j.score === null || j.score === undefined;
-      setText(p.score, aging && j.score !== null && j.score !== undefined ? APRM.runmodel.scoreText(j.score) : '');
+      setText(p.score, aging && j.score !== null && j.score !== undefined ? String(Math.round(j.score * 10) / 10) : '');
       setText(p.need, copyText('stage.need', '', { c: j.cpu, cores: plural(j.cpu, 'core', 'cores'), m: j.mem, d: j.duration, ticks: plural(j.duration, 'tick', 'ticks') }));
       p.saved.hidden = !isRes && !chosen;
       setText(p.saved, isRes ? copyText('stage.saved', '', { t: res.shadow_time }) : chosen ? copyText('stage.chosen', '') : '');
@@ -455,10 +494,31 @@
       var shadow = el('div', 'lt-abs rs-shadow');
       parts.stage.insertBefore(shadow, parts.stage.firstChild);
       parts.keyBed.setAttribute('class', parts.keyBed.getAttribute('class') + ' rs-well');
+      /* the design's finish on the shared parts: the screen-side bezel with its camera, the hinge
+       * strip at the top of the deck (312 x 6 px), and the glare on the glass */
+      var faces = parts.layers.lid.children;
+      if (faces[1]) { faces[1].setAttribute('class', faces[1].getAttribute('class') + ' rs-bezel'); faces[1].appendChild(el('div', 'rs-camera')); }
+      var deck = parts.keyBed.parentNode;
+      for (var d = deck ? deck.firstChild : null; d; d = d.nextSibling) {
+        if (d.getAttribute && /\blt-rim\b/.test(d.getAttribute('class') || '')) {
+          d.setAttribute('class', d.getAttribute('class') + ' rs-hinge');
+          d.style.left = '44px'; d.style.width = '312px'; d.style.height = '6px'; d.style.borderRadius = '0 0 3px 3px';
+        }
+      }
+      parts.screen.style.left = '7px'; parts.screen.style.top = '9px'; parts.screen.style.width = '386px'; parts.screen.style.height = '251px';
       var holder = el('div', 'rs-screen-hold');
       holder.style.transform = 'scale(' + (LID_SCREEN_W / SCREEN_W).toFixed(4) + ')';
       holder.appendChild(screen.root);
+      holder.appendChild(el('div', 'rs-glare'));
       parts.screen.appendChild(holder);
+      /* the design's four corner markers: measured to fit the projected screen to its width */
+      parts.corners = ['0 0', '100% 0', '100% 100%', '0 100%'].map(function (at) {
+        var m = el('i', 'rs-corner-mark');
+        var xy = at.split(' ');
+        m.style.left = xy[0] === '0' ? '0' : xy[0]; m.style.top = xy[1] === '0' ? '0' : xy[1];
+        parts.screen.appendChild(m);
+        return m;
+      });
       setPose('assembled', false);
     } else {
       var f2 = el('div', 'rs-flat');

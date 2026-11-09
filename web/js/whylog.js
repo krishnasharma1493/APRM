@@ -48,12 +48,14 @@
     var filter = document.getElementById('whylog-filter');
     var sig = entries.length + ':' + (selected === null || selected === undefined ? '-' : selected);
     var shown = visible(entries, selected);
-    if (filter) {
-      filter.textContent = (selected === null || selected === undefined) ? '' : words('run.why.only', 'Showing only job ' + selected + '.', { id: selected });
-      filter.hidden = (selected === null || selected === undefined);
-    }
+    var none = selected === null || selected === undefined;
+    if (filter) { filter.textContent = ''; filter.hidden = true; }
+    /* the design's one link: "Showing job N only · Show all" clears the filter */
     var clearBtn = document.getElementById('whylog-clear');
-    if (clearBtn) { clearBtn.hidden = (selected === null || selected === undefined); }
+    if (clearBtn) {
+      clearBtn.hidden = none;
+      clearBtn.textContent = none ? words('run.why.all', 'Show all') : words('run.why.only', 'Showing job ' + selected + ' only', { id: selected });
+    }
     if (empty) {
       empty.hidden = shown.length > 0;
       empty.textContent = entries.length === 0

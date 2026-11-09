@@ -10,15 +10,22 @@
 }
 
 /* Top bar: title and steps, then the two view controls. Wraps to two tidy rows on a phone. */
+/* The design's bar: brand and view controls take equal sides so the steps sit in the exact middle. */
 .topbar {
   position: sticky; top: 0; z-index: 20; min-height: 3.5rem;
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4);
-  padding: var(--s-2) var(--s-6);
+  display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--s-4);
+  padding: 0 var(--s-6); background: var(--bg); border-bottom: 1px solid var(--hairline);
 }
-.topbar h1 { font-size: var(--fs-body); line-height: 1.2; letter-spacing: 0.02em; font-weight: 800; white-space: nowrap; }
-.topbar h1 .brand-long { font-size: var(--fs-caption); font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: var(--s-2); }
-@media (max-width: 56rem) { .topbar h1 .brand-long { display: none; } }
-.topbar .view-controls { display: flex; align-items: center; gap: var(--s-3); margin-left: auto; }
+.topbar h1 { flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; gap: var(--s-2); margin: 0; font-size: var(--fs-body); line-height: 1.2; letter-spacing: 0.02em; font-weight: 800; white-space: nowrap; }
+.topbar h1 .brand-long { font-size: var(--fs-caption); font-weight: 400; letter-spacing: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.topbar .modes { flex: none; border: 1px solid var(--hairline); background: var(--surface); border-radius: 8px; }
+.topbar .modes button { height: 30px; min-height: 30px; padding: 0 14px; font-size: var(--fs-caption); border-radius: 6px; }
+.topbar .view-controls { flex: 1 1 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--s-3); }
+.topbar .switch { font-size: var(--fs-caption); padding: 6px 4px; }
+@media (max-width: 56rem) {
+  .topbar { flex-wrap: wrap; padding: var(--s-2) var(--s-6); }
+  .topbar h1 .brand-long { display: none; }
+}
 .status { margin: 0; color: var(--muted); font-size: var(--fs-caption); }
 /* "Engine ready" is announced but not shown: only loading and trouble earn space on screen. */
 .status[data-state="ready"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

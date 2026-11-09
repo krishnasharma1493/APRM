@@ -46,7 +46,7 @@
   var errorText = '';
   var timerId = null;
   var selected = null;
-  var source = 'yours';    /* 'yours' = the Build jobs, 'big' = the 500-job big case */
+  var source = 'sample';   /* 'yours' = the Build jobs, 'sample' = the design's 8 jobs, 'big' = the 500-job big case */
   var stale = false;       /* the scheduler or a setting changed after this run started */
   var views = [];
 
@@ -101,12 +101,48 @@
   /* The machine and jobs of the chosen source. Returns { cpu, mem, jobs } (copies). O(jobs). */
   function caseOf(src) {
     if (src === 'big' && APRM.generator && APRM.generator.bigCase) { return APRM.generator.bigCase(); }
+    if (src === 'sample' && APRM.generator && APRM.generator.sampleCase) { return APRM.generator.sampleCase(); }
     var st = APRM.store.get();
     return { cpu: st.machine.cpu, mem: st.machine.mem, jobs: st.jobs.map(copyJob) };
   }
 
   function copyJob(j) {
     return { id: j.id, arrival: j.arrival, duration: j.duration, cpu: j.cpu, mem: j.mem, priority: j.priority };
+  }
+
+  /* The whole run's length, told by the engine itself: a second handle with the same machine,
+   * scheduler and jobs runs to the end, and its metrics give the makespan and its log the number of
+   * events. The timeline uses it to span the whole run from the first event, as the design does,
+   * and Show details says "event N of M". JavaScript only reads the answers. Returns
+   * { makespan, events } or null when the engine fails. O(engine run). */
+  function preview(cpu, mem, policy, settings, jobs) {
+    var h = null;
+    try {
+      h = APRM.wasm.create(cpu, mem, policy, settings.alphaMilli, settings.threshold, settings.eps);
+      for (var i = 0; i < jobs.length; i++) {
+        var j = jobs[i];
+        APRM.wasm.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
+      }
+      var guard = 0;
+      while (APRM.wasm.step(h) === 1 && guard++ < 10000000) { /* the engine schedules; we only wait */ }
+      var m = APRM.wasm.metrics(h);
+      var lg = APRM.wasm.log(h, 0);
+      var events = 0;
+      for (var k = 0; k < lg.length; k++) { if (lg[k].seq > events) { events = lg[k].seq; } }
+      return { makespan: m && typeof m.makespan === 'number' ? m.makespan : null, events: events };
+    } catch (e) {
+      return null;
+    } finally {
+      if (h !== null) { try { APRM.wasm.destroy(h); } catch (e2) { /* ignore */ } }
+    }
+  }
+
+  /* The current run's { makespan, events } from preview(), computed once per run on first use;
+   * null with no run or when the engine could not tell. O(engine run) once, then O(1). */
+  function planOf() {
+    if (run === null) { return null; }
+    if (run.plan === undefined) { run.plan = preview(run.cpu, run.mem, run.policy, run.settings, run.jobs); }
+    return run.plan;
   }
 
   /* ---------- handle management ---------- */
@@ -192,6 +228,7 @@
       status: status, speed: speed, selected: selected, error: errorText, source: source, stale: stale,
       large: run ? run.jobs.length > LARGE : (source === 'big' || APRM.store.get().jobs.length > LARGE),
       events: run ? run.entries.length : 0,
+      plan: run && run.plan !== undefined ? run.plan : null,
       state: run ? run.view : null,
       engineState: run ? run.state : null,
       metrics: run ? run.metrics : null,
@@ -240,7 +277,10 @@
       var st = APRM.store.get();
       yours.textContent = copyText('run.source.yours', 'Your jobs', { n: st.jobs.length });
       yours.setAttribute('aria-pressed', source === 'yours' ? 'true' : 'false');
+      yours.hidden = st.jobs.length === 0;       /* the design shows it only when Build has jobs */
     }
+    var sample = byId('run-source-sample');
+    if (sample) { sample.setAttribute('aria-pressed', source === 'sample' ? 'true' : 'false'); }
     var big = byId('run-source-big');
     if (big) { big.setAttribute('aria-pressed', source === 'big' ? 'true' : 'false'); }
 
@@ -294,7 +334,8 @@
     if (textEl) { textEl.hidden = !e; textEl.textContent = e ? e.msg : ''; }
     if (rawEl) {
       rawEl.hidden = !e || !detailsOn();
-      rawEl.textContent = e ? copyText('run.event.raw', '', { kind: e.kind, n: f.events, t: e.t }) : '';
+      var pl = e && detailsOn() ? planOf() : null;
+      rawEl.textContent = e ? copyText('run.event.raw', '', { kind: e.kind, n: f.events, total: pl && pl.events ? Math.max(pl.events, f.events) : f.events, t: e.t }) : '';
     }
     box.setAttribute('data-kind', e ? e.kind : '');
   }
@@ -319,7 +360,7 @@
     var live = run !== null;
     var hasJobs = live || caseOf(source).jobs.length > 0;      /* Play, Step and Jump start the run themselves */
     var set = function (id, disabled) { var el = byId(id); if (el) { el.disabled = disabled; } };
-    set('run-play', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
+    set('run-play', (!live && !hasJobs) || status === 'jumping');
     set('run-step', (!live && !hasJobs) || status === 'playing' || status === 'jumping' || status === 'finished');
     set('run-jump', (!live && !hasJobs) || status === 'jumping' || status === 'finished');
     set('run-reset', !live);
@@ -383,6 +424,7 @@
       run.state = APRM.wasm.state(h);
       run.view = APRM.runmodel.fromState(run.state);
       run.metrics = APRM.wasm.metrics(h);
+      run.plan = undefined;       /* asked for by planOf() when a view needs the whole run's length */
     } catch (err) {
       if (run === null && h !== null) { try { APRM.wasm.destroy(h); } catch (e2) { /* ignore */ } }
       fail(err, 'run-error');
@@ -569,6 +611,7 @@
     showMessage('ra-error', '');
     var copy = copyJob(job);
     run.jobs.push(copy);
+    run.plan = undefined;
     run.byId[copy.id] = copy;
     run.added++;
     try {
@@ -592,6 +635,14 @@
 
   /* ---------- the page ---------- */
 
+  /* Arriving on Run: Build's jobs when there are some (as the design does after Build), the
+   * sample otherwise. A run in progress keeps its source. O(1). */
+  function enterRun(s) {
+    if (run !== null) { return; }
+    if (s.jobs.length > 0 && source !== 'big') { source = 'yours'; }
+    if (s.jobs.length === 0 && source === 'yours') { source = 'sample'; }
+  }
+
   var ownChange = false;
 
   function numberOf(id) {
@@ -603,12 +654,20 @@
   /* Epsilon text, with the same grammar as the console program's --eps (D72):
    * digits, optionally a point and 1 to 3 digits; no sign, exponent, leading or
    * trailing point; 0.01 to 1. Returns the number (0.1) or an error text. */
-  function epsFromText(t) {
+  /* A decimal with at most three places as thousandths, from the text alone (no floating point):
+   * "0.1" -> 100. Returns the integer or null when the text is not such a number. O(1). */
+  function milliFromText(t) {
     var m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(t);
-    var milli;
-    if (!m) { return 'epsilon must be a decimal number like 0.1 with at most 3 decimals (no exponent, no sign).'; }
-    milli = Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
-    if (milli < 10 || milli > 1000) { return 'epsilon must be 0.01 to 1.'; }
+    if (!m) { return null; }
+    return Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
+  }
+
+  /* The design's settings rules: alpha and epsilon above 0 and up to 1, T a whole number of ticks.
+   * The engine checks its own wider limits again (PRD section 3). */
+  function epsFromText(t) {
+    var milli = milliFromText(t);
+    if (milli === null || milli < 1 || milli > 1000) { return copyText('run.err.eps', 'epsilon must be above 0 and up to 1.'); }
+    if (milli < 10) { return copyText('run.err.eps.min', 'epsilon must be at least 0.01.'); }
     return milli / 1000;
   }
 
@@ -616,12 +675,13 @@
   function readSettings() {
     var policyEl = byId('run-policy');
     var policy = policyEl && policyEl.value ? policyEl.value : chosenPolicy();
-    var alpha = numberOf('run-alpha');
+    var alphaText = byId('run-alpha') ? String(byId('run-alpha').value).trim() : '';
+    var alpha = milliFromText(alphaText);
     var thr = numberOf('run-threshold');
     var epsText = byId('run-eps') ? String(byId('run-eps').value).trim() : '';
     var eps = epsFromText(epsText);
-    if (!isFinite(alpha) || Math.floor(alpha) !== alpha) { return 'alpha_milli must be a whole number.'; }
-    if (!isFinite(thr) || Math.floor(thr) !== thr) { return 'reservation threshold must be a whole number.'; }
+    if (alpha === null || alpha < 1 || alpha > 1000) { return copyText('run.err.alpha', 'alpha must be above 0 and up to 1.'); }
+    if (!isFinite(thr) || Math.floor(thr) !== thr || thr < 0) { return copyText('run.err.t', 'T must be a whole number of ticks, 0 or more.'); }
     if (typeof eps === 'string') { return eps; }
     selfChange = true;
     APRM.store.setPolicies([policy]);
@@ -641,7 +701,8 @@
   /* Run (and Run again): read the settings, start a new run, and play it unless asked not to. */
   function onStart(andPlay) {
     var bad = readSettings();
-    if (bad) { showMessage('run-error', settingsWords(bad)); return; }
+    if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
+    showMessage('run-settings-error', '');
     if (start() && andPlay !== false) { play(); }
   }
 
@@ -718,7 +779,7 @@
 
   /* Switch between your jobs and the big case: the old run ends. */
   function setSource(src) {
-    if (src !== 'yours' && src !== 'big') { return; }
+    if (src !== 'yours' && src !== 'sample' && src !== 'big') { return; }
     if (src === source) { return; }
     source = src;
     reset();
@@ -783,7 +844,8 @@
     buildMethods();
     var on = function (id, fn) { var el = byId(id); if (el) { el.addEventListener('click', fn); } };
     on('run-start', function () { onStart(true); });
-    on('run-play', function () { if (status === 'playing') { pause(); } else if (ensureRun()) { play(); } });
+    /* Play after the end replays the run from the start, as the design does (the engine runs it again). */
+    on('run-play', function () { if (status === 'playing') { pause(); } else if (status === 'finished') { onStart(true); } else if (ensureRun()) { play(); } });
     on('run-step', function () { if (ensureRun()) { stepOnce(); } });
     on('run-jump', function () { if (ensureRun()) { jumpToEnd(); } });
     on('run-reset', reset);
@@ -791,6 +853,7 @@
     on('ra-cancel', function () { openAdd(false); });
     on('run-add-open', function () { var box = byId('run-add'); openAdd(!!(box && box.hidden)); });
     on('run-source-yours', function () { setSource('yours'); });
+    on('run-source-sample', function () { setSource('sample'); });
     on('run-source-big', function () { setSource('big'); });
     var spd = byId('run-speed');
     if (spd) {
@@ -828,7 +891,13 @@
     if (sel) { sel.addEventListener('change', function () { choosePolicy(sel.value); }); }
     ['run-alpha', 'run-threshold', 'run-eps'].forEach(function (id) {
       var el = byId(id);
-      if (el) { el.addEventListener('change', function () { if (!readSettings()) { if (run) { stale = true; } render('settings'); } }); }
+      if (el) {
+        el.addEventListener('change', function () {
+          var bad = readSettings();
+          showMessage('run-settings-error', bad);   /* the design shows the rule right under the inputs */
+          if (!bad) { if (run) { stale = true; } render('settings'); }
+        });
+      }
     });
     APRM.store.subscribe(function (s, changed) {
       var panel = byId('run-panel');
@@ -837,11 +906,12 @@
       if ((changed === 'settings' || changed === 'policies' || changed === 'mode') && !selfChange) { syncInputs(s); }
       /* The run belongs to the jobs and machine it started with; a new case ends it. */
       if ((changed === 'jobs' || changed === 'machine') && run !== null && !ownChange && source === 'yours') { reset(); }
-      if (changed === 'jobs' && run === null) { render('reset'); }
+      if (changed === 'jobs' && run === null) { enterRun(s); render('reset'); }
       if (changed === 'details' || changed === 'theme') { render('details'); }
-      if (changed === 'mode' && s.mode === 'run') { render('mode'); }
+      if (changed === 'mode' && s.mode === 'run') { enterRun(s); render('mode'); }
     });
     syncInputs(APRM.store.get());
+    if (APRM.store.get().jobs.length > 0) { source = 'yours'; }
     var sp = Number(APRM.store.get().settings.speed);
     speed = SPEEDS.indexOf(sp) >= 0 ? sp : 1;
     prepareAddForm();
@@ -851,7 +921,7 @@
   /* Show the store's settings in the Run panel's inputs. */
   function syncInputs(s) {
     var set = function (id, v) { var el = byId(id); if (el && el.value !== String(v)) { el.value = String(v); } };
-    set('run-alpha', s.settings.alphaMilli);
+    set('run-alpha', alphaWords(s.settings.alphaMilli));
     set('run-threshold', s.settings.threshold);
     set('run-eps', s.settings.eps);
     set('run-policy', s.policies[0] || 'fcfs');
@@ -866,6 +936,7 @@
     MAX_STEPS_PER_FRAME: MAX_STEPS_PER_FRAME,
     POLICY_NAMES: POLICY_NAMES,
     setScheduler: setScheduler,
+    plan: planOf,
     addView: addView,
     frame: frame,
     start: start,

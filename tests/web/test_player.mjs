@@ -201,7 +201,7 @@ test('state machine: idle -> paused -> playing -> paused -> finished -> reset', 
   P.reset();
   assert.equal(P.snapshot().status, 'idle');
   assert.equal(p.fe.live.size, 0);
-  assert.equal(p.doc.byId['wait-empty'].textContent, 'Nothing to show yet. Press Run.');
+  assert.equal(p.doc.byId['wait-empty'].textContent, 'No jobs waiting.');   // the design's empty state
 });
 
 test('Step shows exactly one log entry; the engine is stepped only when the queued moment is used up', () => {
@@ -238,6 +238,7 @@ test('at the end of each moment the view is the engine state; between entries it
 test('start with no jobs shows an empty-state message, no engine call', () => {
   const p = ready();
   p.A.store.setJobs([]);
+  p.A.player.setSource('yours');      // an empty Build list; the page itself falls back to the sample
   assert.equal(p.A.player.start(), false);
   assert.equal(p.fe.created, 0);
   assert.match(p.doc.byId['run-error'].textContent, /no jobs/i);
@@ -268,8 +269,8 @@ test('epsilon text uses the console grammar; bad text names epsilon, no engine c
     p.doc.byId['run-eps'].value = text;
     p.doc.byId['run-start'].click();
     assert.equal(p.fe.created, 0, 'no engine call for "' + text + '"');
-    const msg = p.doc.byId['run-error'].textContent;
-    assert.match(msg, /epsilon/i, text);
+    const msg = p.doc.byId['run-settings-error'].textContent;
+    assert.match(msg, /ε/, text);
     assert.doesNotMatch(msg, /knapsack_eps_milli/, text);
   }
 });
@@ -369,7 +370,7 @@ test('selecting a job filters the log and highlights its table row; Show all cle
   const rows = p.doc.byId['whylog-list'].children;
   assert.ok(rows.length > 0 && rows.length < 8);
   assert.ok(rows.every((r) => r.getAttribute('data-job') === '2'));
-  assert.match(p.doc.byId['whylog-filter'].textContent, /job 2/);
+  assert.match(p.doc.byId['whylog-clear'].textContent, /Showing job 2 only · Show all/);
   assert.equal(p.doc.byId['whylog-clear'].hidden, false);
   const rows2 = p.doc.byId['wait-body'].children;
   const selRow = rows2.find((r) => r.getAttribute('data-job') === '2');
@@ -493,7 +494,7 @@ test('metrics are shown from the engine, null as n/a', () => {
   assert.equal(p.doc.byId['metrics-list'].children.length, 7, 'every metric of the engine');
   assert.equal(tile('avg_wait').children[1].textContent, '1.5 ticks');
   assert.equal(tile('max_wait').children[1].textContent, '3 ticks');
-  assert.equal(tile('util_mem').children[1].textContent, '50.0%');
+  assert.equal(tile('util_mem').children[1].textContent, '50%');   // the design rounds to one decimal, drops .0
   assert.match(tile('util_cpu').children[1].textContent, /^no value yet/);
   p.A.store.setDetails(true);
   assert.equal(tile('avg_wait').children[1].textContent, '1.5 ticks', 'Show details: the engine value unchanged');
@@ -505,7 +506,7 @@ test('the head line, the settings line and the machine lines show the case and t
   const p = ready({ totalSteps: 10 });
   assert.equal(p.doc.byId['run-dataline'].textContent, '3 jobs on 16 cores and 32768 MB (32 GB).');
   assert.equal(p.doc.byId['run-source-yours'].textContent, 'Your jobs · 3');
-  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 50 ticks · ε = 0.1');
+  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 12 ticks · ε = 0.1');
   p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
   assert.equal(p.doc.byId['res-cpu-text'].textContent, '12 of 16 cores busy, 4 free');
   assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick 1');
@@ -520,13 +521,14 @@ test('a bad setting names the problem once and opens More settings', () => {
   p.doc.byId['run-alpha'].value = 'abc';
   p.doc.byId['run-start'].click();
   assert.equal(p.fe.created, 0);
-  assert.equal(p.doc.byId['run-error'].textContent, 'Check More settings. alpha_milli must be a whole number.');
+  assert.equal(p.doc.byId['run-settings-error'].textContent, 'α must be a number above 0 and up to 1, like 0.1.');
   assert.equal(p.doc.byId['run-more'].open, true);
 });
 
 test('with no jobs the controls stay off and say why', () => {
   const p = ready();
   p.A.store.setJobs([]);
+  p.A.player.setSource('yours');
   for (const id of ['run-play', 'run-step', 'run-jump', 'run-reset', 'run-add-open']) assert.equal(p.doc.byId[id].disabled, true, id);
   assert.equal(p.doc.byId['run-start'].disabled, false, 'Run stays live and explains why nothing can run');
   p.doc.byId['run-start'].click();
@@ -550,7 +552,8 @@ test('scheduler cards: six radio cards drive #run-policy; arrows move the choice
   assert.deepEqual(plain(box.children.map((c) => c.getAttribute('data-policy'))), plain(p.A.player.POLICY_NAMES));
   assert.equal(box.children[0].getAttribute('role'), 'radio');
   assert.equal(box.children[0].children[1].textContent, 'First come, first served (FCFS)');
-  assert.equal(box.children[0].getAttribute('aria-checked'), 'true');
+  assert.equal(box.children[0].getAttribute('aria-checked'), 'false');
+  assert.equal(box.children[4].getAttribute('aria-checked'), 'true', 'the design starts on aging with EASY reservation');
   box.fire('click', { target: box.children[2] });
   assert.equal(p.A.store.get().policies[0], 'sjf');
   assert.equal(p.doc.byId['run-policy'].value, 'sjf');
@@ -713,7 +716,7 @@ test('waiting table: engine order, priority, score, saved tag; a click selects, 
   assert.equal(first.children[0].textContent, '1');
   assert.equal(first.children[1].tag, 'th', 'the job cell heads its row');
   assert.match(first.children[1].textContent, /^Job 7 · spot saved$/);
-  assert.equal(first.children[3].textContent, '6.200', 'the engine score, three decimals');
+  assert.equal(first.children[3].textContent, '6.2', 'the engine score, rounded to two decimals as the design shows it');
   assert.equal(first.getAttribute('tabindex'), '0', 'one Tab stop for the table');
   body.fire('click', { target: first });
   assert.equal(p.A.player.snapshot().selected, 7);
@@ -722,7 +725,7 @@ test('waiting table: engine order, priority, score, saved tag; a click selects, 
   p.A.store.setDetails(true);
   const head = p.doc.byId['wait-head'].children.map((c) => c.textContent);
   assert.deepEqual(plain(head), ['Queue order', 'Job', 'Priority', 'Score', 'Sort key']);
-  assert.equal(body.children[0].children[4].textContent, 'K = 1000 × 2 − 100 × 0 = 2000 (lowest first), then arrival, id');
+  assert.equal(body.children[0].children[4].textContent, '−6.2, arrival 0', 'the design writes the aging key as minus the score');
 });
 
 test('running table and machine use: the engine numbers; the saved-spot card says when', () => {
@@ -733,7 +736,7 @@ test('running table and machine use: the engine numbers; the saved-spot card say
   assert.deepEqual(plain(rows[0].children.map((c) => c.textContent)), ['Job 1', '0', '5', '8', '4096']);
   assert.equal(p.doc.byId['res-cpu-bar'].style.transform, 'scaleX(0.7500)');
   assert.equal(p.doc.byId['reserve-card'].hidden, false);
-  assert.equal(p.doc.byId['reserve-line'].textContent, 'Job 7 starts by tick 9.');
+  assert.match(p.doc.byId['reserve-line'].textContent, /^Job 7 starts by tick 9\. Until then \d+ cores and \d+ MB stay free\.$/);
 });
 
 test('tables keep only 100 rows on the page, but the heading and the note stay true', () => {
@@ -930,7 +933,7 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     P.reset();
   });
 
-  test('real engine: Play and Step are disabled once finished, and Reset turns Play back on', async () => {
+  test('real engine: once finished, Step and Jump are off and Play replays from the start (the design)', async () => {
     const p = await realPage();
     p.A.store.setJobs([{ id: 1, arrival: 0, duration: 2, cpu: 1, mem: 1, priority: 1 }]);
     p.A.store.setPolicies(['fcfs']);
@@ -938,10 +941,13 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     P.start(); P.jumpToEnd();
     drain(p);
     assert.equal(P.snapshot().status, 'finished');
-    assert.equal(p.doc.byId['run-play'].disabled, true, 'nothing left to play');
+    assert.equal(p.doc.byId['run-play'].disabled, false, 'Play replays the run');
     assert.equal(p.doc.byId['run-step'].disabled, true, 'nothing left to step');
     assert.equal(p.doc.byId['run-jump'].disabled, true);
     assert.equal(p.doc.byId['run-reset'].disabled, false, 'Reset stays live');
+    p.doc.byId['run-play'].click();
+    assert.ok(['playing', 'paused'].includes(P.snapshot().status), 'a fresh run started');
+    assert.equal(P.snapshot().events, 0, 'from the first event');
     P.reset();
     assert.equal(p.doc.byId['run-play'].disabled, false, 'jobs are loaded, so Play is live again');
   });

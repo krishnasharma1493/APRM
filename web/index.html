@@ -23,8 +23,8 @@
       <p id="engine-status" class="status" role="status" aria-live="polite" data-state="loading" data-copy="engine.loading">Starting the engine&hellip;</p>
       <label class="switch" for="details-switch">
         <input id="details-switch" type="checkbox" aria-describedby="details-hint">
-        <span class="track" aria-hidden="true"></span>
         <span data-copy="details.label">Show details</span>
+        <span class="track" aria-hidden="true"></span>
       </label>
       <span id="details-hint" class="visually-hidden" data-copy="details.hint"></span>
       <button type="button" class="btn btn-small" id="theme-toggle" data-copy="theme.night" aria-describedby="theme-hint">Night mode</button>
@@ -192,7 +192,8 @@
           <p id="run-dataline" class="muted"></p>
         </div>
         <div id="run-source" class="segmented run-source" role="group" data-copy-label="run.source" aria-label="Which jobs">
-          <button type="button" id="run-source-yours" aria-pressed="true">Your jobs</button>
+          <button type="button" id="run-source-yours" aria-pressed="false" hidden>Your jobs</button>
+          <button type="button" id="run-source-sample" aria-pressed="false" data-copy="run.source.sample">Sample · 8 jobs</button>
           <button type="button" id="run-source-big" aria-pressed="false" data-copy="run.source.big">Big case · 500 jobs</button>
         </div>
       </div>
@@ -205,12 +206,12 @@
           <div class="settings-grid">
             <div>
               <label for="run-alpha" class="field-label" data-copy="run.alpha">Aging rate &alpha; &times; 1000 (alpha_milli)</label>
-              <input id="run-alpha" type="text" inputmode="numeric" value="100">
+              <input id="run-alpha" type="text" inputmode="decimal" value="0.1">
               <p class="hint" data-copy="run.alpha.hint"></p>
             </div>
             <div>
               <label for="run-threshold" class="field-label" data-copy="run.threshold">Spot-saving threshold T, in ticks</label>
-              <input id="run-threshold" type="text" inputmode="numeric" value="50">
+              <input id="run-threshold" type="text" inputmode="numeric" value="12">
               <p class="hint" data-copy="run.threshold.hint"></p>
             </div>
             <div>
@@ -218,6 +219,7 @@
               <input id="run-eps" type="text" inputmode="decimal" value="0.1">
               <p class="hint" data-copy="run.eps.hint"></p>
             </div>
+            <p id="run-settings-error" class="field-error settings-error" role="alert" hidden></p>
           </div>
         </details>
       </div>
@@ -269,7 +271,6 @@
       <span class="event-words"><span id="run-event-text" hidden></span><span id="run-event-raw" class="event-raw" hidden></span></span>
       <span id="run-event-idle" class="muted">Press Run.</span>
     </div>
-    <p class="hint run-keys" data-copy="keys.hint">Space plays or pauses. Right arrow steps.</p>
 
     <div class="run-analysis">
     <main id="app-main" class="analysis" data-engine="loading" data-mode="build" hidden>
@@ -277,11 +278,11 @@
         <section id="run-machine" class="rs-panel" aria-labelledby="machine-use-title">
           <h3 id="machine-use-title" class="label-caps"><span data-copy="run.machine">Machine use</span> <span id="machine-tick"></span></h3>
           <div class="use-line">
-            <p><span class="res-name cpu" data-copy="run.res.cpu">CPU</span>: <span id="res-cpu-text" class="num"></span></p>
+            <p><span class="res-name cpu"><span data-copy="run.res.cpu">CPU</span>:</span> <span id="res-cpu-text" class="num"></span></p>
             <div class="use-track" aria-hidden="true"><div id="res-cpu-bar" class="use-bar cpu"></div></div>
           </div>
           <div class="use-line">
-            <p><span class="res-name mem" data-copy="run.res.mem">Memory</span>: <span id="res-mem-text" class="num"></span></p>
+            <p><span class="res-name mem"><span data-copy="run.res.mem">Memory</span>:</span> <span id="res-mem-text" class="num"></span></p>
             <div class="use-track" aria-hidden="true"><div id="res-mem-bar" class="use-bar mem"></div></div>
           </div>
         </section>
@@ -357,7 +358,7 @@
         <section class="rs-panel why-panel" aria-labelledby="log-title">
           <div class="panel-head">
             <h3 id="log-title" class="label-caps" data-copy="run.why">Why (decision log)</h3>
-            <span><span id="whylog-filter" class="hint" hidden></span> <button type="button" class="btn-link" id="whylog-clear" hidden data-copy="run.why.all">Show all</button></span>
+            <span><span id="whylog-filter" class="hint" hidden></span> <button type="button" class="btn-link" id="whylog-clear" hidden>Show all</button></span>
           </div>
           <p id="whylog-empty" class="empty">Nothing to show yet. Add jobs, then press Run.</p>
           <ol id="whylog-list" class="why-list"></ol>

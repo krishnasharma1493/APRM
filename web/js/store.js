@@ -18,8 +18,8 @@
   var state = {
     machine: { cpu: 16, mem: 32768 },
     jobs: [],
-    policies: ['fcfs'],
-    settings: { alphaMilli: 100, threshold: 50, eps: 0.1, speed: 1 },
+    policies: ['aging_reserve'],
+    settings: { alphaMilli: 100, threshold: 12, eps: 0.1, speed: 1 },
     mode: 'build',
     details: false,
     theme: 'dark',

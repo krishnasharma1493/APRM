@@ -75,6 +75,20 @@
     return jobs;
   }
 
+  /* The Run page's sample case (K-56): the design's 8 jobs on 16 cores and 32768 MB, written out by
+   * hand. Each row is [id, arrival, duration, cores, memory MB, priority]. Input only: the engine
+   * schedules it. Returns { cpu, mem, jobs } the caller owns. O(8). */
+  var SAMPLE = { cpu: 16, mem: 32768, rows: [[1, 0, 20, 8, 8192, 5], [2, 0, 14, 6, 12288, 6], [3, 2, 16, 12, 16384, 7], [4, 4, 6, 2, 2048, 3],
+    [5, 6, 10, 4, 4096, 4], [6, 12, 3, 2, 2048, 2], [7, 15, 18, 6, 20480, 8], [8, 16, 3, 2, 2048, 1]] };
+  function sampleCase() {
+    var jobs = [];
+    for (var i = 0; i < SAMPLE.rows.length; i++) {
+      var r = SAMPLE.rows[i];
+      jobs.push({ id: r[0], arrival: r[1], duration: r[2], cpu: r[3], mem: r[4], priority: r[5] });
+    }
+    return { cpu: SAMPLE.cpu, mem: SAMPLE.mem, jobs: jobs };
+  }
+
   /* The Run page's big case (K-51): 500 jobs on 32 cores and 131072 MB, always the same (seed 42).
    * Input only, like generate(). Returns { cpu, mem, jobs } the caller owns. O(500). */
   var BIG = { seed: 42, count: 500, cpu: 32, mem: 131072 };
@@ -160,6 +174,8 @@
     generate: generate,
     BIG: BIG,
     bigCase: bigCase,
+    SAMPLE: SAMPLE,
+    sampleCase: sampleCase,
     mount: mount
   };
 })();

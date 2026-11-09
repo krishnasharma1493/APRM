@@ -15,7 +15,7 @@
   --surface: #151517;          /* cards, panels, inputs */
   --raised: #1E1E21;           /* hover surfaces, popovers, selected rows */
   --hairline: #2A2A2E;         /* decorative borders and dividers only */
-  --control-border: #75716A;   /* input and button outlines: 3.8:1 on surface, 3.4:1 on raised */
+  --control-border: #6C6862;   /* outlines: the design #6B6862 + 1 red step, 3.0:1 on raised (WCAG 1.4.11, D87) */
   --stripe: #111113;           /* alternate table rows */
 
   /* Text */
@@ -59,8 +59,9 @@
   --screen-track: #2A2A2E;
   --screen-line: #3A3C42;
   --screen-ink: #0C0C0D;       /* numbers on a job tone */
-  --screen-job-0: #E9C987; --screen-job-1: #8FB8A8; --screen-job-2: #C8B9A0; --screen-job-3: #B9803F; --screen-job-4: #D98579;
-  --screen-job-5: #A7A57A; --screen-job-6: #B08F8B; --screen-job-7: #A7D9CB; --screen-job-8: #E3B467; --screen-job-9: #C49A7C;
+  /* the design's ten job tones, job N gets tone (N - 1) mod 10 */
+  --screen-job-0: #E9C987; --screen-job-1: #C8B9A0; --screen-job-2: #8FB8A8; --screen-job-3: #C98F6E; --screen-job-4: #A7A57A;
+  --screen-job-5: #B7CDBF; --screen-job-6: #C9A04F; --screen-job-7: #8C8A85; --screen-job-8: #B07F68; --screen-job-9: #7FA39C;
   --key-lit: #F6EAD4;          /* key legends while jobs run: the backlit keyboard */
   --key-glow-idle: rgba(246, 226, 190, 0.24);   /* backlight around each key (Krishna 2026-11-08: glow allowed) */
   --key-glow-on: rgba(246, 226, 190, 0.45);
@@ -69,6 +70,29 @@
   --well-glow-on: rgba(246, 220, 170, 0.09);
   --well-glow-none: rgba(246, 220, 170, 0);
   --laptop-shadow: rgba(0, 0, 0, 0.6);           /* the soft shadow under the Run laptop */
+  /* The Run laptop's finish, copied from the RunPage design (the same in both themes) */
+  --satin: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0px, rgba(255, 255, 255, 0.022) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 3px),
+    linear-gradient(118deg, rgba(255, 255, 255, 0) 22%, rgba(255, 255, 255, 0.06) 38%, rgba(255, 255, 255, 0) 54%),
+    linear-gradient(165deg, #26272B 0%, #1E1F22 48%, #17181A 100%);
+  --bevel: inset 0 0 0 1px #2A2C30, inset 0 1px 0 #5C5C64, inset 1px 0 0 #4A4D54, inset -1px 0 0 #3A3C42, inset 0 -1px 0 #4A4D54;
+  --bezel: linear-gradient(160deg, #141416 0%, #060607 55%);
+  --bezel-edge: inset 0 0 0 1px #4A4D54, inset 0 0 0 2px #0B0B0D;
+  --keycap: linear-gradient(180deg, #1C1C1F 0%, #131315 100%);
+  --keycap-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -1px 0 rgba(0, 0, 0, 0.6);
+  --key-legend-idle: rgba(246, 234, 212, 0.62);
+  --key-legend-on: rgba(246, 234, 212, 0.95);
+  --key-well: #08080A;
+  --key-well-edge: inset 0 1px 3px rgba(0, 0, 0, 0.95), inset 0 0 0 1px #000000, 0 1px 0 rgba(255, 255, 255, 0.06);
+  --trackpad: #141417;
+  --trackpad-gloss: linear-gradient(155deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0) 60%);
+  --trackpad-edge: inset 0 0 0 1px #3A3C42, inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  --hinge: linear-gradient(180deg, #0B0B0D 0%, #2A2C30 60%, #4A4D54 100%);
+  --wall: linear-gradient(180deg, #3A3C42 0%, #1E1F22 70%);
+  --wall-hi: #5C5C64;
+  --screen-inset: inset 0 0 10px rgba(0, 0, 0, 0.85);
+  --glass-glare: linear-gradient(128deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.035) 26%, rgba(255, 255, 255, 0) 26.5%);
+  --camera: #141418;
+  --camera-ring: #24242A;
   --strip-wait: rgba(200, 185, 160, 0.45);   /* timeline: a waiting cell, under the hatch */
   --strip-hatch: rgba(12, 12, 13, 0.6);
   --strip-done: #2A2A2E;                     /* timeline: a finished cell */
