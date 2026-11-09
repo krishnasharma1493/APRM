@@ -47,11 +47,12 @@ test('the example tiles come first, before the job table', () => {
   assert.ok(build.indexOf('id="preset-tiles"') < build.indexOf('id="more-ways"'));
 });
 
-test('column labels give the plain word with the technical name in brackets', () => {
+test('column labels give the plain word with the name or unit in brackets; the CSV hint gives the required header', () => {
   const copy = readFileSync(join(web, 'js', 'copy.js'), 'utf8');
-  for (const [k, re] of [['col.id', /\(id\)/], ['col.arrival', /\(arrival\)/], ['col.duration', /\(duration\)/], ['col.cpu', /\(CPU\)/], ['col.priority', /higher runs first/]]) {
+  for (const [k, re] of [['col.id', /\(id\)/], ['col.arrival', /\(tick\)/], ['col.duration', /\(ticks\)/], ['col.cpu', /\(CPU\)/], ['col.priority', /higher is more important/]]) {
     assert.match(copy.slice(copy.indexOf("'" + k + "'")).split('\n')[0], re, k);
   }
+  assert.match(copy.slice(copy.indexOf("'csv.hint'")).split('\n')[0], /id, arrival, duration, cpu, mem, priority\. The first line must be this header/, 'the hint states the header PRD section 5 requires');
 });
 
 test('the toast region is always in the page (not hidden) so screen readers announce changes', () => {

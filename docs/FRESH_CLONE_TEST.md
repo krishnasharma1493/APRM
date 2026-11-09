@@ -41,6 +41,19 @@ Both passes are far under 15 minutes. Expected extra time on a real laptop: inst
 
 No stall happened in either pass; the problems were wrong or missing wording, not failing commands. One masked risk: `wasm/build.sh` quietly sources `~/emsdk/emsdk_env.sh`, so the pass worked only because emsdk sits in the home folder; with it absent the script prints "emcc not found" (checked), which the README now explains.
 
+## Pass 3: automated re-run after the Run and Compare redesigns (2026-11-10)
+
+A fresh `git clone` of `main` (after K-57, #146) into an empty folder on Krishna's Mac (tools already installed), following the README "First run" order exactly: venv, `pip install -r requirements.lock.txt`, `make`, `make test`, `make wasm`, `make web`, `pytest tests/py`.
+
+| Step | Result |
+| --- | --- |
+| Clone to `make web` and `pytest` | 112 s in total, no stall, no README step missing |
+| `make test` before `make wasm` | All suites pass; the real-engine web tests say they are skipped until `make wasm` (expected) |
+| `make web` | 24 scripts, 6 stylesheets, 690 KB single file; no `npm` dependency left to install (Chart.js removed, D88) |
+| `pytest tests/py` | 349 passed, 3 skipped |
+
+This shows the README still builds everything after the redesigns. It does not replace Ahaana's timed run below.
+
 ## Still to do (acceptance criteria of #34)
 
 - Ahaana runs the README on her own laptop from a fresh clone, with Krishna only noting stalls, and records start and end times here.
