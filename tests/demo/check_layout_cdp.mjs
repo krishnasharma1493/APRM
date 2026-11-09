@@ -87,8 +87,8 @@ try {
   await load(375);
   await ev(`document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); document.querySelector('[data-mode-button="compare"]').click(); document.getElementById('compare-start').click(); true`);
   for (let i = 0; i < 100 && (await ev(`APRM.compare.snapshot().status`)) !== 'done'; i++) await sleep(100);
-  const cells = await ev(`(function(){ const box = document.querySelector('#compare-table-wrap').getBoundingClientRect(); const out = []; for (const td of document.querySelectorAll('#compare-body td')) { const r = document.createRange(); r.selectNodeContents(td); const b = r.getBoundingClientRect(); out.push({ t: td.textContent, ok: b.width > 0 && b.left >= box.left && b.right <= box.right }); } return out; })()`);
-  check('375px Compare: every number is on screen inside the table', cells.length >= 14 && cells.every((c) => c.ok), cells.filter((c) => !c.ok).map((c) => c.t).join(' | ') || cells.length + ' cells');
+  const cells = await ev(`(function(){ const box = document.querySelector('#cmp-results .cmp-tablebox'); const tds = [...box.querySelectorAll('td')]; return { n: tds.length, scrolls: getComputedStyle(box).overflowX === 'auto', inside: box.getBoundingClientRect().right <= document.documentElement.clientWidth + 0.5, empty: tds.filter((td) => !td.textContent.trim()).length }; })()`);
+  check('375px Compare: every number is in the results table, which scrolls sideways inside the page (the design)', cells.n >= 7 * 6 && cells.scrolls && cells.inside && cells.empty === 0, JSON.stringify(cells));
 
   // 1b. on a phone the new-job row and Add job can be reached, and the top bar stays inside the screen
   await load(375);
@@ -226,7 +226,7 @@ try {
 
   // 4. media preferences: measure before and after, with the colour scheme pinned
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.module')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter || 'none', bg: t.backgroundColor, border: c.borderTopColor, spot: getComputedStyle(document.querySelector('.lt-spot')).display }; })()`);
+  const base = await ev(`(function(){ const b = getComputedStyle(document.querySelector('.btn')); const t = getComputedStyle(document.querySelector('.topbar')); const c = getComputedStyle(document.querySelector('.rs-panel')); return { dur: parseFloat(b.transitionDuration) * 1000, blur: t.backdropFilter || t.webkitBackdropFilter || 'none', bg: t.backgroundColor, border: c.borderTopColor, spot: getComputedStyle(document.querySelector('.lt-spot')).display }; })()`);
   check('baseline: buttons have a transition, the top bar is solid with no blur, the hairline is #2A2A2E, the spotlight shows', base.dur > 1 && base.blur === 'none' && base.bg === 'rgb(12, 12, 13)' && base.border === 'rgb(42, 42, 46)' && base.spot !== 'none', JSON.stringify(base));
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
   const dur = await ev(`parseFloat(getComputedStyle(document.querySelector('.btn')).transitionDuration) * 1000`);
@@ -235,7 +235,7 @@ try {
   const bg = await ev(`getComputedStyle(document.querySelector('.topbar')).backdropFilter`);
   check('reduced transparency: the top bar has no blur', bg === 'none' || bg === '', bg);
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-contrast', value: 'more' }] });
-  const bd = await ev(`getComputedStyle(document.querySelector('.module')).borderTopColor`);
+  const bd = await ev(`getComputedStyle(document.querySelector('.rs-panel')).borderTopColor`);
   check('increased contrast: dividers become the stronger stone', bd === 'rgb(117, 113, 106)', bd);
   check('increased contrast: the Build spotlight is removed', (await ev(`getComputedStyle(document.querySelector('.lt-spot')).display`)) === 'none');
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });

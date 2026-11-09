@@ -132,7 +132,7 @@ async function main() {
   await row('Build', 'CSV import', 'empty file', 'Refused with a message', 'PRD 8', async () => { await upload('empty.csv', ''); await sleep(200); const s = (await text('csv-status')) + (await text('csv-errors')); return [/header|empty/i.test(s), s]; });
   await row('Build', 'CSV export', 'with jobs', 'Download starts, message shown', 'BLUEPRINT 5', async () => { await load(); await preset('tiny_case'); await click('csv-export'); return /Exported 8 jobs/.test(await text('csv-status')); });
   await row('Build', 'CSV export', 'no jobs', 'Plain message', 'PRD 7', async () => { await load(); await click('csv-export'); return [/empty/.test(await text('csv-status')), await text('csv-status')]; });
-  await row('All', 'Next buttons', 'Build then Run then Compare then back', 'Each moves one step', 'K-43', async () => { await ev(`document.querySelector('[data-next="run"]').click(); true`); const a = await ev(`APRM.store.get().mode`); await ev(`document.querySelector('[data-next="compare"]').click(); true`); const b = await ev(`APRM.store.get().mode`); await ev(`document.querySelector('[data-next="build"]').click(); true`); return a === 'run' && b === 'compare' && (await ev(`APRM.store.get().mode`)) === 'build'; });
+  await row('All', 'Next buttons', 'Build then Run then Compare then back', 'Each moves one step', 'K-43', async () => { await ev(`document.querySelector('[data-next="run"]').click(); true`); const a = await ev(`APRM.store.get().mode`); await ev(`document.querySelector('[data-next="compare"]').click(); true`); const b = await ev(`APRM.store.get().mode`); await ev(`document.querySelector('#compare-panel [data-next="build"]').click(); true`); return a === 'run' && b === 'compare' && (await ev(`APRM.store.get().mode`)) === 'build'; });
   await row('All', 'Show details', 'on', 'Limit and raw kinds appear', 'K-43', async () => { await ev(`document.getElementById('details-switch').click(); true`); return ev(`APRM.store.get().details && document.documentElement.getAttribute('data-details') === 'on'`); });
   await row('All', 'Show details', 'off', 'Clean view', 'K-43', async () => { await ev(`document.getElementById('details-switch').click(); true`); return !(await ev(`APRM.store.get().details`)); });
   await row('All', 'Day and night button', 'twice', 'Colours change, then back', 'K-48', async () => { const a = await ev(`getComputedStyle(document.body).backgroundColor`); await click('theme-toggle'); const b = await ev(`getComputedStyle(document.body).backgroundColor`); await click('theme-toggle'); return a !== b && a === (await ev(`getComputedStyle(document.body).backgroundColor`)); });
@@ -150,7 +150,7 @@ async function main() {
     }
   }
   await row('Run', 'Knapsack card', 'click', 'Can be chosen', 'K-34, PR #95, K-51', async () => { await load(); await choosePolicy('knapsack'); return (await ev(`document.querySelector('#run-methods [data-policy="knapsack"]').getAttribute('aria-checked')`)) === 'true' && (await ev(`APRM.store.get().policies[0]`)) === 'knapsack'; });
-  await row('Compare', 'Knapsack option', 'open the list', 'Can be ticked', 'K-34, PR #95', async () => (await ev(`document.querySelector('#compare-policies input[data-policy="knapsack"]').disabled`)) === false);
+  await row('Compare', 'Knapsack option', 'open the list', 'Can be ticked', 'K-34, PR #95', async () => (await ev(`document.querySelector('#compare-policies [data-policy="knapsack"]').getAttribute('aria-disabled')`)) === 'false');
 
   // --- Run controls in order
   await load(); await preset('heavy_load'); await step('run');
@@ -205,8 +205,8 @@ async function main() {
 
   // --- Edge inputs
   await row('Run', 'Run', 'no jobs', 'The design falls back to the 8-job sample: Run runs it, no error', 'RunPage design', async () => { await load(); await step('run'); await click('run-start'); return [(await hidden('run-error')) && (await snap('source')) === 'sample' && (await snap('status')) !== 'idle', await snap('source')]; });
-  await row('Compare', 'Compare', 'no jobs', 'Plain message', 'PRD 7', async () => { await step('compare'); await click('compare-start'); return [!(await hidden('compare-error')), await text('compare-error')]; });
-  await row('Compare', 'Compare', 'one scheduler ticked', 'Plain message', 'PRD 7', async () => { await load(); await preset('tiny_case'); await step('compare'); await ev(`document.querySelector('#compare-policies input[data-policy="aging"]').click(); true`); await click('compare-start'); return [!(await hidden('compare-error')), await text('compare-error')]; });
+  await row('Compare', 'Compare', 'no jobs', 'The design falls back to its 9-job starvation case and compares it', 'ComparePage design', async () => { await step('compare'); await click('compare-start'); const ok = await waitFor(`APRM.compare.snapshot().status === 'done'`); return [ok && (await ev(`APRM.compare.snapshot().source`)) === 'nine', await text('compare-status')]; });
+  await row('Compare', 'Compare', 'one scheduler ticked', 'Plain message, no engine call', 'PRD 7', async () => { await load(); await preset('tiny_case'); await step('compare'); await ev(`[...document.querySelectorAll('#compare-policies [data-key]')].forEach((b) => { if (!['aging', 'opt'].includes(b.getAttribute('data-key')) && b.getAttribute('aria-checked') === 'true') b.click(); }); true`); await click('compare-start'); const m = await text('compare-status'); return [/two or more/.test(m) && (await ev(`APRM.compare.snapshot().status`)) === 'idle', m]; });
   await row('Run', 'Edge', 'one job', 'Runs to the end', 'K-50', async () => { await load(); await setJobs([J(1, 0, 3, 1, 10, 1)]); await step('run'); await click('run-start'); await click('run-jump'); return finished(); });
   await row('Run', 'Edge', 'ties: same arrival and priority', 'Lower id first (hard rule 5)', 'Hard rule 5', async () => { await load(); await ev(`APRM.store.setMachine(1, 100); true`); await setJobs([J(2, 0, 3, 1, 10, 1), J(1, 0, 3, 1, 10, 1)]); await step('run'); await click('run-start'); await click('run-jump'); await finished(); return ev(`APRM.player.snapshot().bars[1].start === 0 && APRM.player.snapshot().bars[2].start === 3`); });
   await row('Run', 'Edge', 'job larger than the machine', 'Plain refusal, page usable', 'PRD 7', async () => { await load(); await ev(`APRM.store.setMachine(2, 100); true`); await setJobs([J(1, 0, 3, 8, 10, 1)]); await step('run'); await click('run-start'); return [!(await hidden('run-error')), await text('run-error')]; });
@@ -219,11 +219,12 @@ async function main() {
       await load(); await preset(p); await step('compare');
       await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
       if (!(await waitFor(`APRM.compare.snapshot().status === 'done'`))) { return [false, 'not done']; }
-      const n = await ev(`document.querySelectorAll('#compare-body tr').length`), b = await ev(`document.querySelectorAll('#compare-timelines canvas').length`);
-      return [n === 6 && b === 6 && (await text('compare-exact')).length > 0, (await text('compare-verdict')) + ' ' + (await text('compare-exact'))];
+      const cols = await ev(`APRM.compare.snapshot().columns.length`), n = await ev(`document.querySelectorAll('#cmp-results .cmp-table tbody tr').length`);
+      const b = await ev(`document.querySelectorAll('#cmp-boards canvas').length`), peaks = await ev(`document.querySelectorAll('#cmp-verdict .cmp-grow').length`);
+      return [n === 7 && b === cols && cols >= 6 && peaks >= 2 * cols, await ev(`document.querySelector('.cmp-vline').textContent`)];
     });
   }
-  await row('Compare', 'Charts disclosure', 'open', 'Four charts drawn from the bundled library', 'PRD 8', async () => { await ev(`document.querySelector('.compare-more summary').click(); true`); await sleep(150); return (await ev(`APRM.compare.chartState()`)) === 'loaded' && (await ev(`document.querySelectorAll('#compare-charts canvas').length`)) === 4; });
+  await row('Compare', 'Measure tabs', 'Average wait', 'The peaks redraw for that measure; Show details adds the exact table', 'ComparePage design', async () => { await ev(`document.querySelector('[data-metric="avgw"]').click(); true`); await sleep(150); const m = await ev(`APRM.compare.snapshot().metric`); return [m === 'avgw' && /AVERAGE WAIT|Average wait/i.test(await ev(`document.querySelector('.cmp-herotitle').textContent`)), m]; });
 
   // --- URL hash (only with the share feature)
   if (await ev(`!!APRM.share`)) {
@@ -244,7 +245,7 @@ async function main() {
       const eps = await ev(`APRM.store.get().settings.eps`);
       await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
       await waitFor(`APRM.compare.snapshot().status === 'done'`);
-      const cols = JSON.parse(await ev(`JSON.stringify(APRM.compare.snapshot().columns)`));
+      const cols = JSON.parse(await ev(`JSON.stringify(APRM.compare.model().cols.filter((c) => !c.bench).map((c) => ({ policy: c.name, rows: c.rows, metrics: c.raw })))`));
       for (const col of cols) {
         await row('Engine', 'Website = console program', col.policy + ' on ' + p, 'Every job: same start and finish; same makespan', 'K-50 step 4', async () => {
           const csv = join(profile, p + '-' + col.policy + '.csv');

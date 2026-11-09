@@ -71,7 +71,7 @@ window.__h = {
   mode(m) { document.querySelector('[data-mode-button="' + m + '"]').click(); },
   text(id) { const e = document.getElementById(id); return e ? e.textContent : null; },
   loadPreset(name) { this.mode('build'); document.querySelector('#preset-tiles [data-preset="' + name + '"]').click(); },
-  tick(policy, on) { const c = document.querySelector('#compare-policies input[data-policy="' + policy + '"]'); c.checked = on; c.dispatchEvent(new Event('change', {bubbles:true})); },
+  tick(policy, on) { const c = document.querySelector('#compare-policies [data-policy="' + policy + '"]'); if ((c.getAttribute('aria-checked') === 'true') !== on) c.click(); },
   whyLines() { return Array.from(document.querySelectorAll('#whylog-list li')).map((l) => l.textContent); }
 };`;
 
@@ -108,27 +108,16 @@ try {
   // --- Row 4: big-job trap, FCFS vs ours in Compare
   await ev(`__h.loadPreset('big_job_trap'); true`);
   check('row 4: big_job_trap loads 10 jobs on 10 cores / 10240 MB', (await ev(`APRM.store.get().jobs.length`)) === 10 && (await ev(`__h.text('run-dataline')`)).includes('10 jobs on 10 cores and 10240 MB'), await ev(`__h.text('run-dataline')`));
-  await ev(`__h.mode('compare'); __h.tick('aging', false); __h.tick('aging_reserve', true); true`);
+  await ev(`__h.mode('compare'); ['fcfs', 'aging_reserve'].forEach((x) => __h.tick(x, true)); ['priority', 'sjf', 'aging', 'knapsack'].forEach((x) => __h.tick(x, false)); true`);
   await ev(`__h.click('compare-start'); true`);
   check('row 4: Compare finishes', await waitFor(`APRM.compare.snapshot().status === 'done'`));
-  const cmp = await ev(`APRM.compare.snapshot().columns.map(c => ({p: c.policy, avg: c.metrics.avg_wait, max: c.metrics.max_wait, mk: c.metrics.makespan}))`);
+  const cmp = await ev(`APRM.compare.model().cols.map(c => ({p: c.name, avg: c.raw ? c.raw.avg_wait : null, max: c.m.maxw, mk: c.m.mk}))`);
   console.log('     compare columns: ' + JSON.stringify(cmp));
   check('row 4: fcfs and reserve both avg_wait 17.1, max_wait 19, makespan 22 (the trap is not fixed online)', cmp.length === 2 && cmp.every((c) => Math.abs(c.avg - 17.1) < 1e-9 && c.max === 19 && c.mk === 22));
-  const tableRows = await ev(`document.querySelectorAll('#compare-body tr').length`);
-  check('row 4: metrics table shown', tableRows > 0, tableRows + ' rows');
-  await waitFor(`APRM.compare.chartState() !== 'loading'`, 14000); // Chart.js has a 10 s timeout
-  const note = (await ev(`document.getElementById('compare-chart-note').hidden`)) ? '(hidden)' : await ev(`__h.text('compare-chart-note')`);
-  const chartState = await ev(`APRM.compare.chartState()`);
-  console.log('     chart state: ' + chartState + '; note: ' + note);
-  check('row 4: charts loaded, or table fallback with a message', chartState === 'loaded' || (chartState === 'failed' && /could not load|could not be loaded|unavailable/i.test(note || '')), chartState);
-  // The built single file (make web) carries the chart library, so offline it still draws charts; the
-  // unbuilt web/index.html loads it from the CDN and offline falls back to the table with a message.
-  if (offline) {
-    const built = /[\\/]dist[\\/]index\.html$/.test(page);
-    if (built) { check('offline, built file: charts drawn from the bundled library', chartState === 'loaded', chartState); }
-    else { check('offline, source page: table fallback with a message', chartState === 'failed' && /could not load/.test(note || ''), chartState); }
-  }
-  check('row 4: exact-optimum row explains the 9-job limit (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('compare-exact')`)));
+  const tableRows = await ev(`document.querySelectorAll('#cmp-results .cmp-table tbody tr').length`);
+  check('row 4: full results table shown', tableRows === 7, tableRows + ' rows');
+  check('row 4: the peaks chart and the "Who ran when" boards are drawn (SVG and canvas, no chart library)', (await ev(`document.querySelectorAll('#cmp-verdict svg path').length`)) > 0 && (await ev(`document.querySelectorAll('#cmp-boards canvas').length`)) === 2);
+  check('row 4: the exact best is explained as limited to 9 jobs (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('cmp-exactnote')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log
   await ev(`__h.loadPreset('memory_hog'); true`);

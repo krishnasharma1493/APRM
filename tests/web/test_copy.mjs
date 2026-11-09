@@ -51,9 +51,18 @@ test('every defined key is used somewhere (no dead copy)', () => {
     if (m) return all.includes("'preset.'") && presets.includes('"name": "' + m[1] + '"');
     // keys built as 'prefix.' + name: the prefix literal must appear in the page code
     const prefix = k.match(/^(policy|metric|kind|status|short|method|term|screen)\./);
-    return !!prefix && all.includes("'" + prefix[1] + ".'");
+    if (prefix && all.includes("'" + prefix[1] + ".'")) return true;
+    // Compare (K-57) builds keys as 'cmp.<group>.' + id: a literal prefix of the key must appear
+    const parts = k.split('.');
+    for (let i = parts.length - 1; i >= 2; i--) { if (all.includes("'" + parts.slice(0, i).join('.') + ".'")) return true; }
+    return false;
   };
   for (const k of keys) assert.ok(all.includes('"' + k + '"') || all.includes("'" + k + "'") || dynamic(k), 'unused copy key: ' + k);
+});
+
+test('every placeholder is a plain lower-case name, so fill() can replace it', () => {
+  const C = copy;
+  for (const k of C.keys()) { const bad = (C.get(k).match(/\{[^}]*\}/g) || []).filter((m) => !/^\{[a-z]+\}$/.test(m)); assert.deepEqual(bad, [], k); }
 });
 
 let failed = 0;

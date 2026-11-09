@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(web, rel), 'utf8');
 // ---------- static checks on the files ----------
 
 const PRD_ORDER = ['vendor/aprm.js', 'js/wasm.js', 'js/copy.js', 'js/store.js', 'js/presets_data.js', 'js/presets.js',
-  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/runmodel.js', 'js/player.js', 'js/runpanels.js', 'js/runanim.js', 'js/runstage.js', 'js/strip.js', 'js/compare.js',
+  'js/editor.js', 'js/generator.js', 'js/machine.js', 'js/laptop.js', 'js/canvas.js', 'js/whylog.js', 'js/runmodel.js', 'js/player.js', 'js/runpanels.js', 'js/runanim.js', 'js/runstage.js', 'js/strip.js', 'js/comparemodel.js', 'js/compare.js',
   'js/motion.js', 'js/keys.js', 'js/share.js', 'js/app.js'];
 const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
 
@@ -55,8 +55,8 @@ test('build: web/dist/index.html is one file with no external script, stylesheet
   assert.ok(!/<script\b[^>]*\bsrc=/.test(b), 'no script src');
   assert.ok(!/<link\b[^>]*rel="stylesheet"/.test(b), 'no linked stylesheet');
   assert.ok(!/type="module"/.test(b), 'no module script');
-  assert.ok(!/https?:\/\/cdn\./.test(b.replace(/var CHART_URL = '[^']*'/, '')), 'no CDN reference outside the unused fallback constant');
-  assert.ok(b.includes('window.APRM') && /Chart\.js v4\.5\.1/.test(b), 'page scripts and the bundled chart library are inside');
+  assert.ok(!/https?:\/\/cdn\./.test(b), 'no CDN reference');
+  assert.ok(b.includes('window.APRM') && b.includes('APRM.comparemodel'), 'page scripts are inside; Compare draws with SVG and canvas, no chart library (D88)');
 });
 
 test('grep-safety: no innerHTML, eval, new Function, inline handlers, modules, fetch', () => {
@@ -416,7 +416,7 @@ test('shell: one step at a time, Next buttons move on, Show details switch works
   next('compare').click();
   assert.equal(APRM.store.get().mode, 'compare');
   assert.equal(doc.byId['app-main'].hidden, true);
-  next('build').click();
+  APRM.store.setMode('build');                          // Compare's own "Back to your jobs" is made by compare.js
   assert.equal(APRM.store.get().mode, 'build');
   const sw = doc.byId['details-switch'];
   assert.equal(APRM.store.get().details, false);
@@ -539,37 +539,38 @@ if (existsSync(vendor) && readFileSync(vendor).length > 0) {
     }
   });
 
-  test('real engine: Compare table, verdict and exact line equal the engine for tiny_case', async () => {
+  test('real engine: Compare columns, verdict and exact best equal the engine for tiny_case', async () => {
     const createAprm = require(vendor);
     const page = loadPage({ createAprm });
     await engineReady(page);
     const A = page.APRM;
     A.presets.load('tiny_case');
     A.store.setMode('compare');
-    A.compare.setSelected(['fcfs', 'sjf', 'aging']);
     const queue = [];
-    A.compare.setScheduler({ later: (fn) => queue.push(fn), timeout: () => 0, cancelLater: () => {}, cancelTimeout: () => {} });
-    assert.equal(A.compare.start(), true);
+    A.compare.setScheduler({ later: (fn) => queue.push(fn), cancelLater: () => {} });
+    A.compare.setSource('yours');
+    assert.equal(A.compare.start(), true, A.compare.snapshot().status);
     while (queue.length) queue.shift()();
-    const snap = A.compare.snapshot();
-    assert.equal(snap.status, 'done');
-    const rows = page.doc.byId['compare-body'].children;
-    assert.equal(rows.length, 3);
-    snap.columns.forEach((col, i) => {
-      const cells = rows[i].children.map((c) => c.textContent);
-      const m = col.metrics;
-      assert.equal(cells[5], String(m.makespan), col.policy + ' makespan');
-      assert.equal(cells[1], Number.isInteger(m.avg_wait) ? String(m.avg_wait) : m.avg_wait.toFixed(3), col.policy + ' avg wait');
-    });
-    // the exact line: total wait from a fresh engine handle on the same jobs
+    const R = A.compare.model();
+    assert.ok(R, 'results');
     const st = A.store.get();
     const w = A.wasm;
-    const h = w.create(st.machine.cpu, st.machine.mem, 'fcfs', st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
-    for (const j of st.jobs) w.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
-    const ex = w.exact(h); w.destroy(h);
-    assert.ok(page.doc.byId['compare-exact'].textContent.startsWith('Exact best order (up to 9 jobs): total wait ' + ex.total_wait + '.'));
-    const best = Math.min(...snap.columns.map((c) => c.metrics.makespan));
-    assert.ok(page.doc.byId['compare-verdict'].hidden || page.doc.byId['compare-verdict'].textContent.includes('tick ' + best), 'verdict names the best makespan');
+    for (const col of R.cols.filter((c) => !c.bench)) {
+      const h = w.create(st.machine.cpu, st.machine.mem, col.name, st.settings.alphaMilli, st.settings.threshold, st.settings.eps);
+      for (const j of st.jobs) w.addJob(h, j.id, j.arrival, j.duration, j.cpu, j.mem, j.priority);
+      while (w.step(h) === 1) { /* run to the end */ }
+      const m = w.metrics(h);
+      if (col.name === 'fcfs') {
+        const ex = w.exact(h);
+        const opt = R.cols.find((c) => c.bench);
+        assert.equal(opt.m.totW, ex.total_wait, 'exact best total wait');
+      }
+      w.destroy(h);
+      assert.equal(col.m.maxw, m.max_wait, col.name + ' max wait');
+      assert.equal(col.m.mk, m.makespan, col.name + ' makespan');
+    }
+    const comp = R.cols.filter((c) => !c.bench);
+    assert.equal(R.cols.find((c) => c.key === R.winner).m.maxw, Math.min(...comp.map((c) => c.m.maxw)), 'the verdict picks the shortest longest wait');
   });
 } else {
   console.log('note: web/vendor/aprm.js not built (run `make wasm`); real-engine test skipped');

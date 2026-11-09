@@ -89,6 +89,26 @@
     return { cpu: SAMPLE.cpu, mem: SAMPLE.mem, jobs: jobs };
   }
 
+  /* The Compare page's other design cases (K-57), same row format as SAMPLE. "nine" makes a long
+   * job wait behind a stream of short ones (starvation); "twelve" is a mixed load. */
+  var CASES = {
+    nine: { cpu: 16, mem: 32768, threshold: 12, rows: [[1, 0, 6, 8, 8192, 5], [2, 1, 14, 14, 16384, 2], [3, 2, 6, 8, 8192, 7], [4, 5, 6, 8, 8192, 6],
+      [5, 8, 6, 8, 8192, 8], [6, 11, 6, 8, 8192, 7], [7, 14, 6, 8, 8192, 6], [8, 17, 6, 8, 8192, 8], [9, 20, 3, 2, 2048, 4]] },
+    twelve: { cpu: 16, mem: 32768, threshold: 12, rows: [[1, 0, 6, 4, 4096, 3], [2, 1, 8, 8, 8192, 6], [3, 2, 10, 10, 16384, 8], [4, 3, 4, 2, 2048, 1],
+      [5, 5, 12, 6, 12288, 5], [6, 6, 3, 2, 2048, 2], [7, 8, 9, 8, 8192, 9], [8, 9, 5, 4, 4096, 4], [9, 12, 7, 12, 20480, 7],
+      [10, 13, 2, 2, 1024, 0], [11, 15, 6, 6, 6144, 6], [12, 18, 4, 4, 4096, 3]] }
+  };
+  CASES.sample = SAMPLE;
+
+  /* One design case by name ('nine', 'twelve', 'sample') as { cpu, mem, threshold, jobs }, or null. O(rows). */
+  function designCase(name) {
+    var c = CASES[name];
+    if (!c) { return null; }
+    return { cpu: c.cpu, mem: c.mem, threshold: c.threshold, jobs: c.rows.map(function (r) {
+      return { id: r[0], arrival: r[1], duration: r[2], cpu: r[3], mem: r[4], priority: r[5] };
+    }) };
+  }
+
   /* The Run page's big case (K-51): 500 jobs on 32 cores and 131072 MB, always the same (seed 42).
    * Input only, like generate(). Returns { cpu, mem, jobs } the caller owns. O(500). */
   var BIG = { seed: 42, count: 500, cpu: 32, mem: 131072 };
@@ -176,6 +196,7 @@
     bigCase: bigCase,
     SAMPLE: SAMPLE,
     sampleCase: sampleCase,
+    designCase: designCase,
     mount: mount
   };
 })();
