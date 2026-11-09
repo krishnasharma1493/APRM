@@ -100,7 +100,7 @@
     'csv.title': 'Import or export jobs',
     'csv.import': 'Import a jobs file (CSV, up to 1 MB and 5,000 jobs)',
     'csv.export': 'Export jobs.csv',
-    'csv.hint': 'Columns, in order: id, arrival, duration, cores, memory, priority. A header row is optional.',
+    'csv.hint': 'Columns, in order: id, arrival, duration, cpu, mem, priority. The first line must be this header.',
     'col.id': 'Job number (id)',
     'col.arrival': 'Arrives at (tick)',
     'col.duration': 'Runs for (ticks)',
