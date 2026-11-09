@@ -35,25 +35,30 @@
     return s.replace(/\.?0+$/, '');
   }
 
-  /* A metric for people: null says why there is no value; with Show details the engine's number is
-   * printed unchanged; otherwise decimals are rounded to three. kind: 'ticks' | 'plain' | 'share'. O(1). */
+  /* Rounded the design's way: r1 to one decimal, r2 to two, trailing zeros dropped (7.2, 8, 4.67). O(1). */
+  function r1(v) { return String(Math.round(v * 10) / 10); }
+  function r2(v) { return String(Math.round(v * 100) / 100); }
+
+  /* A metric for people: null says why there is no value; the clean view rounds as the design shows
+   * it (one decimal, a percent for a share); Show details prints the engine's number unchanged, so
+   * it can be checked against the metrics JSON. kind: 'ticks' | 'plain' | 'share'. O(1). */
   function metricText(v, kind) {
     if (v === null || v === undefined) { return copyText('metric.none', 'no value yet'); }
-    if (detailsOn()) { return String(v) + (kind === 'ticks' ? ' ' + copyText('unit.ticks', 'ticks') : ''); }
-    if (kind === 'share') { return (Math.round(v * 1000) / 10).toFixed(1) + '%'; }
-    var n = Math.floor(v) === v ? String(v) : short(v);
-    return kind === 'ticks' ? n + ' ' + copyText(v === 1 ? 'unit.tick' : 'unit.ticks', 'ticks') : n;
+    if (detailsOn()) { return String(v) + (kind === 'ticks' ? ' ' + copyText('unit.ticks', 'ticks') : ''); }   /* the engine's exact value (D87) */
+    if (kind === 'share') { return r1(v * 100) + '%'; }
+    return kind === 'ticks' ? r1(v) + ' ' + copyText('unit.ticks', 'ticks') : r1(v);
   }
 
-  /* The key the engine sorts the waiting jobs by (PRD section 5 and BLUEPRINT 3), from the job's
-   * own fields; ties are always broken by earlier arrival, then lower id. O(1). */
+  /* The key the waiting jobs are listed by, written as the design writes it (the policy's own
+   * comparison, earlier arrival and lower id break ties). Aging shows the score the engine's
+   * integer key K = 1000 x priority - alpha_milli x arrival orders by. O(1). */
   function sortKey(policy, alphaMilli, j) {
     switch (policy) {
       case 'fcfs': return copyText('key.fcfs', '', { a: j.arrival, id: j.id });
       case 'priority': return copyText('key.priority', '', { p: j.priority, a: j.arrival, id: j.id });
       case 'sjf': return copyText('key.sjf', '', { d: j.duration, a: j.arrival, id: j.id });
       case 'aging':
-      case 'aging_reserve': return copyText('key.aging', '', { k: 1000 * j.priority - alphaMilli * j.arrival, p: j.priority, alpha: alphaMilli, a: j.arrival, id: j.id });
+      case 'aging_reserve': return copyText('key.aging', '', { s: j.score === null || j.score === undefined ? '' : r2(j.score), a: j.arrival });
       default: return copyText('key.knapsack', '');
     }
   }
@@ -83,7 +88,11 @@
     var top = byId('an-top');
     if (top) { top.setAttribute('data-two', r ? 'on' : 'off'); }
     if (r) {
-      setText('reserve-line', copyText('run.reserve', '', { id: r.id, t: r.shadow_time }));
+      /* the design's "held" amounts: what the saved job needs, up to what is free now (engine numbers) */
+      var rj = null;
+      for (var i = 0; i < st.waiting.length; i++) { if (st.waiting[i].id === r.id) { rj = st.waiting[i]; } }
+      var hc = rj ? Math.min(rj.cpu, st.free.cpu) : 0, hm = rj ? Math.min(rj.mem, st.free.mem) : 0;
+      setText('reserve-line', copyText('run.reserve', '', { id: r.id, t: r.shadow_time, c: hc, m: hm }));
       setText('reserve-note', copyText('run.reserve.note', '', { id: r.id, t: r.shadow_time }));
     }
   }
@@ -118,6 +127,8 @@
     var sig = f.events + '|' + f.selected + '|' + det + '|' + f.policy + '|' + w.length + '|' + (st ? st.now : -1) + '|' + (st && st.reservation ? st.reservation.id : '');
     if (sig === lastWait) { return; }
     lastWait = sig;
+    var table = byId('wait-table');
+    if (table && table.setAttribute) { table.setAttribute('data-details', det ? 'on' : 'off'); table.setAttribute('data-score', aging ? 'on' : 'off'); }
     var head = byId('wait-head');
     if (head) {
       clear(head);
@@ -135,11 +146,13 @@
       var j = w[i];
       var saved = !!(st.reservation && st.reservation.id === j.id);
       var cells = [i + 1, { t: copyText('stage.job', 'Job ' + j.id, { id: j.id }), tag: saved ? copyText('run.tag.saved', 'spot saved') : '' }, j.priority];
-      if (aging) { cells.push({ t: j.score === null || j.score === undefined ? '' : APRM.runmodel.scoreText(j.score), cls: 'num amber' }); }
+      if (aging) { cells.push({ t: j.score === null || j.score === undefined ? '' : r2(j.score), cls: 'num amber' }); }
       if (det) { cells.push({ t: sortKey(f.policy, f.settings.alphaMilli, j), cls: 'muted' }); }
       body.appendChild(row(j.id, cells, f.selected === j.id, i === 0, 1));
     }
     if (APRM.keys) { APRM.keys.refocus(body, keep); }
+    var wt = byId('wait-table');
+    if (wt && wt.parentNode && wt.parentNode.hidden !== undefined) { wt.parentNode.hidden = w.length === 0; }
     var empty = byId('wait-empty');
     if (empty) { empty.hidden = w.length > 0; empty.textContent = st ? copyText('run.wait.empty', 'No jobs waiting.') : copyText('run.wait.before', 'Nothing to show yet. Press Run.'); }
     var more = byId('wait-more');
@@ -164,8 +177,10 @@
         x.start, x.finish, x.cpu, x.mem], f.selected === x.id, i === 0, 0));
     }
     if (APRM.keys) { APRM.keys.refocus(body, keep); }
+    var rt = byId('running-table');
+    if (rt && rt.parentNode && rt.parentNode.hidden !== undefined) { rt.parentNode.hidden = r.length === 0; }
     var empty = byId('running-empty');
-    if (empty) { empty.hidden = r.length > 0; empty.textContent = st ? copyText('run.running.empty', 'Nothing running.') : copyText('run.wait.before', 'Nothing to show yet. Press Run.'); }
+    if (empty) { empty.hidden = r.length > 0; empty.textContent = copyText('run.running.empty', 'Nothing running.'); }
     var more = byId('running-more');
     if (more) { more.hidden = r.length <= ROWS_MAX; more.textContent = copyText('run.rows.more', '', { n: ROWS_MAX, total: r.length }); }
   }
@@ -198,13 +213,13 @@
       var value = document.createElement('span');
       value.setAttribute('class', 'tile-value');
       var v = metricText(m[key], METRICS[i][1]);
-      if (key === 'makespan' && st.done < st.total && m[key] !== null) { v = copyText('run.metric.sofar', v, { v: v }); }
+      if (key === 'makespan' && st.done < st.total) { v = copyText('run.metric.sofar', v); }
       value.textContent = v;
       li.appendChild(label);
       li.appendChild(value);
       var how = document.createElement('span');
       how.setAttribute('class', 'tile-how detail-only');
-      how.textContent = copyText(METRICS[i][2], '', { cpu: st.cap.cpu, mem: st.cap.mem });
+      how.textContent = copyText(METRICS[i][2], '', { cpu: st.cap.cpu, mem: st.cap.mem, span: st.done >= st.total && typeof m.makespan === 'number' ? m.makespan : st.now });
       li.appendChild(how);
       list.appendChild(li);
     }
@@ -215,7 +230,7 @@
         var t = document.createElement('li');
         var a = document.createElement('span'); a.setAttribute('class', 'tile-label'); a.textContent = 'P' + p;
         var b = document.createElement('span'); b.setAttribute('class', 'tile-value');
-        b.textContent = by[p] === null || by[p] === undefined ? copyText('run.prio.none', '—') : metricText(by[p], 'plain');
+        b.textContent = by[p] === null || by[p] === undefined ? copyText('run.prio.none', '—') : (detailsOn() ? String(by[p]) : r1(by[p]));
         t.appendChild(a); t.appendChild(b);
         prio.appendChild(t);
       }
@@ -255,5 +270,5 @@
     draw(P.frame(), 'reset');
   }
 
-  APRM.runpanels = { mount: mount, metricText: metricText, sortKey: sortKey, short: short, draw: draw };
+  APRM.runpanels = { mount: mount, metricText: metricText, sortKey: sortKey, short: short, r1: r1, r2: r2, draw: draw };
 })();

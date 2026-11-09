@@ -205,6 +205,9 @@
     if (cache && cache.key === key && cache.hist === f.hist) { return cache; }
     var rows = sortRows(f.hist, view.sortBy, now, rowsFor(f.jobs, f.hist));
     var ticks = span(f.hist, f.jobs, now);
+    /* the design spans the whole run (makespan + 1) from the first event; the engine told us its length */
+    var plan = f.plan || (f.state && APRM.player && APRM.player.plan ? APRM.player.plan() : null);
+    if (plan && typeof plan.makespan === 'number' && plan.makespan + 1 > ticks) { ticks = plan.makespan + 1; }
     var geo = geometry(f.jobs.length, ticks, ui.scroll.clientWidth || 800, view.zoom, detailsOn());
     cache = { key: key, hist: f.hist, rows: rows, geo: geo, now: now, use: null };
     return cache;
@@ -343,7 +346,7 @@
     var aging = f.policy === 'aging' || f.policy === 'aging_reserve';
     if (aging && (s === WAIT || s === SAVED)) {
       var sc = APRM.runmodel.score(f.policy, f.settings.alphaMilli, J.priority, J.arrival, t1);
-      lines.push({ t: copyText('strip.tip.score', '', { s: APRM.runmodel.scoreText(sc), t: t1 }), cls: 'tip-amber' });
+      lines.push({ t: copyText('strip.tip.score', '', { s: String(Math.round(sc * 100) / 100), t: t1 }), cls: 'tip-amber' });
     }
     if (J.resAt !== null && J.resBy !== null && J.resBy !== undefined) { lines.push({ t: copyText('strip.tip.saved', '', { a: J.resAt, b: J.resBy }), cls: 'tip-amber' }); }
     return lines;

@@ -110,7 +110,7 @@ try {
     const seen = [];
     for (let i = 0; i < 60; i++) {
       await pressTab();
-      const info = await ev(`(function(){ const e = document.activeElement; if (!e || e === document.body) return null; const ring = (c) => c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2; const isSwitch = e.id === 'details-switch'; const ok = isSwitch ? ring(getComputedStyle(e.nextElementSibling)) : ring(getComputedStyle(e)); return { id: e.id || e.tagName + ':' + (e.textContent||'').slice(0,20), ok }; })()`);
+      const info = await ev(`(function(){ const e = document.activeElement; if (!e || e === document.body) return null; const ring = (c) => c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) >= 2; const isSwitch = e.id === 'details-switch'; const ok = isSwitch ? ring(getComputedStyle(e.parentNode.querySelector('.track'))) : ring(getComputedStyle(e)); return { id: e.id || e.tagName + ':' + (e.textContent||'').slice(0,20), ok }; })()`);
       if (info) seen.push(info);
     }
     const bad = seen.filter((x) => !x.ok);
@@ -299,8 +299,8 @@ try {
   check('timeline: pointing at a cell shows a card with the job and tick', tip.shown && /^Job 1 · tick 2/.test(tip.text), JSON.stringify(tip));
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: cell.x, y: cell.y, button: 'left', clickCount: 1 });
-  check('timeline: clicking a row selects that job everywhere', (await ev(`APRM.player.snapshot().selected`)) === 1 && /job 1/.test(await ev(`document.getElementById('whylog-filter').textContent`)));
-  check('timeline: a short run already fits at full cell size, so both zoom buttons are off', await ev(`document.getElementById('strip-zoom-in').disabled && document.getElementById('strip-zoom-out').disabled`));
+  check('timeline: clicking a row selects that job everywhere', (await ev(`APRM.player.snapshot().selected`)) === 1 && /job 1/.test(await ev(`document.getElementById('whylog-clear').textContent`)));
+  check('timeline: at the start zoom out is off (the strip already spans the whole run), zoom in is on', await ev(`!document.getElementById('strip-zoom-in').disabled && document.getElementById('strip-zoom-out').disabled`));
   await ev(`document.getElementById('run-source-big').click(); document.getElementById('run-start').click(); document.getElementById('run-jump').click(); true`);
   for (let i = 0; i < 100 && (await ev(`APRM.player.snapshot().status`)) !== 'finished'; i++) await sleep(50);
   await sleep(300);

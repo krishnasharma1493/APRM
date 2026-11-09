@@ -96,15 +96,19 @@ test('one laptop, two poses: Build explodes the layers, Run assembles them and o
   assert.equal(plain(A.laptop.pose('collapse')).lid, 108);
 });
 
-test('stage geometry: side columns from 1100 px, the screen about 600 px wide on a desktop, always on a phone', () => {
+test('stage geometry: the design numbers: side columns from 1100 px, a 640 px screen at 1440, stage 470 x scale + 40', () => {
   const g = A.runstage.geometry(1440);
   assert.equal(g.side, true);
-  assert.equal(g.screenW, 600);
+  assert.equal(g.screenW, 640);
+  assert.equal(g.h, Math.round(470 * 640 / 361 + 40));
+  assert.equal(g.qLeft, 88, 'waiting column: 1440/2 - 320 - 24 - 248 - 40');
+  assert.ok(Math.abs(g.dLeft - (720 + 320 * 1.06 + 40)) < 1e-9, 'finished column right of the screen');
   const m = A.runstage.geometry(1000);
   assert.equal(m.side, false);
+  assert.equal(m.screenW, 600);
   const p = A.runstage.geometry(375);
   assert.equal(p.narrow, true);
-  assert.ok(p.screenW < 375 - 32, 'fits a phone');
+  assert.ok(Math.abs(p.screenW - (375 - 32) * 0.74) < 1e-9, 'fits a phone');
   assert.ok(g.h > p.h);
 });
 

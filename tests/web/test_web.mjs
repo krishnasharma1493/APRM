@@ -374,7 +374,7 @@ test('store: get() returns copies', () => {
   const b = s.get();
   assert.equal(b.jobs.length, 1);
   assert.equal(b.machine.cpu, 16);
-  assert.deepEqual(plain(b.policies), ['fcfs']);
+  assert.deepEqual(plain(b.policies), ['aging_reserve']);   // the Run design's default scheduler
 });
 
 // ---------- app.js: the three states ----------

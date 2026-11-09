@@ -183,7 +183,8 @@ try {
   try { ws && ws.close(); } catch (e) { /* ignore */ }
   chrome.kill();
   await sleep(300);
-  rmSync(profile, { recursive: true, force: true });
+  /* Chrome may still be writing its profile as it exits: retry, and never fail the run over cleanup */
+  try { rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch (e) { /* a temp folder left behind */ }
 }
 const failed = results.filter((r) => !r.ok).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);

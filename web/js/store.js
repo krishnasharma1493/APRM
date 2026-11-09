@@ -18,7 +18,7 @@
   var state = {
     machine: { cpu: 16, mem: 32768 },
     jobs: [],
-    policies: ['fcfs'],
+    policies: ['aging_reserve'],
     settings: { alphaMilli: 100, threshold: 50, eps: 0.1, speed: 1 },
     mode: 'build',
     details: false,
