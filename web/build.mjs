@@ -2,11 +2,11 @@
 //
 // Idea: browsers refuse to load ES modules and to fetch files from a page opened with file://, so
 // the demo copy must carry everything inside itself. This script reads web/index.html and writes
-// web/dist/index.html with every stylesheet and every local script copied inline, in the same order,
-// Nothing is rewritten or minified:
-// the built page runs exactly the source code. No eval; Node standard library only.
+// web/dist/index.html with every stylesheet and every local script copied inline, in the same order.
+// Nothing is rewritten or minified: the built page runs exactly the source code. No eval; Node
+// standard library only. The site has no runtime dependency (D88); `npm ci` only checks the lockfile.
 //
-// Usage: node build.mjs (or `make web`). Needs web/vendor/aprm.js (`make wasm`) and `npm ci`.
+// Usage: node build.mjs (or `make web`). Needs web/vendor/aprm.js (`make wasm`).
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';

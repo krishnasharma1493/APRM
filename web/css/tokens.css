@@ -105,6 +105,9 @@
   --cmp-plat-top: #26272B; --cmp-plat-mid: #121214; --cmp-plat-bot: #060607;
   --cmp-plat-hi: rgba(255, 255, 255, 0.22); --cmp-plat-lo: rgba(255, 255, 255, 0.10);
   --cmp-streak: #FFFFFF;
+  --cmp-gloss: rgba(255, 255, 255, 0.22); --cmp-gloss-none: rgba(255, 255, 255, 0);
+  --cmp-halo: rgba(242, 238, 230, 0.06); --cmp-halo-none: rgba(242, 238, 230, 0);
+  --cmp-rim: rgba(255, 255, 255, 0.35);
   --cmp-cut: rgba(9, 9, 10, 0.55);
   --cmp-best: #8FB8A8;
   --cmp-lost: #E07A6B;

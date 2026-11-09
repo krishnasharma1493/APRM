@@ -35,6 +35,8 @@ class El {
   get firstChild() { return this.children[0] || null; }
   appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
   removeChild(c) { this.children.splice(this.children.indexOf(c), 1); c.parentNode = null; return c; }
+  replaceChild(n, o) { const i = this.children.indexOf(o); this.children[i] = n; n.parentNode = this; o.parentNode = null; return o; }
+  focus() {}
   setAttribute(k, v) { this.attrs[k] = String(v); if (k === 'id') { this.id = String(v); } if (k === 'hidden') { this.hidden = true; } }
   getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
@@ -42,7 +44,8 @@ class El {
   click() { this.fire('click'); }
   getBoundingClientRect() { return { left: 0, top: 0, width: 1280, height: 200 }; }
   all() { const out = []; const walk = (e) => { out.push(e); (e.children || []).forEach((c) => c.children && walk(c)); }; walk(this); return out; }
-  querySelectorAll(sel) { const m = /^\[([a-z-]+)\]$/.exec(sel); return m ? this.all().filter((e) => e.getAttribute(m[1]) !== null) : []; }
+  querySelectorAll(sel) { const m = /^\[([a-z-]+)(?:="([^"]*)")?\]$/.exec(sel); return m ? this.all().filter((e) => e.getAttribute(m[1]) !== null && (m[2] === undefined || e.getAttribute(m[1]) === m[2])) : []; }
+  querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
   find(pred) { return this.all().filter(pred); }
 }
 function fakeCtx() {
@@ -322,6 +325,34 @@ test('the hero chart switches measure and the per-job and highlight choices redr
   const hit = res.all().find((e) => e.tag === 'rect' && /cmp-hit/.test(e.getAttribute('class') || ''));
   hit.fire('click');
   assert.ok(p.A.compare.snapshot().sel, 'a scheduler is highlighted');
+});
+
+test('verdict on a three-way tie names where the winner really won', () => {
+  const p = ready({ metricsFor: (pol) => ({ avg_wait: pol === 'sjf' ? 3 : 2, max_wait: 5, avg_turnaround: 6, weighted_completion: 40, makespan: 9, util_cpu: 0.5, util_mem: 0.5, avg_wait_by_priority: [] }) });
+  p.A.compare.start(); p.sched.drain();
+  const v = p.A.compare.verdictOf();
+  assert.match(v.rest, /ties with .* wins on average wait: 2 against 3 ticks/);
+});
+
+test('keyboard: measure tabs move with the arrow keys; gap and per-job rows are buttons', () => {
+  const p = ready();
+  p.A.compare.start(); p.sched.drain();
+  const res = p.el('cmp-results');
+  const tab = res.all().find((e) => e.getAttribute('data-metric') === 'maxw');
+  tab.fire('keydown', { key: 'ArrowRight', currentTarget: tab });
+  assert.equal(p.A.compare.snapshot().metric, 'avgw');
+  const rows = res.all().filter((e) => /cmp-gaprow|cmp-dumb/.test(e.getAttribute('class') || '') && e.getAttribute('role') === 'button');
+  assert.ok(rows.length >= 6 && rows.every((r) => r.getAttribute('tabindex') === '0'));
+  rows[0].fire('keydown', { key: 'Enter' });
+  assert.ok(p.A.compare.snapshot().sel);
+});
+
+test('removing every Build job drops the "Your jobs" results and falls back to the starvation case', () => {
+  const p = ready();
+  p.A.compare.start(); p.sched.drain();
+  p.A.store.setJobs([]);
+  const s = p.A.compare.snapshot();
+  assert.equal(s.source, 'nine'); assert.equal(s.status, 'idle'); assert.equal(p.A.compare.model(), null);
 });
 
 test('changing the jobs after a comparison marks it out of date', () => {

@@ -321,7 +321,7 @@
     var res = h('div', { cls: 'cmp-results', id: 'cmp-results', hidden: 'hidden' });
     var tip = h('div', { cls: 'cmp-tip', id: 'cmp-tip', hidden: 'hidden', 'aria-hidden': 'true' });
     var modal = h('div', { cls: 'cmp-modal', id: 'cmp-modal', hidden: 'hidden', role: 'dialog', 'aria-modal': 'true',
-      on: { click: function (e) { if (e.target === modal) { view.modal = null; renderModal(); } } } });
+      on: { click: function (e) { if (e.target === modal) { closeModal(); } } } });
     var toast = h('div', { cls: 'cmp-toast', id: 'cmp-toast', 'aria-live': 'polite' });
     [head, pick, empty, prog, res, tip, modal, toast].forEach(function (e) { root.appendChild(e); });
     return { root: root, ds: ds, picks: pick, res: res, prog: prog, empty: empty, tip: tip, modal: modal, toast: toast };
@@ -427,20 +427,17 @@
     var R = view.model;
     ui.res.hidden = !(R && view.status === 'done');
     hideTip();
-    if (!R || view.status !== 'done') { clear(ui.res); renderModal(); return; }
+    if (!R || view.status !== 'done') { clear(ui.res); view.modal = null; renderModal(false); return; }
     var anim = view.animate;
     view.animate = null;
-    var w = layoutWidth(), narrow = w < 760, two = w >= 1100;
-    var cw = Math.min(1280, w);
-    var ctx = { R: R, w: w, cw: cw, narrow: narrow, two: two, anim: anim, cpx: narrow ? 16 : 24,
-      hiId: view.sel || R.winner, opOf: function (k) { return view.sel && view.sel !== k ? 0.28 : 1; } };
+    var ctx = ctxOf(anim);
     var keep = window.scrollY;
     clear(ui.res);
     ui.res.appendChild(sectionNav());
     var holder = h('div', { cls: 'cmp-sections' });
     holder.appendChild(verdictSection(ctx));
     holder.appendChild(resultsSection(ctx));
-    holder.appendChild(h('div', { cls: 'cmp-two' + (two ? ' on' : '') }, [waitsSection(ctx), fairSection(ctx)]));
+    holder.appendChild(h('div', { cls: 'cmp-two' + (ctx.two ? ' on' : '') }, [waitsSection(ctx), fairSection(ctx)]));
     holder.appendChild(gapSection(ctx));
     holder.appendChild(boardsSection(ctx));
     holder.appendChild(timelinesSection(ctx));
@@ -453,8 +450,24 @@
     ui.res.appendChild(holder);
     if (typeof window.scrollTo === 'function' && keep) { window.scrollTo(0, keep); }
     drawCanvases();
-    renderModal();
+    renderModal(false);
     if (anim) { grow(ui.res, anim); }
+  }
+
+  /* Sizes and choices every section reads. O(1). */
+  function ctxOf(anim) {
+    var R = view.model, w = layoutWidth(), narrow = w < 760, two = w >= 1100;
+    return { R: R, w: w, cw: Math.min(1280, w), narrow: narrow, two: two, anim: anim, cpx: narrow ? 16 : 24,
+      hiId: view.sel || R.winner, opOf: function (k) { return view.sel && view.sel !== k ? 0.28 : 1; } };
+  }
+  /* Redraw one section only (a measure or a use tab changes nothing else). */
+  function redrawSection(id, make, anim) {
+    var old = byId(id);
+    if (!old || !old.parentNode || !view.model) { render(); return; }
+    hideTip();
+    var node = make(ctxOf(anim));
+    old.parentNode.replaceChild(node, old);
+    if (anim) { grow(node, anim); }
   }
 
   function sectionNav() {
@@ -513,6 +526,28 @@
     countRaf = requestAnimationFrame(tick);
   }
 
+  /* Tabs: arrow keys, Home and End move the choice (a roving tab stop, ARIA tabs pattern). */
+  function tabKeys(e) {
+    var list = e.currentTarget.parentNode;
+    var tabs = Array.prototype.slice.call(list.children);
+    var i = tabs.indexOf(e.currentTarget), j = -1;
+    if (e.key === 'ArrowRight') { j = (i + 1) % tabs.length; } else if (e.key === 'ArrowLeft') { j = (i - 1 + tabs.length) % tabs.length; }
+    else if (e.key === 'Home') { j = 0; } else if (e.key === 'End') { j = tabs.length - 1; }
+    if (j < 0) { return; }
+    e.preventDefault();
+    tabs[j].click();
+  }
+  function focusTab(sectionId, val) {
+    var s = byId(sectionId);
+    if (!s || !s.querySelectorAll) { return; }
+    var b = Array.prototype.slice.call(s.querySelectorAll('[role="tab"]')).filter(function (x) { return x.getAttribute('data-metric') === val || x.getAttribute('data-use') === val; })[0];
+    if (b && b.focus && document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('role') === 'tab') { b.focus(); }
+  }
+  /* A clickable row that keyboards can reach: Enter or Space acts like a click. */
+  function keyRow(fn) {
+    return { click: fn, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } } };
+  }
+
   /* ---------- tooltip ---------- */
 
   function tipAt(e, lines) {
@@ -563,10 +598,12 @@
       var ptxt = parts.length > 1 ? parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1] : (parts[0] || '');
       rest = W('cmp.v.kept', { v: fmt(w.maxw), parts: ptxt });
     } else {
-      var t = tieMax[0];
+      var cpuOf = function (x) { return x.m.cpu === null ? -1 : x.m.cpu; };   /* the same null rule as rank() */
+      var full = tieMax.filter(function (x) { return eq(x.m.avgw, w.avgw) && eq(cpuOf(x), cpuOf(Wn)); });
+      /* the first tied scheduler that really differs: that is where the winner won */
+      var t = tieMax.filter(function (x) { return full.indexOf(x) < 0; })[0] || tieMax[0];
       var onAvg = !eq(t.m.avgw, w.avgw);
-      var full = tieMax.filter(function (x) { return eq(x.m.avgw, w.avgw) && eq(x.m.cpu || 0, w.cpu || 0); });
-      if (full.length === tieMax.length && !onAvg && eq(t.m.cpu || 0, w.cpu || 0)) {
+      if (full.length === tieMax.length) {
         rest = W('cmp.v.share', { names: joinNames(full.map(function (x) { return sterm(x.key); })), maxw: fmt(w.maxw), avgw: fmt(w.avgw), cpu: fmt(w.cpu) });
       } else {
         rest = W('cmp.v.ties', { names: joinNames(tieMax.map(function (x) { return sterm(x.key); })), maxw: fmt(w.maxw),
@@ -719,8 +756,9 @@
       svg.appendChild(g);
     });
     var tabs = h('div', { cls: 'cmp-tabs center', role: 'tablist', 'aria-label': W('cmp.hero.tabs') }, M().MET.map(function (m2) {
-      return h('button', { type: 'button', role: 'tab', 'aria-selected': view.metric === m2.id ? 'true' : 'false', text: mlabel(m2.id), 'data-metric': m2.id,
-        on: { click: function () { if (view.metric === m2.id) { return; } view.metric = m2.id; view.animate = reduced() ? null : 'hero'; render(); } } });
+      return h('button', { type: 'button', role: 'tab', 'aria-selected': view.metric === m2.id ? 'true' : 'false', tabindex: view.metric === m2.id ? '0' : '-1', text: mlabel(m2.id), 'data-metric': m2.id,
+        on: { click: function () { if (view.metric === m2.id) { return; } view.metric = m2.id; redrawSection('cmp-verdict', verdictSection, reduced() ? null : 'hero'); focusTab('cmp-verdict', m2.id); },
+          keydown: tabKeys } });
     }));
     var kids = [
       h('div', { cls: 'cmp-herohead' }, [
@@ -945,7 +983,7 @@
       var rows = [h('div', { cls: 'cmp-gaprow head' + (ctx.narrow ? ' narrow' : '') }, [W('cmp.gap.c1'), W('cmp.gap.c2'), W('cmp.gap.c3'), W('cmp.gap.c4')].map(function (x, i) { return h('span', { cls: i >= 2 ? 'r' : null, text: x }); }))];
       comp.forEach(function (it, i) {
         var e = it.m.totW - opt.m.totW, tr = 'scaleX(' + (e / mxE).toFixed(4) + ')';
-        rows.push(h('div', { cls: 'cmp-gaprow' + (ctx.narrow ? ' narrow' : ''), style: 'opacity:' + ctx.opOf(it.key), on: { click: selSched(it.key) } }, [
+        rows.push(h('div', { cls: 'cmp-gaprow' + (ctx.narrow ? ' narrow' : ''), role: 'button', tabindex: '0', 'aria-pressed': view.sel === it.key ? 'true' : 'false', style: 'opacity:' + ctx.opOf(it.key), on: keyRow(selSched(it.key)) }, [
           h('span', { cls: 'strong', text: sname(it.key) }),
           h('span', { cls: 'cmp-gaptrack' }, h('span', { cls: 'cmp-gapbar', style: 'background:' + scol(it.key) + ';box-shadow:0 0 12px ' + scol(it.key) + ';transform:' + tr, 'data-grow': anim ? tr : null, 'data-grow-from': anim ? 'scaleX(0)' : null, 'data-delay': i * 60 })),
           h('span', { cls: 'cmp-gapnum r', style: 'color:' + scol(it.key) }, [e > 0 ? '+' : '', h('span', { 'data-count': String(e), 'data-dec': 0, text: String(e) })]),
@@ -977,7 +1015,7 @@
           h('span', { cls: 'cmp-sw' + (it.bench ? ' bench' : ''), style: 'border-color:' + scol(it.key) + (it.bench ? '' : ';background:' + scol(it.key)) }),
           h('span', { cls: 'cmp-boardname' }, [h('span', {}, [sname(it.key), ' ', h('span', { cls: 'muted', text: '(' + sterm(it.key) + ')' })]), h('span', { cls: 'cmp-boardrule', style: 'background:' + scol(it.key) })]),
           h('span', { cls: 'cmp-boardmk' }, [W('cmp.flow.finished') + ' ', h('strong', { text: M().fmt(it.m.mk) })]),
-          h('button', { type: 'button', cls: 'btn btn-small', 'aria-label': W('cmp.flow.enlarge.l', { name: sname(it.key) }), text: W('cmp.flow.enlarge'), on: { click: function () { view.modal = it.key; renderModal(); } } })
+          h('button', { type: 'button', cls: 'btn btn-small', 'data-enlarge': it.key, 'aria-label': W('cmp.flow.enlarge.l', { name: sname(it.key) }), text: W('cmp.flow.enlarge'), on: { click: function () { openModal(it.key); } } })
         ]),
         h('div', { cls: 'cmp-cvbox' }, cv)
       ]));
@@ -1033,7 +1071,7 @@
     var y1 = 26, y2 = y1 + ph + gap, T = R.T || 1, sx = (Wd - gl - gr) / T;
     var sc = css('--sch-' + it.key), sel = view.job;
     var bg = x.createRadialGradient(Wd * 0.6, H * 0.45, 10, Wd * 0.6, H * 0.45, Wd * 0.6);
-    bg.addColorStop(0, 'rgba(242,238,230,0.06)'); bg.addColorStop(1, 'rgba(242,238,230,0)');
+    bg.addColorStop(0, css('--cmp-halo')); bg.addColorStop(1, css('--cmp-halo-none'));
     x.fillStyle = bg; x.fillRect(0, 0, Wd, H);
     var hit = { panels: [] };
     var tones = [];
@@ -1047,12 +1085,12 @@
       var X = function (t) { return gl + t * sx; };
       /* one peak per job: points across its span, tallest drawn first so small jobs stay in front */
       var peaks = it.rows.map(function (r) {
-        var sp = M().hillSpan(r), n = Math.max(12, Math.min(90, Math.round((sp[1] - sp[0]) * sx / 3))), pts = [];
+        var sp = M().hillSpan(r), n = Math.max(8, Math.min(it.rows.length > 60 ? 24 : 90, Math.round((sp[1] - sp[0]) * sx / 3))), pts = [];
         var hgt = r[key] / capv;
         for (var i = 0; i <= n; i++) { var tt = sp[0] + (sp[1] - sp[0]) * i / n; pts.push([X(tt), base - ph * hgt * M().hill(r, tt)]); }
         return { r: r, pts: pts, h: hgt, top: base - ph * hgt, cx: X((r.start + r.finish) / 2) };
       }).sort(function (a, b) { return b.h - a.h || a.r.id - b.r.id; });
-      var many = peaks.length > 60;
+      var many = peaks.length > 60;   /* a big case: flat glass, no per-peak gradients, glow or reflection */
       var shape = function (pk) { x.beginPath(); x.moveTo(pk.pts[0][0], base); pk.pts.forEach(function (q) { x.lineTo(q[0], q[1]); }); x.lineTo(pk.pts[pk.pts.length - 1][0], base); x.closePath(); };
       var edge = function (pk) { x.beginPath(); pk.pts.forEach(function (q, i) { if (i === 0) { x.moveTo(q[0], q[1]); } else { x.lineTo(q[0], q[1]); } }); };
       /* platform, with the range mirrored into it */
@@ -1062,11 +1100,13 @@
       pg.addColorStop(0, css('--cmp-plat-top')); pg.addColorStop(0.45, css('--cmp-plat-mid')); pg.addColorStop(1, css('--cmp-plat-bot'));
       x.fillStyle = pg; x.fill(); x.clip();
       x.translate(0, 2 * base); x.scale(1, -1); x.globalAlpha = 0.3;
-      peaks.forEach(function (pk) {
-        var tone = tones[((pk.r.id - 1) % 10 + 10) % 10];
-        var g0 = x.createLinearGradient(0, base - ph, 0, base); g0.addColorStop(0, rgba(tone, 0.7)); g0.addColorStop(1, rgba(tone, 0.05));
-        shape(pk); x.fillStyle = g0; x.fill();
-      });
+      if (!many) {
+        peaks.forEach(function (pk) {
+          var tone = tones[((pk.r.id - 1) % 10 + 10) % 10];
+          var g0 = x.createLinearGradient(0, base - ph, 0, base); g0.addColorStop(0, rgba(tone, 0.7)); g0.addColorStop(1, rgba(tone, 0.05));
+          shape(pk); x.fillStyle = g0; x.fill();
+        });
+      }
       x.restore();
       x.fillStyle = css('--cmp-plat-hi'); x.fillRect(gl - 8, base, Wd - gr + 12 - gl, 1);
       x.fillStyle = css('--cmp-plat-lo'); x.fillRect(gl - 16, base + platH - 1, Wd - gr + 28 - gl, 1);
@@ -1074,15 +1114,18 @@
       peaks.forEach(function (pk) {
         var r = pk.r, tone = tones[((r.id - 1) % 10 + 10) % 10], dim = sel !== null && sel !== r.id;
         x.globalAlpha = dim ? 0.2 : 1;
-        shape(pk); x.fillStyle = css('--cmp-cut'); x.fill();
-        var g = x.createLinearGradient(0, pk.top, 0, base);
-        g.addColorStop(0, rgba(tone, 0.85)); g.addColorStop(0.6, rgba(tone, 0.38)); g.addColorStop(1, rgba(tone, 0.07));
-        shape(pk); x.fillStyle = g; x.fill();
+        if (many) { shape(pk); x.fillStyle = rgba(tone, 0.42); x.fill(); }
+        else {
+          shape(pk); x.fillStyle = css('--cmp-cut'); x.fill();
+          var g = x.createLinearGradient(0, pk.top, 0, base);
+          g.addColorStop(0, rgba(tone, 0.85)); g.addColorStop(0.6, rgba(tone, 0.38)); g.addColorStop(1, rgba(tone, 0.07));
+          shape(pk); x.fillStyle = g; x.fill();
+        }
         if (!many && pk.h * ph > 10) {
           x.save(); shape(pk); x.clip();
           var w = (pk.pts[pk.pts.length - 1][0] - pk.pts[0][0]);
           var st = x.createLinearGradient(pk.cx - w * 0.3, pk.top, pk.cx, base);
-          st.addColorStop(0, 'rgba(255,255,255,0.22)'); st.addColorStop(1, 'rgba(255,255,255,0)');
+          st.addColorStop(0, css('--cmp-gloss')); st.addColorStop(1, css('--cmp-gloss-none'));
           x.fillStyle = st; x.fillRect(pk.cx - w * 0.28, pk.top, w * 0.18, base - pk.top);
           x.restore();
         }
@@ -1167,21 +1210,42 @@
     return null;
   }
 
-  function renderModal() {
+  var modalShown = null, modalOpener = null, modalCv = null;
+  /* Open the enlarged board for a scheduler; focus returns to its Enlarge button on close. */
+  function openModal(key) { modalOpener = key; view.modal = key; renderModal(true); }
+  function closeModal() {
+    view.modal = null;
+    renderModal(true);
+    var b = ui && ui.res.querySelector ? ui.res.querySelector('[data-enlarge="' + modalOpener + '"]') : null;
+    if (b && b.focus) { b.focus(); }
+    modalOpener = null;
+  }
+  /* force: rebuild the dialog; otherwise (a page redraw) keep it and only redraw its board. */
+  function renderModal(force) {
     if (!ui) { return; }
     var R = view.model;
     var it = null;
     if (R && view.modal) { R.cols.forEach(function (c) { if (c.key === view.modal) { it = c; } }); }
+    if (!force && it && modalShown === view.modal && modalCv) { raf2(function () { drawFlow(modalCv, it, true); }); return; }
+    modalShown = it ? it.key : null;
     ui.modal.hidden = !it;
     clear(ui.modal);
-    if (!it) { return; }
+    if (!it) { modalCv = null; return; }
     var idx = R.cols.indexOf(it);
-    var go = function (d) { view.modal = R.cols[(idx + d + R.cols.length) % R.cols.length].key; renderModal(); };
-    var close = function () { view.modal = null; renderModal(); };
+    var go = function (d) { view.modal = R.cols[(idx + d + R.cols.length) % R.cols.length].key; renderModal(true); };
+    var close = closeModal;
     ui.modal.setAttribute('aria-label', sname(it.key) + ' (' + sterm(it.key) + ')');
     var cv = h('canvas', { cls: 'cmp-flowcv big' });
+    modalCv = cv;
     bindBoard(cv, it);
-    var box = h('div', { cls: 'cmp-modalbox', on: { click: function (e) { e.stopPropagation(); } } }, [
+    var box = h('div', { cls: 'cmp-modalbox', on: { click: function (e) { e.stopPropagation(); },
+      keydown: function (e) {   /* keep Tab inside the dialog */
+        if (e.key !== 'Tab') { return; }
+        var f = Array.prototype.slice.call(box.querySelectorAll('button, select, [tabindex="0"]'));
+        if (!f.length) { return; }
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      } } }, [
       h('div', { cls: 'cmp-modalhead' }, [
         h('span', { cls: 'cmp-dot big', style: 'background:' + scol(it.key) }),
         h('span', { cls: 'cmp-modaltitle', text: sname(it.key) + ' (' + sterm(it.key) + ')' }),
@@ -1345,7 +1409,8 @@
       },
       mouseleave: function () { cross.setAttribute('visibility', 'hidden'); hideTip(); } } }));
     var tabs = h('div', { cls: 'cmp-tabs', role: 'tablist', 'aria-label': W('cmp.use.tabs') }, ['cpu', 'mem', 'q'].map(function (k) {
-      return h('button', { type: 'button', role: 'tab', 'aria-selected': uk === k ? 'true' : 'false', text: W('cmp.use.t.' + k), on: { click: function () { view.useK = k; render(); } } });
+      return h('button', { type: 'button', role: 'tab', 'aria-selected': uk === k ? 'true' : 'false', tabindex: uk === k ? '0' : '-1', 'data-use': k, text: W('cmp.use.t.' + k),
+        on: { click: function () { view.useK = k; redrawSection('cmp-use', useSection, null); focusTab('cmp-use', k); }, keydown: tabKeys } });
     }));
     var kids = [h('div', { cls: 'cmp-usehead' }, [sectionHead(title, scol(hiId), W('cmp.use.sub.' + uk)), tabs]), svg,
       h('div', { cls: 'cmp-legendrow' }, [legend(ctx), h('span', { cls: 'cmp-note', text: g === 1 ? W('cmp.use.exact') : W('cmp.use.avg', { g: g }) })])];
@@ -1376,7 +1441,7 @@
     var dumbCols = ctx.narrow ? '84px minmax(0,1fr)' : '120px minmax(0,1fr) 230px';
     var left = h('div', { cls: 'cmp-card' }, [h('p', { cls: 'muted', text: jj ? W('cmp.job.info', { id: jj.id, a: jj.arrival, d: jj.duration, c: jj.cpu, m: jj.mem, p: jj.priority }) : '' })].concat(rowsJ.map(function (x) {
       var k = x.it.key, pc = x.w === null ? 0 : (x.w / jMax * 100).toFixed(2);
-      return h('div', { cls: 'cmp-dumb', style: 'grid-template-columns:' + dumbCols + ';opacity:' + ctx.opOf(k), on: { click: selSched(k) } }, [
+      return h('div', { cls: 'cmp-dumb', role: 'button', tabindex: '0', 'aria-pressed': view.sel === k ? 'true' : 'false', style: 'grid-template-columns:' + dumbCols + ';opacity:' + ctx.opOf(k), on: keyRow(selSched(k)) }, [
         h('span', { cls: 'strong cmp-dumbname' }, [h('span', { cls: 'cmp-sw' + (x.it.bench ? ' bench' : ''), style: 'border-color:' + (x.it.bench ? 'var(--text)' : scol(k)) + (x.it.bench ? '' : ';background:' + scol(k)) }), sshort(k)]),
         h('span', { cls: 'cmp-dumbtrack' }, [h('span', { cls: 'rail' }), h('span', { cls: 'fill', style: 'width:' + pc + '%;background:' + scol(k) }), h('span', { cls: 'knob', style: 'left:' + pc + '%;background:' + scol(k) })]),
         ctx.narrow ? null : h('span', { cls: 'r', text: W('cmp.job.row', { w: fmt(x.w), s: x.r ? x.r.start : '—', f: x.r ? x.r.finish : '—' }) })
@@ -1466,7 +1531,7 @@
     ui = buildFrame(root);
     view.source = defaultSource();
     view.msg = W('cmp.st.pick');
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && view.modal) { view.modal = null; renderModal(); } });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && view.modal) { closeModal(); } });
     var resizing = null;
     window.addEventListener('resize', function () {
       if (resizing !== null || typeof requestAnimationFrame !== 'function') { return; }
@@ -1478,6 +1543,13 @@
       if (changed === 'mode' && s.mode === 'compare') {
         if (!view.model && view.status !== 'running') { view.source = s.jobs.length > 0 ? 'yours' : (view.source === 'yours' ? 'nine' : view.source); }
         render();
+      }
+      if (changed === 'jobs' && s.jobs.length === 0 && view.source === 'yours') {
+        /* the Build list is gone: its results are too; fall back to the starvation case */
+        token++; cancelTimer(); destroyAll();
+        view.source = 'nine'; view.model = null; view.status = 'idle'; view.modal = null; view.msg = W('cmp.st.ds'); view.msgErr = false;
+        render();
+        return;
       }
       if ((changed === 'jobs' || changed === 'machine' || changed === 'settings') && view.model) {
         if (view.source === 'yours' || changed === 'settings') { view.stale = true; renderTop(); }
