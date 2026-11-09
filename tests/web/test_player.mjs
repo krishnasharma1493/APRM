@@ -506,7 +506,7 @@ test('the head line, the settings line and the machine lines show the case and t
   const p = ready({ totalSteps: 10 });
   assert.equal(p.doc.byId['run-dataline'].textContent, '3 jobs on 16 cores and 32768 MB (32 GB).');
   assert.equal(p.doc.byId['run-source-yours'].textContent, 'Your jobs · 3');
-  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 12 ticks · ε = 0.1', 'the page opened on the Sample case, which brings T = 12');
+  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 50 ticks · ε = 0.1', 'Build jobs run with the store T (PRD default)');
   p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
   assert.equal(p.doc.byId['res-cpu-text'].textContent, '12 of 16 cores busy, 4 free');
   assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick 1');
@@ -540,11 +540,14 @@ test('alpha is entered as a decimal from 0 to 10 (PRD 3); the Sample case brings
     assert.equal(p.fe.created, 0, text);
   }
   const p = ready();
-  p.A.store.setSettings({ threshold: 50 });
-  p.A.player.setSource('big');
-  assert.equal(p.A.store.get().settings.threshold, 50, 'other cases keep the setting');
+  assert.equal(p.A.store.get().settings.threshold, 50, 'the store keeps the PRD default');
   p.A.player.setSource('sample');
-  assert.equal(p.A.store.get().settings.threshold, 12, 'the design case brings its own T');
+  assert.equal(p.A.store.get().settings.threshold, 50, 'choosing the sample writes nothing to the store');
+  assert.match(p.doc.byId['run-settings-summary'].textContent, /T = 12 ticks/, 'the sample runs with its own T');
+  p.A.player.start();
+  assert.equal(p.fe.args[4], 12, 'the engine gets T = 12 for the sample');
+  p.A.player.setSource('big');
+  assert.match(p.doc.byId['run-settings-summary'].textContent, /T = 50 ticks/);
 });
 
 test('with no jobs the controls stay off and say why', () => {

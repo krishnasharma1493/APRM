@@ -124,5 +124,5 @@ check_layout_cdp ("without 3D transforms").
 5. **Play after the end** replays from the start (the design's behaviour); Step and Jump stay off at the end because nothing is left.
 6. **Trackpad and base layout** keep the shared Build laptop geometry (one component with Build); colours and finish are the design's.
 7. **Phone top bar** wraps to two rows instead of truncating the brand (phones are lower priority, Krishna 2026-11-07).
-8. **Settings ranges**: α accepts 0 to 10 (PRD section 3) instead of the design's "above 0 and up to 1"; T = 12 is the Sample case's own setting (applied when the Sample is chosen, like a preset), while the site default stays the PRD's T = 50.
+8. **Settings ranges**: α accepts 0 to 10 (PRD section 3) instead of the design's "above 0 and up to 1"; T = 12 is the Sample case's own setting, used only by its runs (unless the user changed T); the store and the rest of the site keep the PRD's T = 50.
 9. **Replay** after the end reruns the same jobs, added ones included.

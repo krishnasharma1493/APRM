@@ -342,7 +342,7 @@
 
   /* One line with the exact settings, always visible even when "More settings" is closed. */
   function drawSettingsLine() {
-    var s = APRM.store.get().settings;
+    var s = run ? run.settings : settingsFor(source);
     text('run-settings-summary', copyText('run.settings', 'alpha = ' + s.alphaMilli, { alpha: alphaWords(s.alphaMilli), milli: s.alphaMilli, t: s.threshold, eps: s.eps }));
   }
 
@@ -405,7 +405,7 @@
     }
     var st = APRM.store.get();
     var policy = chosenPolicy();
-    var settings = { alphaMilli: st.settings.alphaMilli, threshold: st.settings.threshold, eps: st.settings.eps };
+    var settings = override && override.settings ? override.settings : settingsFor(source);
     var h = null;
     try {
       h = APRM.wasm.create(c.cpu, c.mem, policy, settings.alphaMilli, settings.threshold, settings.eps);
@@ -642,7 +642,8 @@
   function enterRun(s) {
     if (run !== null) { return; }
     if (s.jobs.length > 0 && source !== 'big') { source = 'yours'; }
-    if (s.jobs.length === 0 && source === 'yours') { source = 'sample'; useSampleSettings(); }
+    if (s.jobs.length === 0 && source === 'yours') { source = 'sample'; }
+    syncInputs(s);
   }
 
   var ownChange = false;
@@ -687,6 +688,8 @@
     if (typeof eps === 'string') { return eps; }
     selfChange = true;
     APRM.store.setPolicies([policy]);
+    var shown = settingsFor(source).threshold;
+    if (thr === shown) { thr = APRM.store.get().settings.threshold; }   /* unchanged: keep the store's value */
     APRM.store.setSettings({ alphaMilli: alpha, threshold: thr, eps: eps, speed: speed });
     selfChange = false;
     return '';
@@ -712,7 +715,7 @@
    * first event, as the design replays its run. */
   function replay() {
     if (run === null) { onStart(true); return; }
-    var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob) };
+    var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob), settings: settingsFor(source) };
     var bad = readSettings();
     if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
     showMessage('run-settings-error', '');
@@ -796,18 +799,21 @@
     if (src !== 'yours' && src !== 'sample' && src !== 'big') { return; }
     if (src === source) { return; }
     source = src;
-    if (src === 'sample') { useSampleSettings(); }
+    syncInputs(APRM.store.get());
     reset();
   }
 
-  /* The Sample case is the design's case: like a preset it brings its own threshold (T = 12), so its
-   * job 3 gets a saved spot; the store's default stays the PRD's T = 50 (D87). */
-  function useSampleSettings() {
+  /* The settings a run of the chosen case uses. The Sample is the design's case and brings its own
+   * T = 12 (so its job 3 gets a saved spot) while the store keeps the user's T, the PRD's 50 by
+   * default; a T the user changed wins. Nothing is written to the store (D87). O(1). */
+  function settingsFor(src) {
+    var s = APRM.store.get().settings;
+    var out = { alphaMilli: s.alphaMilli, threshold: s.threshold, eps: s.eps };
     var S = APRM.generator && APRM.generator.SAMPLE;
-    if (S && S.threshold !== undefined && APRM.store.get().settings.threshold !== S.threshold) {
-      APRM.store.setSettings({ threshold: S.threshold });
-    }
+    if (src === 'sample' && S && S.threshold !== undefined && s.threshold === STORE_T) { out.threshold = S.threshold; }
+    return out;
   }
+  var STORE_T = 50;   /* PRD section 3 default, the store's starting value */
 
   /* False for a scheduler the engine does not have yet (compare.js keeps the list). */
   function policyAvailable(name) {
@@ -935,7 +941,7 @@
       if (changed === 'mode' && s.mode === 'run') { enterRun(s); render('mode'); }
     });
     syncInputs(APRM.store.get());
-    if (APRM.store.get().jobs.length > 0) { source = 'yours'; } else { useSampleSettings(); }
+    if (APRM.store.get().jobs.length > 0) { source = 'yours'; }
     var sp = Number(APRM.store.get().settings.speed);
     speed = SPEEDS.indexOf(sp) >= 0 ? sp : 1;
     prepareAddForm();
@@ -946,7 +952,7 @@
   function syncInputs(s) {
     var set = function (id, v) { var el = byId(id); if (el && el.value !== String(v)) { el.value = String(v); } };
     set('run-alpha', alphaWords(s.settings.alphaMilli));
-    set('run-threshold', s.settings.threshold);
+    set('run-threshold', settingsFor(source).threshold);
     set('run-eps', s.settings.eps);
     set('run-policy', s.policies[0] || 'fcfs');
   }
