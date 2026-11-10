@@ -1,14 +1,53 @@
 # APRM: Adaptive Priority Resource Manager
 
-APRM is an online, non-preemptive job scheduler for one machine with two resources, CPU cores and memory, written in C11. Jobs arrive over time, each needing some cores and some memory for a known duration. The scheduler decides which waiting job starts next. It offers six policies: first come first served, static priority, shortest job first, aging (waiting jobs gain priority without ever re-sorting the heap), aging with an EASY-style reservation, and a knapsack batch selector. It also has an exact solver for small cases. The same C code runs as a console program and, compiled to WebAssembly, inside a website that works offline. There you can build a case, watch each decision with a plain-English reason, and compare schedulers side by side. Python tools generate seeded workloads, run the experiments, check invariants and draw the figures.
+[![CI](https://github.com/krishnasharma1493/APRM/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/krishnasharma1493/APRM/actions/workflows/ci.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-Course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi.
+APRM is an online, non-preemptive job scheduler for one machine with two resources, CPU cores and memory, written in C11. Jobs arrive over time. Each job needs some cores and some memory for a known number of ticks, and the scheduler decides which waiting job starts next. The same C engine runs in three places:
 
-![The Run page: the memory-hog example under aging with reservation, paused at tick 32. Job 11 has a saved spot, and the "why" log explains every decision.](docs/design/screenshots/website-run.png)
+- **Console program:** runs any jobs CSV through any policy and writes results, metrics and an event log.
+- **Website:** the engine compiled to WebAssembly in a single offline HTML file. You build a case, watch every decision with a plain-English reason, and compare all schedulers side by side.
+- **Python tools:** generate seeded workloads, run experiments E1 to E6, check invariants and conformance, and draw the report figures.
+
+This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi.
+
+![The Run page: aging with EASY reservation on the 12-job example, paused at tick 6. The laptop screen shows cores and memory in use, the waiting queue is on the left, and the "why" line explains the latest decision.](docs/design/screenshots/readme/run.png)
+
+## Contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [The website](#the-website)
+- [The schedulers](#the-schedulers)
+- [Console program](#console-program)
+- [How it fits together](#how-it-fits-together)
+- [Repository map](#repository-map)
+- [Build and test commands](#build-and-test-commands)
+- [Testing and quality checks](#testing-and-quality-checks)
+- [Experiments and figures](#experiments-and-figures)
+- [Setup](#setup)
+- [Documentation](#documentation)
+- [Optional: GitHub Pages copy](#optional-github-pages-copy)
+- [Authors and ownership](#authors-and-ownership)
+- [Licence](#licence)
+
+## Features
+
+- **Six scheduling policies and an exact solver**, all in `core/`:
+  - first come, first served;
+  - static priority;
+  - shortest job first;
+  - aging (waiting jobs gain priority without re-sorting the heap);
+  - aging with an EASY-style reservation;
+  - a knapsack batch selector.
+- **Deterministic results.** Ties go to the earlier arrival, then the lower id. No floating point is used in scheduling decisions, so GCC, Clang and WebAssembly produce byte-identical output.
+- **Pure, safe C11.** The core uses the standard library only, with no I/O and no global state. It compiles cleanly with `-Wall -Wextra -Werror`, and the test suite also runs under AddressSanitizer and UndefinedBehaviorSanitizer, with fuzzing and allocation-failure injection.
+- **An offline website.** It is one HTML file with the engine, fonts and scripts inside. It opens from `file://` with the network off, works in light and dark themes and at phone width, can be used fully from the keyboard, and respects reduced motion.
+- **Reproducible experiments.** Every workload has a recorded seed, results are summarised with 95% confidence intervals, and one command redraws every figure.
 
 ## Quick start
 
-With a C compiler, Make, Python 3, Node.js and Emscripten installed (see [Setup](#setup)):
+You need a C compiler, Make, Python 3, Node.js and Emscripten (see [Setup](#setup)):
 
 ```sh
 git clone https://github.com/krishnasharma1493/APRM.git && cd APRM
@@ -16,58 +55,156 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.lock.txt
 
 make                 # console program → build/aprm
-make test            # C unit tests and golden cases
+make test            # C unit tests, golden cases and website tests
 pytest tests/py      # property, conformance, summary and figure checks
 make wasm            # engine for the website → web/vendor/aprm.js
 make web             # one offline file → web/dist/index.html
 open web/dist/index.html    # Linux: xdg-open; WSL: explorer.exe web/dist/index.html
 ```
 
-The website is one file with everything inside, so it works with Wi-Fi off and needs no server. The page shows "Engine ready" when it is ready to use.
+The page needs no server. It is ready when it shows "Engine ready". To serve it locally instead, run `python3 -m http.server 8765 --directory web/dist` and open <http://127.0.0.1:8765/>.
+
+## The website
+
+The site has three steps, shown as tabs in the top bar. **Show details** adds a table under every chart, and the theme button switches between light and dark.
+
+| Step | What you do there |
+| --- | --- |
+| **1 Build** | Set the machine (cores and memory), then add, edit or delete jobs. You can start from one of six examples, generate random jobs, import or export a jobs CSV (up to 1 MB; bad rows are listed by line), or copy a link that reopens the exact case. |
+| **2 Run** | Pick a scheduler and watch it work on a laptop whose screen shows the cores and memory in use. You can play, step, jump to the end, change the speed and add a job mid-run. Panels show the waiting queue, running jobs, the timeline, the "why" decision log and the live metrics. |
+| **3 Compare** | Run every scheduler, plus the exact best for 9 jobs or fewer, on the same jobs. The verdict ranks schedulers by longest wait, then average wait, then CPU busy. Charts show the measures (as glowing peaks), wait spread, fairness by priority, the gap to the exact best, who ran when, timelines, use over time and per-job results. |
+
+![The Compare page on the 9-job starvation case: the verdict, "Why it won", and the Longest wait chart for every scheduler and the exact best.](docs/design/screenshots/readme/compare.png)
+
+The website never decides which job runs. Every decision, number and log line comes from the C engine through WebAssembly. The page only draws them.
+
+## The schedulers
+
+| Policy (`--policy`) | On the website | How it picks the next job |
+| --- | --- | --- |
+| `fcfs` | First come, first served | Earliest arrival first |
+| `priority` | Highest priority first | Highest priority (0 to 9) first |
+| `sjf` | Shortest job first | Shortest duration first |
+| `aging` | Waiting jobs gain priority over time | Score = priority + α × time waited, stored as the integer key `1000·b − alpha_milli·r`, so the heap never re-sorts |
+| `reserve` | Saves a spot for a job that has waited too long | Aging plus an EASY-style reservation: once a job has waited T ticks, it gets a start time that no later job may delay |
+| `knapsack` | Best mix of waiting jobs | Picks the batch of waiting jobs that best fills the cores and memory (scaled dynamic programming, accuracy ε) |
+| `--exact` | Exact best | Searches every schedule of up to 9 jobs, knowing the future, for the smallest total wait. It is the benchmark every scheduler is measured against. |
+
+Every policy breaks ties by earlier arrival, then lower id. The full specifications are in [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) §3.
+
+### Defaults and limits
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| CPU cores | 16 | 1 to 1,000,000 |
+| Memory | 32,768 MB | 1 to 1,000,000,000 MB |
+| Aging rate α (`--alpha-milli`, thousandths) | 0.1 (100) | 0 to 10 (0 to 10,000) |
+| Reservation threshold T (`--threshold`) | 50 ticks | 0 to 1,000,000 |
+| Knapsack accuracy ε (`--eps`) | 0.1 | 0.01 to 1 |
+| Jobs per run | | up to 1,000,000 (console program), 5,000 (website) |
+
+The source for these values is [`docs/PRD.md`](docs/PRD.md) §3.
+
+## Console program
+
+```sh
+build/aprm --in jobs.csv --out results.csv [--policy fcfs|priority|sjf|aging|reserve|knapsack]
+           [--cpu 16] [--mem 32768] [--alpha-milli 100] [--threshold 50] [--eps 0.1]
+           [--log log.txt] [--metrics metrics.json] [--exact] [--help]
+```
+
+Example:
+
+```sh
+build/aprm --in data/presets/memory_hog.csv --out results.csv --policy reserve --metrics metrics.json
+```
+
+- **Input:** a CSV with the header `id,arrival,duration,cpu,mem,priority`.
+- **Output:** one row per job with its start, finish, wait and turnaround.
+- **Metrics:** JSON with the waits, turnaround, weighted completion, makespan and utilisation.
+- **Exit codes:**
+  - 0: success;
+  - 1: bad arguments;
+  - 2: input file error;
+  - 3: invalid job;
+  - 4: internal error.
+
+The exact formats are in [`docs/PRD.md`](docs/PRD.md) §5. Six example inputs are in [`data/presets/`](data/presets/).
+
+## How it fits together
+
+```text
+                 ┌──────────────────────────── core/ (C11) ────────────────────────────┐
+                 │ heap · event loop · policies · reservation · knapsack · exact solver │
+                 │ metrics · event log · JSON and CSV                                   │
+                 └──────────────┬─────────────────────────────────┬─────────────────────┘
+                                │                                 │
+                     cli/main.c │                                 │ wasm/api.c (Emscripten)
+                                ▼                                 ▼
+                 build/aprm (console program)          web/vendor/aprm.js (WebAssembly)
+                                │                                 │
+     tools/*.py: workloads,     │                                 │ web/js/*.js: draws Build,
+     experiments, summaries,  ◄─┘                                 └►Run and Compare; never decides
+     property and conformance                                       web/build.mjs → web/dist/index.html
+     checks → tools/plot_figures.py → docs/report/figures/
+```
+
+The C engine is the only place that decides which job runs next. The console program and the website call the same engine, and CI checks that both give identical output on every golden case and on random workloads.
 
 ## Repository map
 
 | Path | What it holds |
 | --- | --- |
-| `core/` | The scheduler in C11: heap, event loop, policies, reservation, knapsack, exact solver, metrics, event log, JSON and CSV. The only place scheduling decisions are made. |
-| `cli/` | The console program `build/aprm` |
-| `wasm/` | WebAssembly exports and build script, and the Node.js runner used for conformance |
-| `web/` | The website source (HTML, CSS, classic scripts) and `build.mjs`, which bundles it into `web/dist/index.html` |
-| `tools/` | Python: workload generator, experiment runner, summaries, property and conformance checks, timing, figures |
-| `tests/` | C unit tests (`c/`), hand-worked golden cases (`cases/`), console checks (`cli/`), Python tests (`py/`), website tests (`web/`), browser checks (`demo/`), hardening (`hardening/`) |
-| `data/` | Preset example CSVs and small, clearly fake sample summaries |
-| `docs/` | Project documents; start at [`docs/README.md`](docs/README.md) |
-| `.github/` | CI workflow, issue template and pull request template |
+| [`core/`](core/) | The scheduler in C11: heap, event loop, policies, reservation, knapsack, exact solver, metrics, event log, JSON and CSV. The only place scheduling decisions are made. |
+| [`cli/`](cli/) | The console program `build/aprm` |
+| [`wasm/`](wasm/) | WebAssembly exports, the build script, and the Node.js runner used for conformance |
+| [`web/`](web/) | The website: `index.html`, `css/`, `js/` (classic scripts), self-hosted `fonts/`, and `build.mjs`, which bundles everything into `web/dist/index.html` |
+| [`tools/`](tools/) | Python: workload generator, experiment runner, summaries, property and conformance checks, timing, figures |
+| [`tests/`](tests/) | C unit tests (`c/`), hand-worked golden cases (`cases/`), console checks (`cli/`), Python tests (`py/`), website tests (`web/`), headless-browser checks (`demo/`), hardening (`hardening/`) |
+| [`data/`](data/) | Preset example CSVs and small, clearly fake sample summaries |
+| [`docs/`](docs/) | Project documents (see [Documentation](#documentation)) |
+| [`.github/`](.github/) | CI workflow, issue template and pull request template |
 
-## All build and test commands
+## Build and test commands
 
 ```sh
 make              # console program → build/aprm
 make debug        # with invariant checks after every step
 make sanitize     # AddressSanitizer + UndefinedBehaviorSanitizer, full test suite
-make test         # C unit tests and golden cases
+make test         # C unit tests, golden cases and website tests
 make hardening    # fuzzing, allocation-failure injection, stress, unsafe-call grep
 make wasm         # WebAssembly bundle → web/vendor/aprm.js (needs emsdk)
 make web          # website → web/dist/index.html (needs Node.js and npm)
-make web-test     # website unit tests (Node.js)
+make web-test     # website unit tests only (Node.js)
 make clean        # remove build output
 pytest tests/py   # Python checks
-node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline   # demo path in headless Chrome, network off
 ```
 
-## Running the console program
+Browser checks need Google Chrome:
 
 ```sh
-build/aprm --in jobs.csv --out results.csv --policy aging \
-           [--cpu 16] [--mem 32768] [--alpha-milli 100] [--threshold 50] [--eps 0.1] \
-           [--log log.txt] [--metrics metrics.json] [--exact]
+node tests/demo/rehearse_cdp.mjs web/dist/index.html --offline   # the demo path, network off
+node tests/demo/check_layout_cdp.mjs web/dist/index.html         # layout at desktop and phone widths
+node tests/demo/click_matrix_cdp.mjs web/dist/index.html         # every control on every page
 ```
 
-Policies: `fcfs`, `priority`, `sjf`, `aging`, `reserve`, `knapsack`. Example input: any file in `data/presets/`. Input and output formats are in `docs/PRD.md` §5.
+## Testing and quality checks
+
+| Layer | What is checked |
+| --- | --- |
+| C unit tests | Heap, CSV, JSON, config, engine, policies, reservation, knapsack, exact solver, metrics, event log, null arguments |
+| Golden cases | 21 hand-worked cases in `tests/cases/`, each with its expected output per policy, re-checked on paper |
+| Sanitisers and hardening | ASan and UBSan over the full suite, fuzzing, allocation-failure injection, stress tests, and a grep for unsafe calls |
+| Python | Invariant properties on random workloads, the starvation bound for reservation, "exact is never beaten", summary formats, figure smoke tests |
+| Conformance | The console program and the WebAssembly build give identical results on golden cases and random workloads |
+| Website | Unit tests for every script, contrast checks, copy checks, and engine-backed Compare checks against the console program |
+| Browser | Offline rehearsal, layout at several widths and both themes, and a click matrix over every control, in headless Chrome |
+
+CI (`.github/workflows/ci.yml`) runs all of these on every push and pull request. Nothing merges unless every check is green.
 
 ## Experiments and figures
 
-Six experiments (E1 to E6, defined in `docs/BLUEPRINT.md` §6) run the console program over seeded workloads, 30 seeds per setting (50 instances per job count for E6). With the virtual environment active and `build/aprm` built:
+There are six experiments, E1 to E6, defined in [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) §6. They run the console program over seeded workloads, 30 seeds per setting (50 instances per job count for E6). With the virtual environment active and `build/aprm` built:
 
 ```sh
 for e in E1 E3 E4 E5 E6; do python tools/run_experiments.py --experiment $e --jobs 8; done   # raw runs → results/raw/ (E2 reuses E1)
@@ -75,7 +212,7 @@ python tools/summarize.py --experiments E1 E2 E3 E4 E5 E6        # means and 95%
 python tools/plot_figures.py --input results/summaries           # figures → docs/report/figures/
 ```
 
-The full grid is 2,600 runs and takes seconds. Without `--input`, `plot_figures.py` draws from `data/sample_summaries/`, whose numbers are fake, and every title then says "SAMPLE DATA". `results/` and the figures are not committed: regenerate them with the commands above.
+The full grid is 2,600 runs and takes seconds. Without `--input`, `plot_figures.py` draws from `data/sample_summaries/`, whose numbers are fake, and every title then says "SAMPLE DATA". `results/` and the figures are not committed; the commands above regenerate them.
 
 ## Setup
 
@@ -142,6 +279,19 @@ pip install -r requirements.lock.txt   # exact versions; use this one
 | `python3 -m venv` fails on Ubuntu/WSL | `sudo apt install python3-venv`. |
 | `pip` prints "A new release of pip is available" | A notice, not an error. Ignore it; do not upgrade pip for this project. |
 | `summarize.py` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
+
+## Documentation
+
+| Document | Holds |
+| --- | --- |
+| [`docs/PRD.md`](docs/PRD.md) | Scope, configuration and limits, architecture and invariants, the API, CSV and summary contracts (§5), CI, testing, demo |
+| [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) | Algorithm specifications (§3), website spec, experiments E1 to E6, report outline |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every decision (D-numbers) and open question (O-numbers) |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | The ordered issues with their "Done when" boxes |
+| [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) | What each paper says and where it is used; glossary |
+| [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md) | Frozen tool versions |
+| [`docs/design/`](docs/design/) | Website design authority (`PRODUCT.md`, `DESIGN.md`), fidelity notes and screenshots |
+| [`docs/README.md`](docs/README.md) | The full documentation index |
 
 ## Optional: GitHub Pages copy
 
