@@ -11,7 +11,7 @@ APRM is an online, non-preemptive job scheduler for one machine with two resourc
 
 This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi.
 
-![The Run page: aging with EASY reservation on the 12-job example, paused at tick 6. The laptop screen shows cores and memory in use, the waiting queue is on the left, and the "why" line explains the latest decision.](docs/design/screenshots/readme/run.png)
+![The Run page: aging with EASY reservation on the 12-job example, paused at tick 6. The laptop screen shows cores and memory in use, the waiting queue is on the left, and the "why" line explains the latest decision.](assets/readme/run.png)
 
 ## Contents
 
@@ -26,9 +26,8 @@ This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd 
 - [Testing and quality checks](#testing-and-quality-checks)
 - [Experiments and figures](#experiments-and-figures)
 - [Setup](#setup)
-- [Documentation](#documentation)
 - [Optional: GitHub Pages copy](#optional-github-pages-copy)
-- [Authors and ownership](#authors-and-ownership)
+- [Authors and responsibilities](#authors-and-responsibilities)
 - [Licence](#licence)
 
 ## Features
@@ -74,7 +73,7 @@ The site has three steps, shown as tabs in the top bar. **Show details** adds a 
 | **2 Run** | Pick a scheduler and watch it work on a laptop whose screen shows the cores and memory in use. You can play, step, jump to the end, change the speed and add a job mid-run. Panels show the waiting queue, running jobs, the timeline, the "why" decision log and the live metrics. |
 | **3 Compare** | Run every scheduler, plus the exact best for 9 jobs or fewer, on the same jobs. The verdict ranks schedulers by longest wait, then average wait, then CPU busy. Charts show the measures (as glowing peaks), wait spread, fairness by priority, the gap to the exact best, who ran when, timelines, use over time and per-job results. |
 
-![The Compare page on the 9-job starvation case: the verdict, "Why it won", and the Longest wait chart for every scheduler and the exact best.](docs/design/screenshots/readme/compare.png)
+![The Compare page on the 9-job starvation case: the verdict, "Why it won", and the Longest wait chart for every scheduler and the exact best.](assets/readme/compare.png)
 
 The website never decides which job runs. Every decision, number and log line comes from the C engine through WebAssembly. The page only draws them.
 
@@ -90,7 +89,7 @@ The website never decides which job runs. Every decision, number and log line co
 | `knapsack` | Best mix of waiting jobs | Picks the batch of waiting jobs that best fills the cores and memory (scaled dynamic programming, accuracy ε) |
 | `--exact` | Exact best | Searches every schedule of up to 9 jobs, knowing the future, for the smallest total wait. It is the benchmark every scheduler is measured against. |
 
-Every policy breaks ties by earlier arrival, then lower id. The full specifications are in [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) §3.
+Every policy breaks ties by earlier arrival, then lower id.
 
 ### Defaults and limits
 
@@ -102,8 +101,6 @@ Every policy breaks ties by earlier arrival, then lower id. The full specificati
 | Reservation threshold T (`--threshold`) | 50 ticks | 0 to 1,000,000 |
 | Knapsack accuracy ε (`--eps`) | 0.1 | 0.01 to 1 |
 | Jobs per run | | up to 1,000,000 (console program), 5,000 (website) |
-
-The source for these values is [`docs/PRD.md`](docs/PRD.md) §3.
 
 ## Console program
 
@@ -129,7 +126,7 @@ build/aprm --in data/presets/memory_hog.csv --out results.csv --policy reserve -
   - 3: invalid job;
   - 4: internal error.
 
-The exact formats are in [`docs/PRD.md`](docs/PRD.md) §5. Six example inputs are in [`data/presets/`](data/presets/).
+Six example inputs are in [`data/presets/`](data/presets/).
 
 ## How it fits together
 
@@ -146,7 +143,7 @@ The exact formats are in [`docs/PRD.md`](docs/PRD.md) §5. Six example inputs ar
      tools/*.py: workloads,     │                                 │ web/js/*.js: draws Build,
      experiments, summaries,  ◄─┘                                 └►Run and Compare; never decides
      property and conformance                                       web/build.mjs → web/dist/index.html
-     checks → tools/plot_figures.py → docs/report/figures/
+     checks → tools/plot_figures.py → report figures
 ```
 
 The C engine is the only place that decides which job runs next. The console program and the website call the same engine, and CI checks that both give identical output on every golden case and on random workloads.
@@ -162,7 +159,7 @@ The C engine is the only place that decides which job runs next. The console pro
 | [`tools/`](tools/) | Python: workload generator, experiment runner, summaries, property and conformance checks, timing, figures |
 | [`tests/`](tests/) | C unit tests (`c/`), hand-worked golden cases (`cases/`), console checks (`cli/`), Python tests (`py/`), website tests (`web/`), headless-browser checks (`demo/`), hardening (`hardening/`) |
 | [`data/`](data/) | Preset example CSVs and small, clearly fake sample summaries |
-| [`docs/`](docs/) | Project documents (see [Documentation](#documentation)) |
+| [`assets/`](assets/) | Images used in this README |
 | [`.github/`](.github/) | CI workflow, issue template and pull request template |
 
 ## Build and test commands
@@ -204,19 +201,19 @@ CI (`.github/workflows/ci.yml`) runs all of these on every push and pull request
 
 ## Experiments and figures
 
-There are six experiments, E1 to E6, defined in [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) §6. They run the console program over seeded workloads, 30 seeds per setting (50 instances per job count for E6). With the virtual environment active and `build/aprm` built:
+There are six experiments, E1 to E6. They run the console program over seeded workloads, 30 seeds per setting (50 instances per job count for E6). With the virtual environment active and `build/aprm` built:
 
 ```sh
 for e in E1 E3 E4 E5 E6; do python tools/run_experiments.py --experiment $e --jobs 8; done   # raw runs → results/raw/ (E2 reuses E1)
 python tools/summarize.py --experiments E1 E2 E3 E4 E5 E6        # means and 95% intervals → results/summaries/
-python tools/plot_figures.py --input results/summaries           # figures → docs/report/figures/
+python tools/plot_figures.py --input results/summaries           # figures → docs/report/figures/ (local, not committed)
 ```
 
 The full grid is 2,600 runs and takes seconds. Without `--input`, `plot_figures.py` draws from `data/sample_summaries/`, whose numbers are fake, and every title then says "SAMPLE DATA". `results/` and the figures are not committed; the commands above regenerate them.
 
 ## Setup
 
-Versions are written in one place only: `docs/TOOLCHAIN.md`. Do not copy version numbers from anywhere else. Where a version matters (Emscripten), install the one that file lists.
+Where a version matters (Emscripten), use the exact version pinned as `EMSDK_VERSION` in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Python packages are pinned in `requirements.lock.txt`.
 
 ### Prerequisites (check each with the command shown)
 
@@ -252,7 +249,7 @@ If a command prints "command not found", install that tool using the system sect
 
 ### Installing Emscripten (only for `make wasm`)
 
-Follow emscripten.org: clone `emsdk` into `~/emsdk`, then `./emsdk install <version from docs/TOOLCHAIN.md>`, `./emsdk activate <same version>`. `make wasm` finds `~/emsdk` on its own (it sources `emsdk_env.sh` for you). If emsdk is somewhere else, run `source <your emsdk folder>/emsdk_env.sh` in the same terminal first, then check `emcc --version`.
+Follow emscripten.org: clone `emsdk` into `~/emsdk`, then `./emsdk install <EMSDK_VERSION from ci.yml>`, `./emsdk activate <same version>`. `make wasm` finds `~/emsdk` on its own (it sources `emsdk_env.sh` for you). If emsdk is somewhere else, run `source <your emsdk folder>/emsdk_env.sh` in the same terminal first, then check `emcc --version`.
 
 There is no prebuilt engine file to download: CI does not publish one and the `demo-ready` build does not exist yet. So the website needs `make wasm`, and therefore emsdk. Without it, everything else (console program, tests, figures) still works.
 
@@ -280,19 +277,6 @@ pip install -r requirements.lock.txt   # exact versions; use this one
 | `pip` prints "A new release of pip is available" | A notice, not an error. Ignore it; do not upgrade pip for this project. |
 | `summarize.py` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
 
-## Documentation
-
-| Document | Holds |
-| --- | --- |
-| [`docs/PRD.md`](docs/PRD.md) | Scope, configuration and limits, architecture and invariants, the API, CSV and summary contracts (§5), CI, testing, demo |
-| [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md) | Algorithm specifications (§3), website spec, experiments E1 to E6, report outline |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Every decision (D-numbers) and open question (O-numbers) |
-| [`docs/BACKLOG.md`](docs/BACKLOG.md) | The ordered issues with their "Done when" boxes |
-| [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) | What each paper says and where it is used; glossary |
-| [`docs/TOOLCHAIN.md`](docs/TOOLCHAIN.md) | Frozen tool versions |
-| [`docs/design/`](docs/design/) | Website design authority (`PRODUCT.md`, `DESIGN.md`), fidelity notes and screenshots |
-| [`docs/README.md`](docs/README.md) | The full documentation index |
-
 ## Optional: GitHub Pages copy
 
 The laptop is the primary demo. The `deploy` job in `.github/workflows/ci.yml` can publish the website from `main`. It stays skipped until two settings are made, in this order:
@@ -302,15 +286,17 @@ The laptop is the primary demo. The `deploy` job in `.github/workflows/ci.yml` c
 
 The next push to `main` that passes every check then publishes `web/dist/`, built in CI. To stop publishing, delete the variable.
 
-## Authors and ownership
+## Authors and responsibilities
 
-| Person | Owns |
-| --- | --- |
-| Krishna Sharma | The C core and every algorithm, console program, WebAssembly build, website, CI, golden cases, presets, and all Python except the figures |
-| Ahaana Arya | `tools/plot_figures.py` (report figures for E1 to E6) and the paper check of the golden cases |
+| Person | Role | Responsible for |
+| --- | --- | --- |
+| Krishna Sharma | Core development and experimental execution | The C11 scheduling algorithms and core, the console program, the WebAssembly build and website, workload generation, experiment runs, statistical processing, automated testing and CI |
+| Ahaana Arya | Experimental visualisation and verification | `tools/plot_figures.py` and the E1 to E6 report figures: their presentation, styling, captions and labels. Manual verification of the golden test cases on paper, and review of changes to the CSV, summary and figure formats |
 
-How to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md). Use of AI assistants is logged in [`docs/AI_USE.md`](docs/AI_USE.md).
+These are areas of responsibility, not a record of who typed each line. All code in this repository, including `tools/plot_figures.py`, was implemented by Krishna Sharma with the help of an AI coding assistant (Claude). Ahaana's contribution is reviewing and checking the figures' presentation, styling, captions and labels, and verifying the golden cases by hand.
+
+How to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Licence
 
-MIT, see [`LICENSE`](LICENSE). The research papers in `docs/research/` are not part of the repository and not covered by this licence; [`docs/research/README.md`](docs/research/README.md) says where to get each one.
+MIT, see [`LICENSE`](LICENSE). The research papers the project draws on are not part of the repository and not covered by this licence.

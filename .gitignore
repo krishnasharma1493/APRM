@@ -28,10 +28,6 @@ __pycache__/
 # the commands in README.md.
 results/
 
-# Report figures from tools/plot_figures.py (regenerated, never committed by
-# default; add a final figure on purpose with git add -f <file>).
-docs/report/figures/*.png
-docs/report/figures/*.pdf
 
 # --- Editor and OS caches ----------------------------------------------------
 # Shared VS Code settings stay committed.
@@ -46,15 +42,16 @@ Thumbs.db
 
 # --- Tool and assistant folders ----------------------------------------------
 # Local working state of the coding assistant, the design tool and the browser
-# tool, and the old autonomous-run script and its state. CLAUDE.md (the shared
-# rules every session reads) stays committed.
+# tool, and the old autonomous-run script and its state.
 .claude/
 .impeccable/
 .playwright-mcp/
 autorun.sh
 .autorun/
 
-# --- Local research PDFs -----------------------------------------------------
-# The repository is public and most papers are copyrighted.
-# docs/research/README.md lists each file and where to get it.
-docs/research/*.pdf
+# --- Local project documents -----------------------------------------------
+# Planning documents, design notes, research papers, report figures and the
+# assistant rules file are kept on the developers' machines only, not in the
+# public repository. tools/plot_figures.py still writes to docs/report/figures/.
+docs/
+CLAUDE.md
