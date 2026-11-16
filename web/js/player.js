@@ -82,10 +82,8 @@
 
   var SETTING_FIELDS = ['alpha_milli', 'reserve_threshold', 'knapsack_eps'];
 
-  /* A setting is wrong: open More settings, where it can be fixed, and say so before the engine's sentence. */
+  /* A setting is wrong: say so before the engine's sentence. */
   function settingsWords(sentence) {
-    var more = byId('run-more');
-    if (more) { more.open = true; }
     return copyText('run.error.settings', '', { why: sentence }) || sentence;
   }
 
@@ -292,7 +290,6 @@
       cards[i].setAttribute('aria-checked', on ? 'true' : 'false');
       cards[i].setAttribute('tabindex', on ? '0' : '-1');
     }
-    drawSettingsLine();
 
     var startBtn = byId('run-start');
     if (startBtn) { startBtn.textContent = stale && run ? copyText('run.again', 'Run again') : copyText('run.start', 'Run'); }
@@ -338,20 +335,6 @@
       rawEl.textContent = e ? copyText('run.event.raw', '', { kind: e.kind, n: f.events, total: pl && pl.events ? Math.max(pl.events, f.events) : f.events, t: e.t }) : '';
     }
     box.setAttribute('data-kind', e ? e.kind : '');
-  }
-
-  /* One line with the exact settings, always visible even when "More settings" is closed. */
-  function drawSettingsLine() {
-    var s = run ? run.settings : settingsFor(source);
-    text('run-settings-summary', copyText('run.settings', 'alpha = ' + s.alphaMilli, { alpha: alphaWords(s.alphaMilli), milli: s.alphaMilli, t: s.threshold, eps: s.eps }));
-  }
-
-  /* alpha_milli as a decimal for people (100 -> 0.1), from integers. */
-  function alphaWords(milli) {
-    var whole = Math.floor(milli / 1000), frac = String(milli % 1000);
-    while (frac.length < 3) { frac = '0' + frac; }
-    frac = frac.replace(/0+$/, '');
-    return frac ? whole + '.' + frac : String(whole);
   }
 
   function updateButtons() {
@@ -654,43 +637,13 @@
     return s === '' ? NaN : Number(s);
   }
 
-  /* Epsilon text, with the same grammar as the console program's --eps (D72):
-   * digits, optionally a point and 1 to 3 digits; no sign, exponent, leading or
-   * trailing point; 0.01 to 1. Returns the number (0.1) or an error text. */
-  /* A decimal with at most three places as thousandths, from the text alone (no floating point):
-   * "0.1" -> 100. Returns the integer or null when the text is not such a number. O(1). */
-  function milliFromText(t) {
-    var m = /^(\d{1,9})(?:\.(\d{1,3}))?$/.exec(t);
-    if (!m) { return null; }
-    return Number(m[1]) * 1000 + Number((m[2] || '').padEnd(3, '0'));
-  }
-
-  /* The settings rules: alpha 0 to 10 (PRD section 3), epsilon above 0 and up to 1 (0.01 at least),
-   * T a whole number of ticks. The engine checks its own limits again. */
-  function epsFromText(t) {
-    var milli = milliFromText(t);
-    if (milli === null || milli < 1 || milli > 1000) { return copyText('run.err.eps', 'epsilon must be above 0 and up to 1.'); }
-    if (milli < 10) { return copyText('run.err.eps.min', 'epsilon must be at least 0.01.'); }
-    return milli / 1000;
-  }
-
-  /* Read the settings inputs into the store; returns an error text or ''. */
+  /* Store the chosen scheduler. The settings (alpha, T, epsilon) keep their PRD section 3 defaults,
+   * or a design case's own T (K-60: More settings removed from the page). Returns ''. */
   function readSettings() {
     var policyEl = byId('run-policy');
     var policy = policyEl && policyEl.value ? policyEl.value : chosenPolicy();
-    var alphaText = byId('run-alpha') ? String(byId('run-alpha').value).trim() : '';
-    var alpha = milliFromText(alphaText);
-    var thr = numberOf('run-threshold');
-    var epsText = byId('run-eps') ? String(byId('run-eps').value).trim() : '';
-    var eps = epsFromText(epsText);
-    if (alpha === null || alpha > 10000) { return copyText('run.err.alpha', 'alpha must be a number from 0 to 10.'); }   /* PRD section 3: alpha_milli 0 to 10,000 */
-    if (!isFinite(thr) || Math.floor(thr) !== thr || thr < 0) { return copyText('run.err.t', 'T must be a whole number of ticks, 0 or more.'); }
-    if (typeof eps === 'string') { return eps; }
     selfChange = true;
     APRM.store.setPolicies([policy]);
-    var shown = settingsFor(source).threshold;
-    if (thr === shown) { thr = APRM.store.get().settings.threshold; }   /* unchanged: keep the store's value */
-    APRM.store.setSettings({ alphaMilli: alpha, threshold: thr, eps: eps, speed: speed });
     selfChange = false;
     return '';
   }
@@ -703,11 +656,9 @@
     return run !== null;
   }
 
-  /* Run (and Run again): read the settings, start a new run, and play it unless asked not to. */
+  /* Run (and Run again): store the chosen scheduler, start a new run, and play it unless asked not to. */
   function onStart(andPlay) {
-    var bad = readSettings();
-    if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
-    showMessage('run-settings-error', '');
+    readSettings();
     if (start() && andPlay !== false) { play(); }
   }
 
@@ -715,10 +666,8 @@
    * first event, as the design replays its run. */
   function replay() {
     if (run === null) { onStart(true); return; }
-    var bad = readSettings();
-    if (bad) { showMessage('run-settings-error', bad); settingsWords(bad); return; }
+    readSettings();
     var c = { cpu: run.cpu, mem: run.mem, jobs: run.jobs.map(copyJob), settings: settingsFor(source) };
-    showMessage('run-settings-error', '');
     var added = run.added;
     if (start(c)) { run.added = added; play(); }
   }
@@ -919,16 +868,6 @@
     }
     var sel = byId('run-policy');
     if (sel) { sel.addEventListener('change', function () { choosePolicy(sel.value); }); }
-    ['run-alpha', 'run-threshold', 'run-eps'].forEach(function (id) {
-      var el = byId(id);
-      if (el) {
-        el.addEventListener('change', function () {
-          var bad = readSettings();
-          showMessage('run-settings-error', bad);   /* the design shows the rule right under the inputs */
-          if (!bad) { if (run) { stale = true; } render('settings'); }
-        });
-      }
-    });
     APRM.store.subscribe(function (s, changed) {
       var panel = byId('run-panel');
       if (panel) { panel.hidden = s.mode !== 'run'; }
@@ -948,12 +887,9 @@
     render('reset');
   }
 
-  /* Show the store's settings in the Run panel's inputs. */
+  /* Show the store's scheduler in the hidden policy select. */
   function syncInputs(s) {
     var set = function (id, v) { var el = byId(id); if (el && el.value !== String(v)) { el.value = String(v); } };
-    set('run-alpha', alphaWords(s.settings.alphaMilli));
-    set('run-threshold', settingsFor(source).threshold);
-    set('run-eps', s.settings.eps);
     set('run-policy', s.policies[0] || 'fcfs');
   }
 
@@ -982,8 +918,6 @@
     setSource: setSource,
     openAdd: openAdd,
     select: select,
-    alphaWords: alphaWords,
-    epsFromText: epsFromText,
     mount: mount,
     handle: function () { return run ? run.handle : null; },
     snapshot: function () {

@@ -254,27 +254,6 @@ test('engine error on create is shown next to the Run button, nothing leaks', ()
   assert.equal(p.fe.live.size, 0);
 });
 
-test('epsilon text uses the console grammar; bad text names epsilon, no engine call (D72)', () => {
-  const good = [['0.1', 0.1], ['1', 1], ['0.01', 0.01], ['0.125', 0.125], ['01.5', null], ['0.5', 0.5]];
-  for (const [text, want] of good) {
-    const p = ready();
-    p.doc.byId['run-eps'].value = text;
-    if (want === null) { p.doc.byId['run-start'].click(); assert.equal(p.fe.created, 0, text); continue; }
-    p.doc.byId['run-start'].click();
-    assert.equal(p.fe.created, 1, text);
-    assert.equal(p.fe.args[5], want, text);
-  }
-  for (const text of ['.5', '1e-1', '0.1234', '2', '0', '0.001', '-0.1', '', '0.', '1.0.0', 'abc', '0x1']) {
-    const p = ready();
-    p.doc.byId['run-eps'].value = text;
-    p.doc.byId['run-start'].click();
-    assert.equal(p.fe.created, 0, 'no engine call for "' + text + '"');
-    const msg = p.doc.byId['run-settings-error'].textContent;
-    assert.match(msg, /ε/, text);
-    assert.doesNotMatch(msg, /knapsack_eps_milli/, text);
-  }
-});
-
 test('speed: 0.5x, 1x, 2x, 4x only; the beat follows it; the speed buttons show the choice', () => {
   const p = ready({ totalSteps: 100 });
   const P = p.A.player;
@@ -502,52 +481,27 @@ test('metrics are shown from the engine, null as n/a', () => {
   assert.equal(p.doc.byId['prio-list'].children.length, 10);
 });
 
-test('the head line, the settings line and the machine lines show the case and the engine numbers', () => {
+test('the head line and the machine lines show the case and the engine numbers', () => {
   const p = ready({ totalSteps: 10 });
   assert.equal(p.doc.byId['run-dataline'].textContent, '3 jobs on 16 cores and 32768 MB (32 GB).');
   assert.equal(p.doc.byId['run-source-yours'].textContent, 'Your jobs · 3');
-  assert.equal(p.doc.byId['run-settings-summary'].textContent, 'α = 0.1 (alpha_milli = 100) · T = 50 ticks · ε = 0.1', 'Build jobs run with the store T (PRD default)');
   p.A.player.start(); p.A.player.stepOnce(); p.A.player.stepOnce();
   assert.equal(p.doc.byId['res-cpu-text'].textContent, '12 of 16 cores busy, 4 free');
   assert.equal(p.doc.byId['run-clock'].textContent, 'Time: tick 1');
   assert.equal(p.doc.byId['run-status-text'].textContent, 'Paused');
-  assert.equal(p.A.player.alphaWords(1000), '1');
-  assert.equal(p.A.player.alphaWords(1250), '1.25');
-  assert.equal(p.A.player.alphaWords(5), '0.005');
 });
 
-test('a bad setting names the problem once and opens More settings', () => {
+test('More settings is gone (K-60): defaults are used and the Sample case still brings T = 12', () => {
   const p = ready();
-  p.doc.byId['run-alpha'].value = 'abc';
-  p.doc.byId['run-start'].click();
-  assert.equal(p.fe.created, 0);
-  assert.equal(p.doc.byId['run-settings-error'].textContent, 'α must be a number from 0 to 10, like 0.1.');
-  assert.equal(p.doc.byId['run-more'].open, true);
-});
-
-test('alpha is entered as a decimal from 0 to 10 (PRD 3); the Sample case brings T = 12', () => {
-  for (const [text, milli] of [['0', 0], ['0.1', 100], ['2.5', 2500], ['10', 10000]]) {
-    const p = ready();
-    p.doc.byId['run-alpha'].value = text;
-    p.doc.byId['run-start'].click();
-    assert.equal(p.fe.created, 1, text);
-    assert.equal(p.A.store.get().settings.alphaMilli, milli, text);
-  }
-  for (const text of ['10.001', '-1', '.5', 'abc']) {
-    const p = ready();
-    p.doc.byId['run-alpha'].value = text;
-    p.doc.byId['run-start'].click();
-    assert.equal(p.fe.created, 0, text);
-  }
-  const p = ready();
+  for (const id of ['run-more', 'run-alpha', 'run-threshold', 'run-eps', 'run-settings-summary', 'run-settings-error']) assert.equal(p.doc.byId[id], undefined, id);
   assert.equal(p.A.store.get().settings.threshold, 50, 'the store keeps the PRD default');
-  p.A.player.setSource('sample');
-  assert.equal(p.A.store.get().settings.threshold, 50, 'choosing the sample writes nothing to the store');
-  assert.match(p.doc.byId['run-settings-summary'].textContent, /T = 12 ticks/, 'the sample runs with its own T');
   p.A.player.start();
-  assert.equal(p.fe.args[4], 12, 'the engine gets T = 12 for the sample');
-  p.A.player.setSource('big');
-  assert.match(p.doc.byId['run-settings-summary'].textContent, /T = 50 ticks/);
+  assert.equal(p.fe.args[3], 100, 'alpha_milli default'); assert.equal(p.fe.args[5], 0.1, 'epsilon default');
+  const q = ready();
+  q.A.player.setSource('sample');
+  assert.equal(q.A.store.get().settings.threshold, 50, 'choosing the sample writes nothing to the store');
+  q.A.player.start();
+  assert.equal(q.fe.args[4], 12, 'the engine gets T = 12 for the sample');
 });
 
 test('with no jobs the controls stay off and say why', () => {
