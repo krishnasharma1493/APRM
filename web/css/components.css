@@ -137,8 +137,6 @@ html[data-details="off"] .detail-only { display: none; }
 .run-setup .hint { flex: 0 1 auto; margin: 0 0 var(--s-2); }
 .run-setup details.disclosure { flex: 0 1 auto; margin: 0 0 var(--s-1); padding: 0; border: 0; }
 .run-setup details.disclosure[open] { flex: 1 1 100%; }
-.settings-grid { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); padding: var(--s-2) 0; }
-.settings-grid .label { display: block; font-size: var(--fs-caption); color: var(--muted); margin-bottom: var(--s-1); }
 .board-lines .reserve-line { color: var(--sand); font-weight: 600; }
 .board-grid { margin-top: var(--s-4); }
 .module { position: relative; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-2); padding: var(--s-3); min-width: 0; }

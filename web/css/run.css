@@ -33,22 +33,6 @@
 .method[aria-checked="true"] .method-dot::after { opacity: 1; }
 .method-term { color: var(--muted); }
 
-/* More settings: one card with the settings line always visible */
-.more-card { border: 1px solid var(--hairline); border-radius: var(--r-2); }
-.more-card > summary {
-  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap;
-  padding: 0.625rem 0.875rem; cursor: pointer; border-radius: var(--r-2); font-size: 0.875rem; line-height: normal;
-}
-.more-card > summary::-webkit-details-marker { display: none; }
-.more-title { font-weight: 600; }
-.more-line { display: flex; align-items: center; gap: 0.625rem; color: var(--muted); font-size: var(--fs-caption); }
-.chev { width: 7px; height: 7px; border-right: 1.5px solid var(--text); border-bottom: 1.5px solid var(--text); transform: translateY(-2px) rotate(45deg); transition: transform 200ms var(--ease); }
-.more-card[open] .chev { transform: translateY(1px) rotate(225deg); }
-.more-card .settings-grid { padding: var(--s-1) 0.875rem var(--s-4); display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--s-4); }
-.more-card .field-label { display: block; font-size: var(--fs-caption); margin-bottom: var(--s-1); }
-.more-card input { width: 100%; }
-.more-card .hint { margin: var(--s-1) 0 0; }
-
 /* The sticky control bar */
 .run-bar { position: sticky; top: 3.5rem; z-index: 15; background: var(--bg); border-bottom: 1px solid var(--hairline); margin-top: var(--s-6); }
 .run-bar-in { padding: var(--s-3) var(--s-10); display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
@@ -111,7 +95,7 @@
   .run-bar { position: static; }   /* wrapped to four rows, a sticky bar would hide a third of a phone screen */
 }
 @media (prefers-reduced-motion: reduce) {
-  .method, .chev, .method-dot::after { transition: none; }
+  .method, .method-dot::after { transition: none; }
 }
 
 /* ---------- The Run laptop and its columns (K-52) ---------- */
