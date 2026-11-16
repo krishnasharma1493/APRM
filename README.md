@@ -71,7 +71,7 @@ The site has three steps, shown as tabs in the top bar. **Show details** adds a 
 | --- | --- |
 | **1 Build** | Set the machine (cores and memory), then add, edit or delete jobs. You can start from one of six examples, generate random jobs, import or export a jobs CSV (up to 1 MB; bad rows are listed by line), or copy a link that reopens the exact case. |
 | **2 Run** | Pick a scheduler and watch it work on a laptop whose screen shows the cores and memory in use. You can play, step, jump to the end, change the speed and add a job mid-run. Panels show the waiting queue, running jobs, the timeline, the "why" decision log and the live metrics. |
-| **3 Compare** | Run every scheduler, plus the exact best for 9 jobs or fewer, on the same jobs. The verdict ranks schedulers by longest wait, then average wait, then CPU busy. Charts show the measures (as glowing peaks), wait spread, fairness by priority, the gap to the exact best, who ran when, timelines, use over time and per-job results. |
+| **3 Compare** | Run every scheduler, plus the exact best for 9 jobs or fewer, on the same jobs. The verdict ranks schedulers by longest wait, then average wait, then CPU busy. Charts show four measures (longest wait, average wait, time until all jobs finished, CPU busy), how long jobs waited, the gap to the exact best, timelines and use over time. |
 
 ![The Compare page on the 9-job starvation case: the verdict, "Why it won", and the Longest wait chart for every scheduler and the exact best.](assets/readme/compare.png)
 

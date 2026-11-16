@@ -177,8 +177,10 @@ test('model: engine metrics become the design measures (shares to percents), wai
   const M = page().A.comparemodel;
   const m = M.fromEngine({ avg_wait: 1.5, max_wait: 3, avg_turnaround: 4, weighted_completion: 10, makespan: 9, util_cpu: 0.25, util_mem: null, avg_wait_by_priority: [1, null, null, null, null, null, null, null, null, null] },
     [{ id: 1, wait: 0, turnaround: 4 }, { id: 2, wait: 3, turnaround: 4 }]);
-  assert.equal(m.maxw, 3); assert.equal(m.avgw, 1.5); assert.equal(m.cpu, 25); assert.equal(m.mem, null);
-  assert.deepEqual(plain(m.waits), [0, 3]); assert.equal(m.totW, 3); assert.equal(m.totT, 8); assert.equal(m.per[0], 1);
+  assert.equal(m.maxw, 3); assert.equal(m.avgw, 1.5); assert.equal(m.cpu, 25); assert.equal(m.mk, 9);
+  assert.deepEqual(plain(m.waits), [0, 3]); assert.equal(m.totW, 3); assert.equal(m.totT, 8);
+  assert.deepEqual(plain(Object.keys(m).sort()), ['avgw', 'cpu', 'maxw', 'mk', 'n', 'totT', 'totW', 'waits'], 'only the four shown measures plus wait data (K-59)');
+  assert.deepEqual(plain(M.MET.map((x) => x.id)), ['maxw', 'avgw', 'mk', 'cpu']);
 });
 
 test('model: the exact best measures from its schedule follow the PRD formulas', () => {
@@ -187,9 +189,7 @@ test('model: the exact best measures from its schedule follow the PRD formulas',
     { id: 2, arrival: 1, start: 4, finish: 6, wait: 3, turnaround: 5, priority: 0, cpu: 8, mem: 2048 }];
   const m = M.fromSchedule(rows, { cpu: 8, mem: 4096 });
   assert.equal(m.maxw, 3); assert.equal(m.avgw, 1.5); assert.equal(m.mk, 6);
-  assert.equal(m.wc, 3 * 4 + 1 * 6);
   assert.ok(Math.abs(m.cpu - 100 * (4 * 4 + 8 * 2) / (8 * 6)) < 1e-9);
-  assert.equal(m.per[2], 0); assert.equal(m.per[0], 3); assert.equal(m.per[5], null);
 });
 
 test('model: the verdict order is longest wait, then average wait, then CPU busy; ties keep the design order', () => {
@@ -197,7 +197,7 @@ test('model: the verdict order is longest wait, then average wait, then CPU busy
   const col = (key, maxw, avgw, cpu, order) => ({ key, order, bench: false, m: { maxw, avgw, cpu } });
   const r = M.rank([col('fcfs', 10, 3, 50, 0), col('sjf', 8, 4, 40, 2), col('aging', 8, 3, 30, 3), col('easy', 8, 3, 60, 4), col('knap', 8, 3, 60, 5), { key: 'opt', bench: true, order: 6, m: { maxw: 1 } }]);
   assert.deepEqual(r.map((x) => x.key), ['easy', 'knap', 'aging', 'sjf', 'fcfs']);
-  const b = M.bests([col('fcfs', 10, 3, 50, 0), col('sjf', 8, 3, 50, 2)].map((c) => ({ ...c, m: { ...c.m, avgt: 1, wc: 1, mk: 1, mem: 1 } })));
+  const b = M.bests([col('fcfs', 10, 3, 50, 0), col('sjf', 8, 3, 50, 2)].map((c) => ({ ...c, m: { ...c.m, mk: 1 } })));
   assert.deepEqual(Object.keys(b.maxw), ['sjf']); assert.deepEqual(Object.keys(b.avgw).sort(), ['fcfs', 'sjf']);
 });
 
@@ -211,14 +211,8 @@ test('model: wait spread shares sum to 1 per scheduler; series match the rows', 
   assert.deepEqual(plain(ser.cpu), [50, 50, 100, 0]); assert.deepEqual(plain(ser.q), [1, 1, 0, 0]);
 });
 
-test('model: "Who ran when" peaks are 1 at the middle of the run, 0 well outside it; never boxes', () => {
+test('model: the monotone path never produces NaN', () => {
   const M = page().A.comparemodel;
-  const r = { start: 10, finish: 20 };
-  assert.equal(M.hill(r, 15), 1);
-  assert.ok(M.hill(r, 12) > 0.5 && M.hill(r, 12) < 1, 'shoulders are curved, not flat');
-  const sp = M.hillSpan(r);
-  assert.equal(M.hill(r, sp[1] + 0.01), 0); assert.equal(M.hill(r, sp[0] - 0.01), 0);
-  assert.ok(sp[0] < 10 && sp[1] > 20);
   assert.ok(!/NaN/.test(M.mono([[0, 0], [1, 2], [2, 2], [3, 0]])));
 });
 
@@ -296,26 +290,25 @@ test('cancel and leaving Compare mid-run destroy every handle and stop the slice
   assert.equal(p.sched.laters.length, 0);
 });
 
-test('results: verdict, full table, sections and boards are drawn from the engine numbers', () => {
+test('results: verdict, full table and the six sections are drawn from the engine numbers', () => {
   const p = ready({ metricsFor: (pol) => ({ avg_wait: pol === 'sjf' ? 0.5 : 1, max_wait: pol === 'sjf' ? 1 : 2, avg_turnaround: 6, weighted_completion: 40, makespan: 9, util_cpu: 0.25, util_mem: 0.5, avg_wait_by_priority: [null, null, null, 1, null, null, null, null, null, null] }) });
   p.A.compare.start(); p.sched.drain();
   assert.equal(p.A.compare.snapshot().winner, 'sjf');
   const res = p.el('cmp-results');
   assert.equal(res.hidden, false);
   const ids = res.all().map((e) => e.id).filter(Boolean);
-  for (const s of ['cmp-verdict', 'cmp-results', 'cmp-waits', 'cmp-fair', 'cmp-exact', 'cmp-boards', 'cmp-timelines', 'cmp-use', 'cmp-job']) assert.ok(ids.includes(s), s);
+  for (const s of ['cmp-verdict', 'cmp-results', 'cmp-waits', 'cmp-exact', 'cmp-timelines', 'cmp-use']) assert.ok(ids.includes(s), s);
+  for (const s of ['cmp-fair', 'cmp-boards', 'cmp-job', 'cmp-modal']) assert.ok(!ids.includes(s), s + ' is gone (K-59)');
+  const tabs = res.all().filter((e) => e.getAttribute('data-metric'));
+  assert.deepEqual(plain(tabs.map((e) => e.getAttribute('data-metric'))), ['maxw', 'avgw', 'mk', 'cpu']);
   const v = p.A.compare.verdictOf();
   assert.equal(v.key, 'sjf');
   assert.match(v.rest, /kept the longest wait to 1 ticks/);
-  const boardsCv = res.all().filter((e) => e.tag === 'canvas' && /cmp-flowcv/.test(e.getAttribute('class') || ''));
-  assert.equal(boardsCv.length, 7, 'one "Who ran when" board per column');
-  assert.ok(boardsCv[0].ctx.calls.some((c) => c.op === 'arc'), 'peaks and markers drawn');
-  assert.ok(!boardsCv[0].ctx.calls.some((c) => c.op === 'fillRect' && c.a[2] > 40 && c.a[3] > 10 && c.a[1] > 30 && c.a[1] < 200), 'no job box is filled');
   const cells = res.all().filter((e) => e.tag === 'td').map((e) => e.textContent);
   assert.ok(cells.some((t) => /^Best?1$|Best1|^1$/.test(t)), 'the winner’s longest wait shows');
 });
 
-test('the hero chart switches measure and the per-job and highlight choices redraw', () => {
+test('the hero chart switches measure and the highlight choice redraws', () => {
   const p = ready();
   p.A.compare.start(); p.sched.drain();
   const res = p.el('cmp-results');
@@ -334,7 +327,7 @@ test('verdict on a three-way tie names where the winner really won', () => {
   assert.match(v.rest, /ties with .* wins on average wait: 2 against 3 ticks/);
 });
 
-test('keyboard: measure tabs move with the arrow keys; gap and per-job rows are buttons', () => {
+test('keyboard: measure tabs move with the arrow keys; gap rows are buttons', () => {
   const p = ready();
   p.A.compare.start(); p.sched.drain();
   const res = p.el('cmp-results');
@@ -346,8 +339,8 @@ test('keyboard: measure tabs move with the arrow keys; gap and per-job rows are 
   assert.equal(globalThis.__focused, nowOn, 'focus follows to the new tab after the redraw');
   p.doc.activeElement = nowOn;
   nowOn.fire('keydown', { key: 'End', currentTarget: nowOn });
-  assert.equal(p.A.compare.snapshot().metric, 'mem', 'a second key press still works');
-  const rows = res.all().filter((e) => /cmp-gaprow|cmp-dumb/.test(e.getAttribute('class') || '') && e.getAttribute('role') === 'button');
+  assert.equal(p.A.compare.snapshot().metric, 'cpu', 'a second key press still works');
+  const rows = res.all().filter((e) => /cmp-gaprow/.test(e.getAttribute('class') || '') && e.getAttribute('role') === 'button');
   assert.ok(rows.length >= 6 && rows.every((r) => r.getAttribute('tabindex') === '0'));
   rows[0].fire('keydown', { key: 'Enter' });
   assert.ok(p.A.compare.snapshot().sel);

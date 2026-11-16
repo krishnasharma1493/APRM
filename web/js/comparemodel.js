@@ -3,8 +3,8 @@
  * Idea: the C engine runs every scheduler on the same jobs and machine and returns, per scheduler,
  * its metrics JSON and its results JSON (one row per job: arrival, start, finish, wait, ...). The
  * exact solver returns the best schedule for total wait. This file only rearranges those answers
- * for drawing: which scheduler wins the verdict (by the engine's own numbers), how waits spread,
- * how busy the machine was at each tick, and where each job's ribbon lies in "Who ran when".
+ * for drawing: which scheduler wins the verdict (by the engine's own numbers), how waits spread
+ * and how busy the machine was at each tick.
  * Nothing here decides which job runs.
  *
  * Classic script: attaches APRM.comparemodel only. No DOM access, so Node tests load it directly.
@@ -27,15 +27,13 @@
   ];
   var EXACT_MAX = 9;
 
-  /* The measures, in the design's order. dir -1: lower is better; +1: higher is better. */
+  /* The four measures shown, in this order (K-59). dir -1: lower is better; +1: higher is better.
+   * maxw: longest wait; avgw: average wait; mk: tick when the last job finished; cpu: CPU busy %. */
   var MET = [
     { id: 'maxw', unit: 'ticks', dir: -1 },
     { id: 'avgw', unit: 'ticks', dir: -1 },
-    { id: 'avgt', unit: 'ticks', dir: -1 },
-    { id: 'wc', unit: '', dir: -1 },
     { id: 'mk', unit: 'ticks', dir: -1 },
-    { id: 'cpu', unit: '%', dir: 1 },
-    { id: 'mem', unit: '%', dir: 1 }
+    { id: 'cpu', unit: '%', dir: 1 }
   ];
 
   function schedOf(name) {
@@ -61,7 +59,7 @@
   }
 
   /* One column's measures. From the engine: its metrics JSON and result rows (waits read from
-   * the rows' "wait" field). util_* (shares 0..1) become percents. O(rows). */
+   * the rows' "wait" field). util_cpu (a share 0..1) becomes a percent. O(rows). */
   function fromEngine(metrics, rows) {
     var waits = rows.map(function (r) { return r.wait; });
     var turns = rows.map(function (r) { return r.turnaround; });
@@ -69,12 +67,8 @@
     return {
       maxw: m.max_wait === undefined ? null : m.max_wait,
       avgw: m.avg_wait === undefined ? null : m.avg_wait,
-      avgt: m.avg_turnaround === undefined ? null : m.avg_turnaround,
-      wc: m.weighted_completion === undefined ? null : m.weighted_completion,
       mk: m.makespan === undefined ? null : m.makespan,
       cpu: m.util_cpu === null || m.util_cpu === undefined ? null : m.util_cpu * 100,
-      mem: m.util_mem === null || m.util_mem === undefined ? null : m.util_mem * 100,
-      per: Array.isArray(m.avg_wait_by_priority) ? m.avg_wait_by_priority.slice() : [null, null, null, null, null, null, null, null, null, null],
       waits: waits, n: rows.length, totW: rows.length ? sum(waits) : null, totT: rows.length ? sum(turns) : null
     };
   }
@@ -84,20 +78,14 @@
   function fromSchedule(rows, cap) {
     if (!rows.length) { return fromEngine({}, []); }
     var waits = rows.map(function (r) { return r.wait; });
-    var mk = 0, busyC = 0, busyM = 0, wc = 0;
-    var per = [], cnt = [];
-    for (var p = 0; p < 10; p++) { per.push(0); cnt.push(0); }
+    var mk = 0, busyC = 0;
     rows.forEach(function (r) {
       if (r.finish > mk) { mk = r.finish; }
-      var d = r.finish - r.start;
-      busyC += r.cpu * d; busyM += r.mem * d; wc += (r.priority + 1) * r.finish;
-      per[r.priority] += r.wait; cnt[r.priority]++;
+      busyC += r.cpu * (r.finish - r.start);
     });
     return {
-      maxw: Math.max.apply(null, waits), avgw: sum(waits) / rows.length,
-      avgt: sum(rows.map(function (r) { return r.turnaround; })) / rows.length, wc: wc, mk: mk,
-      cpu: mk ? 100 * busyC / (cap.cpu * mk) : null, mem: mk ? 100 * busyM / (cap.mem * mk) : null,
-      per: per.map(function (s, i) { return cnt[i] ? s / cnt[i] : null; }),
+      maxw: Math.max.apply(null, waits), avgw: sum(waits) / rows.length, mk: mk,
+      cpu: mk ? 100 * busyC / (cap.cpu * mk) : null,
       waits: waits, n: rows.length, totW: sum(waits), totT: sum(rows.map(function (r) { return r.turnaround; }))
     };
   }
@@ -167,71 +155,6 @@
     return { cpu: cpu, mem: mem, q: qq };
   }
 
-  /* The job whose wait differs most between the columns (the design's default for "Per job"). */
-  function defaultJob(cols, jobs) {
-    var best = null, spreadMax = -1;
-    jobs.forEach(function (j) {
-      var ws = [];
-      cols.forEach(function (c) { var r = c.byId[j.id]; if (r) { ws.push(r.wait); } });
-      if (ws.length) { var s = Math.max.apply(null, ws) - Math.min.apply(null, ws); if (s > spreadMax) { spreadMax = s; best = j.id; } }
-    });
-    return best;
-  }
-
-  /* ---------- "Who ran when" helpers ---------- */
-
-  /* How much of job r's resource is drawn at time t (ticks, continuous). Inside [start, finish) the
-   * job rises and falls with a smoothstep over e = min(0.45, 0.45 x duration) ticks, so at every
-   * tick centre the height is exact (the engine's value) and only jobs the engine ran at t are
-   * stacked: the stack never passes the capacity. O(1). */
-  function ramp(r, t) {
-    var s = r.start, f = r.finish;
-    if (t <= s || t >= f) { return 0; }
-    var e = Math.min(0.45, 0.45 * (f - s));
-    var up = Math.min(1, (t - s) / e), dn = Math.min(1, (f - t) / e);
-    var a = up * up * (3 - 2 * up), b = dn * dn * (3 - 2 * dn);
-    return a * b;
-  }
-
-  /* Stack the jobs as smooth streams. Jobs are layered by start, then id (a fixed order, so a
-   * ribbon only moves when a job below it ends). Returns for n samples across [0, T]: per job the
-   * bottom and top as shares of capacity, and the total. O(samples x jobs). */
-  function streams(rows, T, cap, key, n) {
-    var order = rows.slice().sort(function (a, b) { return a.start - b.start || a.id - b.id; });
-    var capv = key === 'cpu' ? cap.cpu : cap.mem;
-    var xs = [], total = [], bands = order.map(function (r) { return { r: r, lo: [], hi: [] }; });
-    for (var i = 0; i < n; i++) {
-      var t = T * i / (n - 1);
-      xs.push(t);
-      var y = 0;
-      for (var k = 0; k < bands.length; k++) {
-        var r = bands[k].r;
-        var v = r.start < t + 1 && r.finish > t - 1 ? ramp(r, t) * r[key] / capv : 0;
-        bands[k].lo.push(y);
-        y += v;
-        bands[k].hi.push(y);
-      }
-      total.push(y);
-    }
-    return { xs: xs, bands: bands, total: total };
-  }
-
-  /* "Who ran when" as a mountain range: job r drawn as a smooth peak over the ticks it ran, as
-   * tall as its share of the machine (1 at its middle), falling to 0 just outside [start, finish].
-   * A generalised bell (power 2.6) keeps the shoulders full, so a long job reads as a long ridge.
-   * Returns 0..1. O(1). */
-  function hill(r, t) {
-    var d = Math.max(1, r.finish - r.start), c = (r.start + r.finish) / 2, sg = d / 2.2 + 0.35;
-    var u = Math.abs(t - c) / sg;
-    if (u > 2.2) { return 0; }
-    return Math.exp(-Math.pow(u, 2.6));
-  }
-  /* Where a job's peak lies on the time axis: [from, to] in ticks (the part drawn). */
-  function hillSpan(r) {
-    var d = Math.max(1, r.finish - r.start), c = (r.start + r.finish) / 2, sg = d / 2.2 + 0.35;
-    return [c - 2.2 * sg, c + 2.2 * sg];
-  }
-
   /* Monotone cubic path through points (no overshoot), as SVG path data; numbers with one decimal. */
   function f1(x) { return (+x).toFixed(1); }
   function mono(pts) {
@@ -290,13 +213,13 @@
     cols.forEach(function (c) { c.ser = series(c.rows, T, cap); });
     var ranked = rank(cols);
     return { cols: cols, T: T, n: jobs.length, cap: cap, jobs: jobs, best: bests(cols), ranked: ranked,
-      winner: ranked.length ? ranked[0].key : null, dist: spread(cols), defJob: defaultJob(cols, jobs) };
+      winner: ranked.length ? ranked[0].key : null, dist: spread(cols) };
   }
 
   APRM.comparemodel = {
     SCHED: SCHED, MET: MET, EXACT_MAX: EXACT_MAX, schedOf: schedOf, eq: eq, fmt: fmt, pct: pct,
     fromEngine: fromEngine, fromSchedule: fromSchedule, bests: bests, rank: rank, spread: spread,
-    series: series, defaultJob: defaultJob, ramp: ramp, streams: streams, hill: hill, hillSpan: hillSpan, mono: mono, nice: nice,
+    series: series, mono: mono, nice: nice,
     column: column, build: build
   };
 })();
