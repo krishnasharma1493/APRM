@@ -5,8 +5,8 @@
  * order as a benchmark. This file never decides which job runs: it calls only the APRM.wasm
  * wrapper (create, addJob, step, metrics, results, log, exact, destroy), hands the answers to
  * comparemodel.js, and draws the design's sections:
- *   verdict + glowing peaks chart, full results table, who waited how long (ridges), fairness by
- *   priority, gap to the exact best, who ran when (job streams), timelines, use over time, per job.
+ *   verdict + peaks chart, full results table, who waited how long, gap to the exact best,
+ *   timelines and use over time (K-59 keeps only these, in plain words).
  *
  * Steps of one comparison: create one handle per scheduler and add the same jobs; run the handles
  * one after another in slices (SLICE_STEPS steps per callback, so 5,000 jobs never freeze the tab;
@@ -38,7 +38,7 @@
     { name: 'knapsack', label: 'knapsack', available: true }
   ];
   var CASES = ['yours', 'nine', 'sample', 'twelve', 'big'];
-  var ORDER = ['verdict', 'results', 'dist', 'exact', 'boards', 'timelines', 'use', 'job'];
+  var ORDER = ['verdict', 'results', 'dist', 'exact', 'timelines', 'use'];
   var EASE = 'cubic-bezier(0.22,1,0.36,1)';
 
   function M() { return APRM.comparemodel; }
@@ -46,7 +46,7 @@
   var view = {
     source: null, picks: ['fcfs', 'priority', 'sjf', 'aging', 'easy', 'knap', 'opt'],
     status: 'idle', msg: '', msgErr: false, prog: { list: [], i: 0 }, model: null,
-    sel: null, job: null, metric: 'maxw', useK: 'cpu', focus: null, base: null, modal: null,
+    sel: null, job: null, metric: 'maxw', useK: 'cpu',
     stale: false, animate: null, cross: null
   };
   var runs = [];
@@ -230,7 +230,6 @@
     view.status = 'running';
     view.prog = { list: order, i: 0 };
     view.msg = W('cmp.st.running', { name: sname(order[0]), i: 1, n: order.length });
-    view.modal = null;
     render();
     var t = token;
     laterId = scheduler.later(function () { laterId = null; if (t === token) { slice(t, 0); } }, 40);
@@ -320,11 +319,9 @@
     var prog = h('div', { cls: 'cmp-card cmp-prog', id: 'cmp-prog', hidden: 'hidden' });
     var res = h('div', { cls: 'cmp-results', id: 'cmp-results', hidden: 'hidden' });
     var tip = h('div', { cls: 'cmp-tip', id: 'cmp-tip', hidden: 'hidden', 'aria-hidden': 'true' });
-    var modal = h('div', { cls: 'cmp-modal', id: 'cmp-modal', hidden: 'hidden', role: 'dialog', 'aria-modal': 'true',
-      on: { click: function (e) { if (e.target === modal) { closeModal(); } } } });
     var toast = h('div', { cls: 'cmp-toast', id: 'cmp-toast', 'aria-live': 'polite' });
-    [head, pick, empty, prog, res, tip, modal, toast].forEach(function (e) { root.appendChild(e); });
-    return { root: root, ds: ds, picks: pick, res: res, prog: prog, empty: empty, tip: tip, modal: modal, toast: toast };
+    [head, pick, empty, prog, res, tip, toast].forEach(function (e) { root.appendChild(e); });
+    return { root: root, ds: ds, picks: pick, res: res, prog: prog, empty: empty, tip: tip, toast: toast };
   }
 
   /* "Back to your jobs": these buttons are made here, after app.js wired the page's Next buttons. */
@@ -409,7 +406,7 @@
     if (k === 'yours' && APRM.store.get().jobs.length === 0) { return; }   /* the design shows it only with Build jobs */
     token++; cancelTimer(); destroyAll();
     view.source = k;
-    view.model = null; view.status = 'idle'; view.sel = null; view.job = null; view.modal = null;
+    view.model = null; view.status = 'idle'; view.sel = null; view.job = null;
     view.msg = W('cmp.st.ds'); view.msgErr = false;
     render();
   }
@@ -427,7 +424,7 @@
     var R = view.model;
     ui.res.hidden = !(R && view.status === 'done');
     hideTip();
-    if (!R || view.status !== 'done') { clear(ui.res); view.modal = null; renderModal(false); return; }
+    if (!R || view.status !== 'done') { clear(ui.res); return; }
     var anim = view.animate;
     view.animate = null;
     var ctx = ctxOf(anim);
@@ -437,12 +434,10 @@
     var holder = h('div', { cls: 'cmp-sections' });
     holder.appendChild(verdictSection(ctx));
     holder.appendChild(resultsSection(ctx));
-    holder.appendChild(h('div', { cls: 'cmp-two' + (ctx.two ? ' on' : '') }, [waitsSection(ctx), fairSection(ctx)]));
+    holder.appendChild(waitsSection(ctx));
     holder.appendChild(gapSection(ctx));
-    holder.appendChild(boardsSection(ctx));
     holder.appendChild(timelinesSection(ctx));
     holder.appendChild(useSection(ctx));
-    holder.appendChild(jobSection(ctx));
     holder.appendChild(h('div', { cls: 'cmp-foot' }, [
       h('button', { type: 'button', cls: 'btn', 'data-next': 'build', text: W('cmp.back'), on: { click: backToBuild } }),
       h('span', { cls: 'cmp-note', text: W('cmp.foot', { n: R.cols.filter(function (c) { return !c.bench; }).length, opt: R.cols.some(function (c) { return c.bench; }) ? W('cmp.foot.opt') : '', jobs: R.n, cpu: R.cap.cpu, mem: R.cap.mem }) })
@@ -450,7 +445,6 @@
     ui.res.appendChild(holder);
     if (typeof window.scrollTo === 'function' && keep) { window.scrollTo(0, keep); }
     drawCanvases();
-    renderModal(false);
     if (anim) { grow(ui.res, anim); }
   }
 
@@ -472,7 +466,7 @@
 
   function sectionNav() {
     var nav = h('nav', { cls: 'cmp-secnav', 'aria-label': W('cmp.sections') });
-    ['verdict', 'results', 'waits', 'fair', 'exact', 'boards', 'timelines', 'use', 'job'].forEach(function (k) {
+    ['verdict', 'results', 'waits', 'exact', 'timelines', 'use'].forEach(function (k) {
       nav.appendChild(h('a', { href: '#cmp-' + k, text: W('cmp.nav.' + k), on: { click: function (e) {
         var t = byId('cmp-' + k);
         if (t && t.scrollIntoView) { e.preventDefault(); t.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' }); }
@@ -623,7 +617,7 @@
     var worst = comp.slice().sort(function (a2, b2) { return (b2.m.maxw === null ? -1 : b2.m.maxw) - (a2.m.maxw === null ? -1 : a2.m.maxw); })[0];
     var why = [{ k: W('cmp.why.starv'), t: worst.key === Wn.key ? W('cmp.why.starv.self', { v: fmt(w.maxw) }) : W('cmp.why.starv.other', { v: fmt(w.maxw), name: sterm(worst.key), w: fmt(worst.m.maxw) }) }];
     var ar = comp.slice().sort(function (a3, b3) { return (a3.m.avgw === null ? 1e18 : a3.m.avgw) - (b3.m.avgw === null ? 1e18 : b3.m.avgw); }).map(function (x) { return x.key; }).indexOf(Wn.key) + 1;
-    why.push({ k: W('cmp.why.avg'), t: W('cmp.why.avg.t', { v: fmt(w.avgw), rank: ar === 1 ? W('cmp.why.lowest') : W('cmp.why.rank', { i: ar, n: comp.length }), med: fmt(M().pct(w.waits, 0.5)), ninety: fmt(M().pct(w.waits, 0.9)) }) });
+    why.push({ k: W('cmp.why.avg'), t: W('cmp.why.avg.t', { v: fmt(w.avgw), rank: ar === 1 ? W('cmp.why.lowest') : W('cmp.why.rank', { i: ar, n: comp.length }) }) });
     if (Wn.res || Wn.bf) { why.push({ k: W('cmp.why.how'), t: W('cmp.why.how.t', { res: Wn.res, sa: plural(Wn.res), bf: Wn.bf, sb: plural(Wn.bf) }) }); }
     else {
       var cr = comp.slice().sort(function (a4, b4) { return (b4.m.cpu === null ? -1 : b4.m.cpu) - (a4.m.cpu === null ? -1 : a4.m.cpu); }).map(function (x) { return x.key; }).indexOf(Wn.key) + 1;
@@ -801,7 +795,7 @@
         h('button', { type: 'button', 'aria-pressed': view.sel === it.key ? 'true' : 'false', on: { click: selSched(it.key) } }, [sname(it.key), h('span', { text: it.bench ? W('cmp.res.benchterm') : sterm(it.key) })]));
     })));
     var body = M().MET.map(function (m2) {
-      var label = mlabel(m2.id) + (W('cmp.mterm.' + m2.id) !== 'cmp.mterm.' + m2.id ? ' (' + W('cmp.mterm.' + m2.id) + ')' : '');
+      var label = mlabel(m2.id);
       return h('tr', {}, [
         h('th', { scope: 'row', cls: 'stick' }, [label, m2.id === 'mk' ? h('span', { cls: 'sub', text: W('cmp.res.info') }) : null, detailsOn() ? h('span', { cls: 'sub', text: W('cmp.how.' + m2.id) }) : null]),
         h('td', { cls: 'dir', text: m2.dir < 0 ? W('cmp.res.lower') : W('cmp.res.higher') })
@@ -821,11 +815,9 @@
 
   /* ---------- who waited how long (ridges) ---------- */
 
-  function halfWidth(ctx) { return Math.round((ctx.two ? (ctx.cw - 24) / 2 : ctx.cw) - 2 * ctx.cpx - 2); }
-
   function waitsSection(ctx) {
-    var R = ctx.R, fmt = M().fmt, pct = M().pct, L = R.cols, dist = R.dist;
-    var halfW = halfWidth(ctx), lw = ctx.narrow ? 78 : 104, rowH = ctx.narrow ? 46 : 58, rstep = ctx.narrow ? 34 : 40, dtop = 12;
+    var R = ctx.R, fmt = M().fmt, L = R.cols, dist = R.dist;
+    var halfW = Math.round(ctx.cw - 2 * ctx.cpx - 2), lw = ctx.narrow ? 78 : 104, rowH = ctx.narrow ? 46 : 58, rstep = ctx.narrow ? 34 : 40, dtop = 12;
     var dX2 = halfW - 18;
     var dx = function (v) { return lw + (v / dist.edge) * (dX2 - lw); };
     var dH = dtop + rowH + Math.max(0, L.length - 1) * rstep + 40;
@@ -853,7 +845,7 @@
       g.appendChild(textEl(lw - 10, base - 6, 'end', 12, 700, scol(k), sshort(k)));
       g.appendChild(textEl(f1(right ? mxX - 6 : mxX + 6), base - 6, right ? 'end' : 'start', 11, 600, 'var(--screen-text)', mx === null ? '—' : W('cmp.wait.longest', { v: mx })));
       g.appendChild(sv('rect', { x: 0, y: base - rstep, width: halfW, height: rstep, fill: '#000000', 'fill-opacity': 0, cls: 'cmp-hit', on: {
-        mousemove: function (e) { tipAt(e, [{ t: sname(k), k: 'head', c: scol(k) }, { t: W('cmp.wait.tip.zero', { a: zero, b: it.m.n }) }, { t: W('cmp.wait.tip.med', { m: fmt(pct(it.m.waits, 0.5)), p: fmt(pct(it.m.waits, 0.9)) }) }, { t: W('cmp.wait.tip.max', { v: fmt(mx) }), k: 'amber' }]); },
+        mousemove: function (e) { tipAt(e, [{ t: sname(k), k: 'head', c: scol(k) }, { t: W('cmp.wait.tip.zero', { a: zero, b: it.m.n }) }, { t: W('cmp.wait.tip.max', { v: fmt(mx) }), k: 'amber' }]); },
         mouseleave: hideTip, click: selSched(k) } }));
       svg.appendChild(g);
     });
@@ -866,11 +858,11 @@
     var kids = [sectionHead(W('cmp.wait.h'), scol(ctx.hiId), W('cmp.wait.p')), svg];
     if (detailsOn()) {
       kids.push(h('div', { cls: 'cmp-dbox' }, [h('table', { cls: 'cmp-dtable' }, [
-        h('thead', {}, h('tr', {}, [W('cmp.col.sched'), W('cmp.wait.zero'), W('cmp.wait.med'), W('cmp.wait.p90'), W('cmp.wait.max')].map(function (x, i) { return h('th', { scope: 'col', cls: i ? 'r' : null, text: x }); }))),
+        h('thead', {}, h('tr', {}, [W('cmp.col.sched'), W('cmp.wait.zero'), W('cmp.wait.max')].map(function (x, i) { return h('th', { scope: 'col', cls: i ? 'r' : null, text: x }); }))),
         h('tbody', {}, L.map(function (it) {
           return h('tr', {}, [h('th', { scope: 'row', text: sname(it.key) }), h('td', { cls: 'r strong', text: W('cmp.wait.of', { a: it.m.waits.filter(function (x) { return x === 0; }).length, b: it.m.n }) }),
-            h('td', { cls: 'r strong', text: fmt(pct(it.m.waits, 0.5)) }), h('td', { cls: 'r strong', text: fmt(pct(it.m.waits, 0.9)) }), h('td', { cls: 'r strong', text: fmt(it.m.maxw) })]);
-        }))]), h('p', { cls: 'cmp-note', text: W('cmp.wait.bins', { bw: dist.bw, s: plural(dist.bw), nb: dist.nb }) })]));
+            h('td', { cls: 'r strong', text: fmt(it.m.maxw) })]);
+        }))]), h('p', { cls: 'cmp-note', text: W('cmp.wait.bins', { bw: dist.bw, s: plural(dist.bw) }) })]));
     }
     return h('section', { id: 'cmp-waits', cls: 'cmp-sec' }, h('div', { cls: 'cmp-stage fill' }, kids));
   }
@@ -894,80 +886,6 @@
       return h('button', { type: 'button', 'aria-pressed': view.sel === it.key ? 'true' : 'false', style: 'opacity:' + ctx.opOf(it.key), on: { click: selSched(it.key) } },
         [h('span', { cls: 'cmp-lg', style: 'background:' + scol(it.key) }), sshort(it.key)]);
     }));
-  }
-
-  /* ---------- fairness by priority ---------- */
-
-  function fairSection(ctx) {
-    var R = ctx.R, fmt = M().fmt, L = R.cols, mono = M().mono;
-    var fW = halfWidth(ctx), fH = 320, fl = 40, fr = 16, ft = 84, fb = 30;
-    var allV = [];
-    L.forEach(function (it) { it.m.per.forEach(function (v) { if (v !== null) { allV.push(v); } }); });
-    var fn = M().nice(allV.length ? Math.max.apply(null, allV) : 0);
-    var fx = function (p) { return fl + p * (fW - fl - fr) / 9; };
-    var fy = function (v) { return fH - fb - (v / fn.max) * (fH - ft - fb); };
-    var segsOf = function (it) {
-      var segs = [], cur = [];
-      it.m.per.forEach(function (v, p) { if (v === null) { if (cur.length) { segs.push(cur); } cur = []; } else { cur.push([fx(p), fy(v)]); } });
-      if (cur.length) { segs.push(cur); }
-      return segs;
-    };
-    var hiId = ctx.hiId, anim = ctx.anim === 'all';
-    var svg = sv('svg', { viewBox: '0 0 ' + fW + ' ' + fH, role: 'img', 'aria-label': W('cmp.fair.aria'), cls: 'cmp-svg' });
-    svg.appendChild(gradDefs());
-    var defs = sv('defs', {}, sv('linearGradient', { id: uid + '-farea', x1: 0, y1: 0, x2: 0, y2: 1 }, [
-      sv('stop', { offset: 0, style: 'stop-color:' + scol(hiId) + ';stop-opacity:0.32' }), sv('stop', { offset: 1, style: 'stop-color:' + scol(hiId) + ';stop-opacity:0' })]));
-    svg.appendChild(defs);
-    fn.ticks.forEach(function (t) {
-      svg.appendChild(sv('line', { x1: fl, x2: fW - fr, y1: f1(fy(t)), y2: f1(fy(t)), style: 'stroke:var(--cmp-grid)' }));
-      svg.appendChild(textEl(fl - 8, f1(fy(t) - 4), 'end', 11, 400, null, String(t)));
-    });
-    for (var p = 0; p < 10; p++) { svg.appendChild(textEl(f1(fx(p)), fH - 10, 'middle', 11, 400, null, 'P' + p)); }
-    var hiIt = null;
-    L.forEach(function (it) { if (it.key === hiId) { hiIt = it; } });
-    var fhi = null;
-    if (hiIt) { var bv = -1, bp = -1; hiIt.m.per.forEach(function (v, pp) { if (v !== null && v > bv) { bv = v; bp = pp; } }); if (bp >= 0) { fhi = { pp: bp, v: bv }; } }
-    if (hiIt) {
-      var area = segsOf(hiIt).filter(function (sg) { return sg.length > 1; }).map(function (sg) { return mono(sg) + ' L' + f1(sg[sg.length - 1][0]) + ',' + (fH - fb) + ' L' + f1(sg[0][0]) + ',' + (fH - fb) + ' Z'; }).join(' ');
-      if (area) { svg.appendChild(sv('path', { d: area, fill: 'url(#' + uid + '-farea)', 'data-fade': anim ? 500 : null, 'data-op': 1 })); }
-    }
-    if (fhi) { svg.appendChild(sv('line', { x1: f1(fx(fhi.pp)), x2: f1(fx(fhi.pp)), y1: 68, y2: fH - fb, 'stroke-opacity': 0.5, 'stroke-dasharray': '2 3', style: 'stroke:' + scol(hiId), 'data-fade': anim ? 500 : null, 'data-op': 1 })); }
-    L.forEach(function (it) {
-      var hi = it.key === hiId, d = segsOf(it).filter(function (sg) { return sg.length > 1; }).map(mono).join(' ') || 'M0,0';
-      var g = sv('g', { opacity: view.sel && !hi ? 0.22 : hi ? 1 : 0.55 });
-      if (hi) { g.appendChild(sv('path', { d: d, fill: 'none', 'stroke-width': 7, 'stroke-opacity': 0.45, filter: 'url(#' + uid + '-rglow)', pathLength: 1, 'stroke-dasharray': '1 1', 'data-draw': anim ? 1 : null, style: 'stroke:' + scol(it.key) })); }
-      g.appendChild(sv('path', { d: d, fill: 'none', 'stroke-width': hi ? 2.6 : 1.3, 'stroke-linecap': 'round', pathLength: 1, 'stroke-dasharray': '1 1', 'data-draw': anim ? 1 : null, style: 'stroke:' + scol(it.key) }));
-      svg.appendChild(g);
-    });
-    L.forEach(function (it) {
-      var hi = it.key === hiId;
-      it.m.per.forEach(function (v, pp) {
-        if (v === null) { return; }
-        var op = (view.sel && !hi ? 0.22 : hi ? 1 : 0.7);
-        svg.appendChild(sv('circle', { cx: f1(fx(pp)), cy: f1(fy(v)), r: hi ? 4.5 : 3, 'stroke-width': 1.5, opacity: op, 'data-fade': anim ? 900 : null, 'data-op': op, style: 'fill:' + (hi ? scol(it.key) : 'var(--cmp-stage)') + ';stroke:' + scol(it.key) }));
-        var n = it.rows.filter(function (r) { return r.priority === pp; }).length;
-        svg.appendChild(sv('circle', { cx: f1(fx(pp)), cy: f1(fy(v)), r: 10, fill: '#000000', 'fill-opacity': 0, cls: 'cmp-hit', on: {
-          mousemove: function (e) { tipAt(e, [{ t: sname(it.key), k: 'head', c: scol(it.key) }, { t: W('cmp.fair.tip', { p: pp, v: fmt(v) }), k: 'strong' }, { t: W('cmp.fair.tipn', { n: n }) }]); },
-          mouseleave: hideTip, click: selSched(it.key) } }));
-      });
-    });
-    if (fhi) {
-      var an = fhi.pp >= 7 ? 'end' : fhi.pp <= 1 ? 'start' : 'middle';
-      svg.appendChild(sv('circle', { cx: f1(fx(fhi.pp)), cy: f1(fy(fhi.v)), r: 7, 'stroke-width': 2, style: 'fill:var(--screen-text);stroke:' + scol(hiId) }));
-      var big = sv('text', { x: f1(fx(fhi.pp)), y: 60, 'text-anchor': an, 'font-size': 34, 'font-weight': 800, style: 'fill:' + scol(hiId) + ';letter-spacing:-0.02em' });
-      var num = sv('tspan', { 'data-count': String(fhi.v), 'data-dec': Math.floor(fhi.v) === fhi.v ? 0 : 3 }); num.textContent = fmt(fhi.v); big.appendChild(num);
-      var un = sv('tspan', { 'font-size': 14 }); un.textContent = ' ' + W('cmp.ticks'); big.appendChild(un);
-      svg.appendChild(big);
-      svg.appendChild(textEl(f1(fx(fhi.pp)), 24, an, 12, 600, 'var(--screen-text)', W('cmp.fair.cap', { name: sshort(hiId), p: fhi.pp })));
-    }
-    var kids = [sectionHead(W('cmp.fair.h'), scol(hiId), W('cmp.fair.p')), svg, legend(ctx)];
-    if (detailsOn()) {
-      kids.push(h('div', { cls: 'cmp-dbox' }, h('table', { cls: 'cmp-dtable', style: 'min-width:560px' }, [
-        h('thead', {}, h('tr', {}, [h('th', { scope: 'col', text: W('cmp.col.sched') })].concat([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (pp) { return h('th', { scope: 'col', cls: 'r', text: 'P' + pp }); })))),
-        h('tbody', {}, L.map(function (it) { return h('tr', {}, [h('th', { scope: 'row', text: sshort(it.key) })].concat(it.m.per.map(function (v) { return h('td', { cls: 'r strong', text: fmt(v) }); }))); }))
-      ])));
-    }
-    return h('section', { id: 'cmp-fair', cls: 'cmp-sec' }, h('div', { cls: 'cmp-stage fill' }, kids));
   }
 
   /* ---------- gap to the exact best ---------- */
@@ -1000,41 +918,9 @@
     return h('section', { id: 'cmp-exact', cls: 'cmp-sec' }, h('div', { cls: 'cmp-stage' }, [sectionHead(W('cmp.gap.h'), 'var(--screen-text)', sub)].concat(kids)));
   }
 
-  /* ---------- who ran when: job streams ---------- */
+  /* ---------- shared canvas helpers ---------- */
 
-  var boards = [];   /* [{canvas, it, big}] drawn after the DOM is in place */
-
-  function boardsSection(ctx) {
-    var R = ctx.R;
-    boards = [];
-    var grid = h('div', { cls: 'cmp-boards' + (ctx.w >= 1180 ? ' two' : '') });
-    R.cols.forEach(function (it) {
-      var cv = h('canvas', { role: 'img', 'aria-label': W('cmp.flow.aria', { name: sname(it.key), t: M().fmt(it.m.mk) }), cls: 'cmp-flowcv' });
-      boards.push({ canvas: cv, it: it, big: false });
-      bindBoard(cv, it);
-      grid.appendChild(h('div', { cls: 'cmp-board' + (view.sel === it.key ? ' sel' : ''), style: 'opacity:' + ctx.opOf(it.key) + (view.sel === it.key ? ';border-color:' + scol(it.key) : '') + (it.bench ? ';border-style:dashed' : '') }, [
-        h('div', { cls: 'cmp-boardhead' }, [
-          h('span', { cls: 'cmp-sw' + (it.bench ? ' bench' : ''), style: 'border-color:' + scol(it.key) + (it.bench ? '' : ';background:' + scol(it.key)) }),
-          h('span', { cls: 'cmp-boardname' }, [h('span', {}, [sname(it.key), ' ', h('span', { cls: 'muted', text: '(' + sterm(it.key) + ')' })]), h('span', { cls: 'cmp-boardrule', style: 'background:' + scol(it.key) })]),
-          h('span', { cls: 'cmp-boardmk' }, [W('cmp.flow.finished') + ' ', h('strong', { text: M().fmt(it.m.mk) })]),
-          h('button', { type: 'button', cls: 'btn btn-small', 'data-enlarge': it.key, 'aria-label': W('cmp.flow.enlarge.l', { name: sname(it.key) }), text: W('cmp.flow.enlarge'), on: { click: function () { openModal(it.key); } } })
-        ]),
-        h('div', { cls: 'cmp-cvbox' }, cv)
-      ]));
-    });
-    var head = h('div', { cls: 'cmp-boardsec-head' }, [
-      h('div', {}, [h('h3', { cls: 'cmp-title big', text: W('cmp.flow.h') }), h('span', { cls: 'cmp-rule wide', style: 'background:var(--cmp-lead)' }), h('p', { cls: 'cmp-h2', text: W('cmp.flow.sub') }), h('p', { cls: 'cmp-sub', text: W('cmp.flow.p') })]),
-      view.job !== null ? h('button', { type: 'button', cls: 'btn btn-small cmp-follow', text: W('cmp.flow.follow', { id: view.job }), on: { click: function () { view.job = null; render(); } } }) : null
-    ]);
-    return h('section', { id: 'cmp-boards', cls: 'cmp-sec' }, [head, grid]);
-  }
-
-  function bindBoard(cv, it) {
-    cv.addEventListener('mousemove', function (e) { var r = flowHit(cv, e); if (r) { tipAt(e, jobLines(r, it)); } else { hideTip(); } });
-    cv.addEventListener('mouseleave', hideTip);
-    cv.addEventListener('click', function (e) { var r = flowHit(cv, e); if (r) { selJob(r.id); } });
-  }
-
+  /* Tooltip lines for one job (timelines). */
   function jobLines(r, it) {
     return [{ t: W('cmp.job.tip1', { id: r.id, name: sshort(it.key) }), k: 'head' }, { t: W('cmp.job.tip2', { a: r.arrival, s: r.start, f: r.finish }) },
       { t: W('cmp.job.tip3', { w: r.wait, d: r.finish - r.start }), k: 'amber' }, { t: W('cmp.job.tip4', { c: r.cpu, m: r.mem, p: r.priority }), k: 'muted' }];
@@ -1058,214 +944,6 @@
     x.fillStyle = css('--screen-muted');
     x.font = '500 11px "Inter Tight", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'top';
     for (var t = 0; t <= T; t += st) { var px = gl + t * sx; x.fillRect(px, y, 1, 4); x.fillText(String(t), px, y + 6); }
-  }
-
-  /* Draw one "Who ran when" board: CPU and memory panels, each a stack of job streams on a glossy
-   * platform with its reflection, the glowing total-use edge with its peak marked, and the orange
-   * leader at the finish. The hit map is kept on the canvas for hovering. */
-  function drawFlow(cv, it, big) {
-    var R = view.model;
-    var H = big ? 496 : 232;
-    var o = sizeCanvas(cv, H);
-    if (!o) { return; }
-    var x = o.x, Wd = o.W;
-    var gl = 62, gr = 14, ph = big ? 180 : 66, gap = big ? 40 : 30, platH = big ? 12 : 9;
-    var y1 = 26, y2 = y1 + ph + gap, T = R.T || 1, sx = (Wd - gl - gr) / T;
-    var sc = css('--sch-' + it.key), sel = view.job;
-    var bg = x.createRadialGradient(Wd * 0.6, H * 0.45, 10, Wd * 0.6, H * 0.45, Wd * 0.6);
-    bg.addColorStop(0, css('--cmp-halo')); bg.addColorStop(1, css('--cmp-halo-none'));
-    x.fillStyle = bg; x.fillRect(0, 0, Wd, H);
-    var hit = { panels: [] };
-    var tones = [];
-    for (var ti = 0; ti < 10; ti++) { tones.push(css('--screen-job-' + ti)); }
-    function panel(y, key, label, capTxt, ser) {
-      var base = y + ph, capv = key === 'cpu' ? R.cap.cpu : R.cap.mem;
-      x.strokeStyle = css('--cmp-grid'); x.lineWidth = 1;
-      [0.5, 1].forEach(function (fr) { var gy = Math.round(base - fr * ph) + 0.5; x.beginPath(); x.moveTo(gl, gy); x.lineTo(Wd - gr, gy); x.stroke(); });
-      x.fillStyle = css('--screen-muted'); x.font = '700 10px "Inter Tight", system-ui, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'top';
-      x.fillText(label, gl - 10, y); x.font = '400 10px "Inter Tight", system-ui, sans-serif'; x.fillText(capTxt, gl - 10, y + 13);
-      var X = function (t) { return gl + t * sx; };
-      /* one peak per job: points across its span, tallest drawn first so small jobs stay in front */
-      var peaks = it.rows.map(function (r) {
-        var sp = M().hillSpan(r), n = Math.max(8, Math.min(it.rows.length > 60 ? 24 : 90, Math.round((sp[1] - sp[0]) * sx / 3))), pts = [];
-        var hgt = r[key] / capv;
-        for (var i = 0; i <= n; i++) { var tt = sp[0] + (sp[1] - sp[0]) * i / n; pts.push([X(tt), base - ph * hgt * M().hill(r, tt)]); }
-        return { r: r, pts: pts, h: hgt, top: base - ph * hgt, cx: X((r.start + r.finish) / 2) };
-      }).sort(function (a, b) { return b.h - a.h || a.r.id - b.r.id; });
-      var many = peaks.length > 60;   /* a big case: flat glass, no per-peak gradients, glow or reflection */
-      var shape = function (pk) { x.beginPath(); x.moveTo(pk.pts[0][0], base); pk.pts.forEach(function (q) { x.lineTo(q[0], q[1]); }); x.lineTo(pk.pts[pk.pts.length - 1][0], base); x.closePath(); };
-      var edge = function (pk) { x.beginPath(); pk.pts.forEach(function (q, i) { if (i === 0) { x.moveTo(q[0], q[1]); } else { x.lineTo(q[0], q[1]); } }); };
-      /* platform, with the range mirrored into it */
-      x.save();
-      x.beginPath(); x.moveTo(gl - 8, base); x.lineTo(Wd - gr + 4, base); x.lineTo(Wd - gr + 12, base + platH); x.lineTo(gl - 16, base + platH); x.closePath();
-      var pg = x.createLinearGradient(0, base, 0, base + platH);
-      pg.addColorStop(0, css('--cmp-plat-top')); pg.addColorStop(0.45, css('--cmp-plat-mid')); pg.addColorStop(1, css('--cmp-plat-bot'));
-      x.fillStyle = pg; x.fill(); x.clip();
-      x.translate(0, 2 * base); x.scale(1, -1); x.globalAlpha = 0.3;
-      if (!many) {
-        peaks.forEach(function (pk) {
-          var tone = tones[((pk.r.id - 1) % 10 + 10) % 10];
-          var g0 = x.createLinearGradient(0, base - ph, 0, base); g0.addColorStop(0, rgba(tone, 0.7)); g0.addColorStop(1, rgba(tone, 0.05));
-          shape(pk); x.fillStyle = g0; x.fill();
-        });
-      }
-      x.restore();
-      x.fillStyle = css('--cmp-plat-hi'); x.fillRect(gl - 8, base, Wd - gr + 12 - gl, 1);
-      x.fillStyle = css('--cmp-plat-lo'); x.fillRect(gl - 16, base + platH - 1, Wd - gr + 28 - gl, 1);
-      /* the peaks: dark underlay, translucent glass fill, a streak of light, a glowing rim */
-      peaks.forEach(function (pk) {
-        var r = pk.r, tone = tones[((r.id - 1) % 10 + 10) % 10], dim = sel !== null && sel !== r.id;
-        x.globalAlpha = dim ? 0.2 : 1;
-        if (many) { shape(pk); x.fillStyle = rgba(tone, 0.42); x.fill(); }
-        else {
-          shape(pk); x.fillStyle = css('--cmp-cut'); x.fill();
-          var g = x.createLinearGradient(0, pk.top, 0, base);
-          g.addColorStop(0, rgba(tone, 0.85)); g.addColorStop(0.6, rgba(tone, 0.38)); g.addColorStop(1, rgba(tone, 0.07));
-          shape(pk); x.fillStyle = g; x.fill();
-        }
-        if (!many && pk.h * ph > 10) {
-          x.save(); shape(pk); x.clip();
-          var w = (pk.pts[pk.pts.length - 1][0] - pk.pts[0][0]);
-          var st = x.createLinearGradient(pk.cx - w * 0.3, pk.top, pk.cx, base);
-          st.addColorStop(0, css('--cmp-gloss')); st.addColorStop(1, css('--cmp-gloss-none'));
-          x.fillStyle = st; x.fillRect(pk.cx - w * 0.28, pk.top, w * 0.18, base - pk.top);
-          x.restore();
-        }
-        edge(pk);
-        if (!many && !dim) { x.strokeStyle = rgba(tone, 0.55); x.lineWidth = 4; if ('filter' in x) { x.filter = 'blur(3px)'; } x.stroke(); if ('filter' in x) { x.filter = 'none'; } }
-        x.strokeStyle = sel === r.id ? css('--screen-text') : tone; x.lineWidth = sel === r.id ? 2 : 1.1; x.stroke();
-        x.globalAlpha = 1;
-      });
-      /* job numbers on the summits (when there is room) */
-      if (peaks.length <= 40) {
-        peaks.slice().sort(function (a, b) { return a.cx - b.cx; }).forEach(function (pk) {
-          if (pk.h * ph < 9) { return; }
-          var dim = sel !== null && sel !== pk.r.id, tone = tones[((pk.r.id - 1) % 10 + 10) % 10];
-          x.globalAlpha = dim ? 0.3 : 1;
-          x.fillStyle = tone; x.strokeStyle = css('--cmp-stage'); x.lineWidth = 1.5;
-          x.beginPath(); x.arc(pk.cx, pk.top, 2.6, 0, Math.PI * 2); x.fill(); x.stroke();
-          if (pk.h * ph >= 16) {
-            x.fillStyle = css('--screen-text'); x.font = '700 10px "Inter Tight", system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'top';
-            x.fillText(String(pk.r.id), pk.cx, pk.top + 5);
-          }
-          x.globalAlpha = 1;
-        });
-      }
-      /* total use, exact per tick from the engine's results: a glowing line through the tick centres */
-      var pts2 = [[X(0), base - ser[0] / 100 * ph]];
-      ser.forEach(function (v, t2) { pts2.push([X(t2 + 0.5), base - v / 100 * ph]); });
-      pts2.push([X(T), base - ser[ser.length - 1] / 100 * ph]);
-      /* a monotone curve: smooth, never overshooting, through every tick's exact value */
-      var useLine = typeof Path2D === 'function' ? new Path2D(M().mono(pts2)) : null;
-      var strokeUse = function () {
-        if (useLine) { x.stroke(useLine); return; }
-        x.beginPath(); pts2.forEach(function (q, i) { if (i === 0) { x.moveTo(q[0], q[1]); } else { x.lineTo(q[0], q[1]); } }); x.stroke();
-      };
-      x.strokeStyle = rgba(sc, 0.5); x.lineWidth = 4;
-      if ('filter' in x) { x.filter = 'blur(3px)'; }
-      strokeUse();
-      if ('filter' in x) { x.filter = 'none'; }
-      x.strokeStyle = sc; x.lineWidth = 1.2; strokeUse();
-      var pv = -1, pt = 0;
-      ser.forEach(function (v, t3) { if (v > pv + 1e-9) { pv = v; pt = t3; } });
-      var dx2 = X(pt + 0.5), dy2 = base - (pv / 100) * ph;
-      x.fillStyle = sc; x.strokeStyle = css('--cmp-stage'); x.lineWidth = 2;
-      x.beginPath(); x.arc(dx2, dy2 - 7, 4.5, 0, Math.PI * 2); x.fill(); x.stroke();
-      x.font = '800 12px "Inter Tight", system-ui, sans-serif'; x.textBaseline = 'bottom';
-      var pl = M().fmt(pv) + '%', pw2 = x.measureText(pl).width, left = dx2 + 8 + pw2 > Wd - gr;
-      x.textAlign = left ? 'right' : 'left'; x.fillStyle = sc; x.fillText(pl, dx2 + (left ? -8 : 8), dy2 - 4);
-      hit.panels.push({ top: y, base: base, ph: ph, peaks: peaks });
-    }
-    panel(y1, 'cpu', W('cmp.flow.cpu'), W('cmp.flow.cores', { n: R.cap.cpu }), it.ser.cpu);
-    panel(y2, 'mem', W('cmp.flow.mem'), W('cmp.flow.mb', { n: R.cap.mem }), it.ser.mem);
-    var fx = Math.round(gl + (it.m.mk || 0) * sx) + 0.5, lead = css('--cmp-lead');
-    x.strokeStyle = lead; x.lineWidth = 1; x.beginPath(); x.moveTo(fx, y1); x.lineTo(fx, y2 + ph + platH + 6); x.stroke();
-    x.fillStyle = lead; x.beginPath(); x.arc(fx, y2 + ph + platH + 6, 2.5, 0, Math.PI * 2); x.fill();
-    axisTicks(x, Wd, gl, gr, y2 + ph + platH + 8, T);
-    x.font = '700 11px "Inter Tight", system-ui, sans-serif'; x.textBaseline = 'top';
-    var lt = W('cmp.flow.fin', { t: it.m.mk }), lw2 = x.measureText(lt).width, rt = fx + 6 + lw2 > Wd;
-    x.textAlign = rt ? 'right' : 'left'; x.fillStyle = lead; x.fillText(lt, fx + (rt ? -6 : 6), y1 + ph + platH + 3);
-    cv.__hit = hit;
-  }
-
-  /* The job under the pointer on a board: the front-most peak (smallest, drawn last) whose shape
-   * contains the point. O(jobs). */
-  function flowHit(cv, e) {
-    var hit = cv.__hit;
-    if (!hit) { return null; }
-    var r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    for (var p = 0; p < hit.panels.length; p++) {
-      var P = hit.panels[p];
-      if (y < P.top - 4 || y > P.base) { continue; }
-      for (var k = P.peaks.length - 1; k >= 0; k--) {
-        var pts = P.peaks[k].pts;
-        if (x < pts[0][0] || x > pts[pts.length - 1][0]) { continue; }
-        for (var i = 1; i < pts.length; i++) {
-          if (pts[i][0] >= x) {
-            var a = pts[i - 1], b = pts[i], f = (x - a[0]) / ((b[0] - a[0]) || 1), yy = a[1] + (b[1] - a[1]) * f;
-            if (y >= yy && P.base - yy > 1) { return P.peaks[k].r; }
-            break;
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  var modalShown = null, modalOpener = null, modalCv = null;
-  /* Open the enlarged board for a scheduler; focus returns to its Enlarge button on close. */
-  function openModal(key) { modalOpener = key; view.modal = key; renderModal(true); }
-  function closeModal() {
-    view.modal = null;
-    renderModal(true);
-    var b = ui && ui.res.querySelector ? ui.res.querySelector('[data-enlarge="' + modalOpener + '"]') : null;
-    if (b && b.focus) { b.focus(); }
-    modalOpener = null;
-  }
-  /* force: rebuild the dialog; otherwise (a page redraw) keep it and only redraw its board. */
-  function renderModal(force) {
-    if (!ui) { return; }
-    var R = view.model;
-    var it = null;
-    if (R && view.modal) { R.cols.forEach(function (c) { if (c.key === view.modal) { it = c; } }); }
-    if (!force && it && modalShown === view.modal && modalCv) { raf2(function () { drawFlow(modalCv, it, true); }); return; }
-    modalShown = it ? it.key : null;
-    ui.modal.hidden = !it;
-    clear(ui.modal);
-    if (!it) { modalCv = null; return; }
-    var idx = R.cols.indexOf(it);
-    var go = function (d) { view.modal = R.cols[(idx + d + R.cols.length) % R.cols.length].key; renderModal(true); };
-    var close = closeModal;
-    ui.modal.setAttribute('aria-label', sname(it.key) + ' (' + sterm(it.key) + ')');
-    var cv = h('canvas', { cls: 'cmp-flowcv big' });
-    modalCv = cv;
-    bindBoard(cv, it);
-    var box = h('div', { cls: 'cmp-modalbox', on: { click: function (e) { e.stopPropagation(); },
-      keydown: function (e) {   /* keep Tab inside the dialog */
-        if (e.key !== 'Tab') { return; }
-        var f = Array.prototype.slice.call(box.querySelectorAll('button, select, [tabindex="0"]'));
-        if (!f.length) { return; }
-        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
-        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
-      } } }, [
-      h('div', { cls: 'cmp-modalhead' }, [
-        h('span', { cls: 'cmp-dot big', style: 'background:' + scol(it.key) }),
-        h('span', { cls: 'cmp-modaltitle', text: sname(it.key) + ' (' + sterm(it.key) + ')' }),
-        h('span', { cls: 'muted', text: W('cmp.flow.finished') + ' ' + M().fmt(it.m.mk) }),
-        h('span', { cls: 'cmp-modalbtns' }, [
-          h('button', { type: 'button', cls: 'btn btn-small', text: W('cmp.modal.prev'), on: { click: function () { go(-1); } } }),
-          h('button', { type: 'button', cls: 'btn btn-small', text: W('cmp.modal.next'), on: { click: function () { go(1); } } }),
-          h('button', { type: 'button', cls: 'btn btn-small', id: 'cmp-modal-close', text: W('cmp.modal.close'), on: { click: close } })])
-      ]),
-      h('div', { cls: 'cmp-cvbox' }, cv),
-      detailsOn() ? h('div', { cls: 'cmp-dbox tall' }, h('table', { cls: 'cmp-dtable' }, [
-        h('thead', {}, h('tr', {}, [W('cmp.job.label'), W('cmp.modal.start'), W('cmp.modal.finish'), W('cmp.modal.cores'), W('cmp.modal.mem')].map(function (x2, i) { return h('th', { scope: 'col', cls: i ? 'r' : null, text: x2 }); }))),
-        h('tbody', {}, it.rows.slice().sort(function (a, b) { return a.id - b.id; }).slice(0, 200).map(function (r) {
-          return h('tr', {}, [h('th', { scope: 'row', text: W('cmp.job.opt', { id: r.id }) }), h('td', { cls: 'r strong', text: String(r.start) }), h('td', { cls: 'r strong', text: String(r.finish) }), h('td', { cls: 'r strong', text: String(r.cpu) }), h('td', { cls: 'r strong', text: String(r.mem) })]);
-        }))])) : null
-    ]);
-    ui.modal.appendChild(box);
-    raf2(function () { drawFlow(cv, it, true); var c2 = byId('cmp-modal-close'); if (c2 && c2.focus) { c2.focus(); } });
   }
 
   /* ---------- timelines side by side ---------- */
@@ -1427,77 +1105,11 @@
     return h('section', { id: 'cmp-use', cls: 'cmp-sec' }, h('div', { cls: 'cmp-stage' }, kids));
   }
 
-  /* ---------- per job ---------- */
-
-  function jobSection(ctx) {
-    var R = ctx.R, L = R.cols, fmt = M().fmt;
-    var comp = L.filter(function (c) { return !c.bench; });
-    var ids = R.jobs.map(function (j) { return j.id; }).sort(function (a, b) { return a - b; });
-    var jsel = view.job !== null ? view.job : R.defJob;
-    var jj = null;
-    R.jobs.forEach(function (j) { if (j.id === jsel) { jj = j; } });
-    var rowsJ = L.map(function (it) { var r = it.byId[jsel]; return { it: it, r: r, w: r ? r.wait : null }; });
-    var jMax = Math.max.apply(null, [1].concat(rowsJ.map(function (x) { return x.w || 0; })));
-    var pick = h('select', { id: 'cmp-jobpick', on: { change: function (e) { view.job = +e.target.value; render(); } } }, ids.map(function (id) { return h('option', { value: String(id), text: W('cmp.job.opt', { id: id }) }); }));
-    pick.value = jsel !== null ? String(jsel) : '';
-    var dumbCols = ctx.narrow ? '84px minmax(0,1fr)' : '120px minmax(0,1fr) 230px';
-    var left = h('div', { cls: 'cmp-card' }, [h('p', { cls: 'muted', text: jj ? W('cmp.job.info', { id: jj.id, a: jj.arrival, d: jj.duration, c: jj.cpu, m: jj.mem, p: jj.priority }) : '' })].concat(rowsJ.map(function (x) {
-      var k = x.it.key, pc = x.w === null ? 0 : (x.w / jMax * 100).toFixed(2);
-      return h('div', { cls: 'cmp-dumb', role: 'button', tabindex: '0', 'aria-pressed': view.sel === k ? 'true' : 'false', style: 'grid-template-columns:' + dumbCols + ';opacity:' + ctx.opOf(k), on: keyRow(selSched(k)) }, [
-        h('span', { cls: 'strong cmp-dumbname' }, [h('span', { cls: 'cmp-sw' + (x.it.bench ? ' bench' : ''), style: 'border-color:' + (x.it.bench ? 'var(--text)' : scol(k)) + (x.it.bench ? '' : ';background:' + scol(k)) }), sshort(k)]),
-        h('span', { cls: 'cmp-dumbtrack' }, [h('span', { cls: 'rail' }), h('span', { cls: 'fill', style: 'width:' + pc + '%;background:' + scol(k) }), h('span', { cls: 'knob', style: 'left:' + pc + '%;background:' + scol(k) })]),
-        ctx.narrow ? null : h('span', { cls: 'r', text: W('cmp.job.row', { w: fmt(x.w), s: x.r ? x.r.start : '—', f: x.r ? x.r.finish : '—' }) })
-      ]);
-    })));
-    var winner = R.winner;
-    var focus = view.focus && L.some(function (x) { return x.key === view.focus; }) ? view.focus : winner;
-    var base = view.base && L.some(function (x) { return x.key === view.base; }) ? view.base : 'fcfs';
-    if (base === focus || !L.some(function (x) { return x.key === base; })) { var alt = comp.filter(function (x) { return x.key !== focus; })[0]; base = alt ? alt.key : null; }
-    var gains = [], losses = [], sum = '';
-    if (focus && base) {
-      var F = null, Bs = null;
-      L.forEach(function (x) { if (x.key === focus) { F = x; } if (x.key === base) { Bs = x; } });
-      var diffs = [];
-      F.rows.forEach(function (r) { var b = Bs.byId[r.id]; if (b) { diffs.push({ id: r.id, d: r.wait - b.wait }); } });
-      var gN = diffs.filter(function (o) { return o.d < 0; }), lN = diffs.filter(function (o) { return o.d > 0; });
-      gains = gN.sort(function (a, b) { return a.d - b.d; }).slice(0, 5);
-      losses = lN.sort(function (a, b) { return b.d - a.d; }).slice(0, 5);
-      sum = W('cmp.gl.sum', { g: gN.length, sa: plural(gN.length), l: lN.length, a: sterm(focus), b: sterm(base), e: diffs.length - gN.length - lN.length });
-    }
-    var sel = function (id, opts, val, fn) { var s = h('select', { id: id, on: { change: fn } }, opts.map(function (o) { return h('option', { value: o, text: sshort(o) }); })); s.value = val || ''; return s; };
-    var glBtn = function (o, plus) {
-      return h('button', { type: 'button', cls: 'cmp-glbtn' + (o.id === jsel ? ' on' : ''), on: { click: function () { view.job = o.id; render(); } } },
-        [h('span', { text: W('cmp.job.opt', { id: o.id }) }), h('span', { cls: plus ? 'lost' : 'gain', text: plus ? W('cmp.gl.dplus', { d: Math.abs(o.d) }) : W('cmp.gl.d', { d: Math.abs(o.d) }) })]);
-    };
-    var right = h('div', { cls: 'cmp-card' }, [
-      h('div', { cls: 'cmp-glhead' }, [h('span', { text: W('cmp.gl.for') }), sel('cmp-focus', comp.map(function (x) { return x.key; }), focus, function (e) { view.focus = e.target.value; render(); }),
-        h('span', { text: W('cmp.gl.against') }), sel('cmp-base', L.filter(function (x) { return x.key !== focus; }).map(function (x) { return x.key; }), base, function (e) { view.base = e.target.value; render(); })]),
-      h('p', { cls: 'muted', text: sum }),
-      h('div', { cls: 'cmp-gl' }, [
-        h('div', {}, [h('span', { cls: 'label-caps gain', text: W('cmp.gl.gained') })].concat(gains.length ? gains.map(function (o) { return glBtn(o, false); }) : [h('span', { cls: 'muted', text: W('cmp.gl.none.g') })])),
-        h('div', {}, [h('span', { cls: 'label-caps lost', text: W('cmp.gl.lost') })].concat(losses.length ? losses.map(function (o) { return glBtn(o, true); }) : [h('span', { cls: 'muted', text: W('cmp.gl.none.l') })]))
-      ])
-    ]);
-    var kids = [
-      h('div', { cls: 'cmp-jobhead' }, [h('div', {}, [h('span', { cls: 'label-caps', text: W('cmp.job.k') }), h('p', { cls: 'cmp-h', text: W('cmp.job.h') })]),
-        h('label', { cls: 'cmp-joblabel' }, [W('cmp.job.label'), pick])]),
-      h('div', { cls: 'cmp-jobgrid' + (ctx.two ? ' two' : '') }, [left, right])
-    ];
-    if (detailsOn()) {
-      kids.push(h('div', { cls: 'cmp-tablebox tall' }, [h('table', { cls: 'cmp-dtable', style: 'min-width:560px' }, [
-        h('thead', {}, h('tr', {}, [h('th', { scope: 'col', text: W('cmp.job.label') })].concat(L.map(function (it) { return h('th', { scope: 'col', cls: 'r', text: W('cmp.job.tcol', { name: sshort(it.key) }) }); })))),
-        h('tbody', {}, ids.slice(0, 100).map(function (id) { return h('tr', {}, [h('th', { scope: 'row', text: W('cmp.job.opt', { id: id }) })].concat(L.map(function (it) { var r = it.byId[id]; return h('td', { cls: 'r strong', text: r ? r.start + ' / ' + r.wait : '—' }); }))); }))
-      ]), h('p', { cls: 'cmp-note', text: ids.length > 100 ? W('cmp.job.tnote.some', { n: ids.length }) : W('cmp.job.tnote') })]));
-    }
-    return h('section', { id: 'cmp-job', cls: 'cmp-sec' }, kids);
-  }
-
   /* ---------- canvases ---------- */
 
   function drawCanvases() {
     cssCache = null;
     raf2(function () {
-      boards.forEach(function (b) { drawFlow(b.canvas, b.it, false); });
       strips.forEach(function (s) { drawStrip(s.canvas, s.it, s.h); });
       if (axisCv && view.model) {
         var o = sizeCanvas(axisCv, 24);
@@ -1533,7 +1145,6 @@
     ui = buildFrame(root);
     view.source = defaultSource();
     view.msg = W('cmp.st.pick');
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && view.modal) { closeModal(); } });
     var resizing = null;
     window.addEventListener('resize', function () {
       if (resizing !== null || typeof requestAnimationFrame !== 'function') { return; }
@@ -1549,7 +1160,7 @@
       if (changed === 'jobs' && s.jobs.length === 0 && view.source === 'yours') {
         /* the Build list is gone: its results are too; fall back to the starvation case */
         token++; cancelTimer(); destroyAll();
-        view.source = 'nine'; view.model = null; view.status = 'idle'; view.modal = null; view.msg = W('cmp.st.ds'); view.msgErr = false;
+        view.source = 'nine'; view.model = null; view.status = 'idle'; view.msg = W('cmp.st.ds'); view.msgErr = false;
         render();
         return;
       }

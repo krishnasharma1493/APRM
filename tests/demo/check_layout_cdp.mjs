@@ -88,7 +88,7 @@ try {
   await ev(`document.querySelector('#preset-tiles [data-preset="tiny_case"]').click(); document.querySelector('[data-mode-button="compare"]').click(); document.getElementById('compare-start').click(); true`);
   for (let i = 0; i < 100 && (await ev(`APRM.compare.snapshot().status`)) !== 'done'; i++) await sleep(100);
   const cells = await ev(`(function(){ const box = document.querySelector('#cmp-results .cmp-tablebox'); const tds = [...box.querySelectorAll('td')]; return { n: tds.length, scrolls: getComputedStyle(box).overflowX === 'auto', inside: box.getBoundingClientRect().right <= document.documentElement.clientWidth + 0.5, empty: tds.filter((td) => !td.textContent.trim()).length }; })()`);
-  check('375px Compare: every number is in the results table, which scrolls sideways inside the page (the design)', cells.n >= 7 * 6 && cells.scrolls && cells.inside && cells.empty === 0, JSON.stringify(cells));
+  check('375px Compare: every number is in the results table, which scrolls sideways inside the page (the design)', cells.n >= 4 * 6 && cells.scrolls && cells.inside && cells.empty === 0, JSON.stringify(cells));
 
   // 1b. on a phone the new-job row and Add job can be reached, and the top bar stays inside the screen
   await load(375);

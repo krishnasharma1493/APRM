@@ -62,8 +62,6 @@
 .cmp-results { display: flex; flex-direction: column; gap: 28px; }
 .cmp-sections { display: flex; flex-direction: column; gap: 48px; }
 .cmp-sec { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 110px; min-width: 0; }
-.cmp-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
-.cmp-two.on { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
 /* The dark chart stage */
 .cmp-stage { position: relative; border-radius: 12px; background: var(--cmp-stage); border: 1px solid var(--hairline); padding: 24px; overflow: hidden; color: var(--screen-text); }
@@ -158,25 +156,8 @@
 .cmp-gapnum { font-size: 26px; font-weight: 800; }
 .cmp-gapratio { font-size: 18px; font-weight: 700; }
 
-/* Who ran when: job streams */
-.cmp-boardsec-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.cmp-boardsec-head > div { display: flex; flex-direction: column; gap: 6px; }
-.cmp-boardsec-head .cmp-sub { color: var(--muted); }
-.cmp-follow { border-color: var(--amber); color: var(--amber-ink); font-weight: 600; }
-.cmp-boards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.cmp-boards.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.cmp-board { padding: 18px 18px 12px; border-radius: 12px; background: var(--cmp-stage); border: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 10px; min-width: 0; color: var(--screen-text); }
-.cmp-boardhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cmp-boardname { display: flex; flex-direction: column; gap: 6px; font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: 0.02em; }
-.cmp-boardname .muted { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--screen-muted); }
-.cmp-boardrule { width: 48px; height: 1px; display: block; }
-.cmp-boardmk { margin-left: auto; font-size: 13px; color: var(--screen-muted); }
-.cmp-boardmk strong { color: var(--screen-text); font-weight: 600; }
-.cmp-board .btn, .cmp-modalbox .btn { color: var(--screen-text); }
-.cmp-board .btn:hover, .cmp-modalbox .btn:hover { background: var(--screen-raised); }
+/* Canvas holder (timelines) */
 .cmp-cvbox { position: relative; width: 100%; min-width: 0; }
-.cmp-flowcv { display: block; width: 100%; height: 232px; cursor: pointer; }
-.cmp-flowcv.big { height: 496px; }
 
 /* Timelines */
 .cmp-strips { padding: 16px; gap: 6px; }
@@ -186,48 +167,17 @@
 .cmp-striplegend { font-size: 13px; margin-top: 4px; }
 .cmp-striplegend .push { margin-left: auto; }
 
-/* Per job */
-.cmp-jobhead { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.cmp-jobhead p { margin: 0; }
-.cmp-joblabel { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.cmp-joblabel select, .cmp-glhead select { height: 36px; padding: 0 10px; font-weight: 600; }
-.cmp-jobgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.cmp-jobgrid.two { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
-.cmp-jobgrid .muted { margin: 0; font-size: 14px; }
-.cmp-dumb { display: grid; gap: 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--raised); cursor: pointer; font-size: 13px; }
-.cmp-dumbname { display: flex; align-items: center; gap: 8px; }
-.cmp-dumbtrack { position: relative; height: 14px; }
-.cmp-dumbtrack .rail { position: absolute; left: 0; right: 0; top: 6px; height: 2px; background: var(--hairline); }
-.cmp-dumbtrack .fill { position: absolute; top: 6px; left: 0; height: 2px; opacity: 0.6; }
-.cmp-dumbtrack .knob { position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 6px; border: 2px solid var(--surface); }
-.cmp-glhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
-.cmp-glhead select { height: 32px; font-weight: 400; font-size: 13px; }
-.cmp-gl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.cmp-gl > div { display: flex; flex-direction: column; gap: 4px; }
-.cmp-gl .gain { color: var(--sage); }
-.cmp-gl .lost { color: var(--error); }
-.cmp-glbtn { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--hairline); background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
-.cmp-glbtn.on { border-color: var(--amber); }
-.cmp-glbtn:hover { background: var(--raised); }
-.cmp-glbtn span:last-child { font-weight: 700; }
 
 .cmp-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 20px 0 48px; border-top: 1px solid var(--hairline); }
 .cmp-foot .btn { height: 44px; padding: 0 20px; font-size: 15px; font-weight: 600; }
 
-/* Tooltip, modal, toast */
+/* Tooltip and toast */
 .cmp-tip { position: absolute; left: 0; top: 0; z-index: 40; pointer-events: none; padding: 8px 12px; border-radius: 8px; background: var(--screen-raised); border: 1px solid var(--hairline); font-size: 13px; line-height: 1.45; min-width: 190px; max-width: 280px; color: var(--screen-text); }
 .cmp-tip[hidden] { display: none; }
 .cmp-tip .tip-head { font-weight: 700; }
 .cmp-tip .tip-strong { font-weight: 600; }
 .cmp-tip .tip-amber { font-weight: 600; color: var(--screen-amber); }
 .cmp-tip .tip-muted, .cmp-tip .tip-plain { color: var(--screen-muted); }
-.cmp-modal { position: fixed; inset: 0; z-index: 50; background: var(--cmp-scrim); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.cmp-modal[hidden] { display: none; }
-.cmp-modalbox { width: min(1200px, 100%); max-height: 100%; overflow: auto; padding: 20px 24px; border-radius: 12px; background: var(--cmp-stage); border: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 12px; color: var(--screen-text); }
-.cmp-modalhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cmp-modaltitle { font-size: 20px; font-weight: 600; }
-.cmp-modalhead .muted { color: var(--screen-muted); font-size: 14px; }
-.cmp-modalbtns { margin-left: auto; display: flex; gap: 6px; }
 .cmp-toast { position: fixed; left: 50%; bottom: 32px; z-index: 60; pointer-events: none; transform: translateX(-50%); opacity: 0; transition: opacity 200ms linear; background: var(--raised); border: 1px solid var(--hairline); color: var(--text); font-size: 13px; padding: 8px 14px; border-radius: 6px; white-space: nowrap; }
 .cmp-toast[data-on="on"] { opacity: 1; }
 
@@ -238,7 +188,6 @@
   .cmp-hero { padding: 24px 16px 18px; }
   .cmp-herotitle { font-size: 24px; }
   .cmp-vline { font-size: 21px; }
-  .cmp-gl { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cmp-toast { transition: none; }

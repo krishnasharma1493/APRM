@@ -115,8 +115,8 @@ try {
   console.log('     compare columns: ' + JSON.stringify(cmp));
   check('row 4: fcfs and reserve both avg_wait 17.1, max_wait 19, makespan 22 (the trap is not fixed online)', cmp.length === 2 && cmp.every((c) => Math.abs(c.avg - 17.1) < 1e-9 && c.max === 19 && c.mk === 22));
   const tableRows = await ev(`document.querySelectorAll('#cmp-results .cmp-table tbody tr').length`);
-  check('row 4: full results table shown', tableRows === 7, tableRows + ' rows');
-  check('row 4: the peaks chart and the "Who ran when" boards are drawn (SVG and canvas, no chart library)', (await ev(`document.querySelectorAll('#cmp-verdict svg path').length`)) > 0 && (await ev(`document.querySelectorAll('#cmp-boards canvas').length`)) === 2);
+  check('row 4: full results table shown (four measures, K-59)', tableRows === 4, tableRows + ' rows');
+  check('row 4: the peaks chart and the timelines are drawn (SVG and canvas, no chart library)', (await ev(`document.querySelectorAll('#cmp-verdict svg path').length`)) > 0 && (await ev(`document.querySelectorAll('#cmp-timelines canvas').length`)) >= 2);
   check('row 4: the exact best is explained as limited to 9 jobs (big_job_trap has 10 jobs)', /only worked out for 9 jobs or fewer/.test(await ev(`__h.text('cmp-exactnote')`)));
 
   // --- Row 5: memory hog, aging vs aging + reservation, why log

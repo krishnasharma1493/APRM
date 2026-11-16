@@ -220,8 +220,8 @@ async function main() {
       await ev(`APRM.compare.setSelected(${JSON.stringify(SCHEDULERS)}); document.getElementById('compare-start').click(); true`);
       if (!(await waitFor(`APRM.compare.snapshot().status === 'done'`))) { return [false, 'not done']; }
       const cols = await ev(`APRM.compare.snapshot().columns.length`), n = await ev(`document.querySelectorAll('#cmp-results .cmp-table tbody tr').length`);
-      const b = await ev(`document.querySelectorAll('#cmp-boards canvas').length`), peaks = await ev(`document.querySelectorAll('#cmp-verdict .cmp-grow').length`);
-      return [n === 7 && b === cols && cols >= 6 && peaks >= 2 * cols, await ev(`document.querySelector('.cmp-vline').textContent`)];
+      const b = await ev(`document.querySelectorAll('#cmp-timelines .cmp-striprow canvas').length`), peaks = await ev(`document.querySelectorAll('#cmp-verdict .cmp-grow').length`);
+      return [n === 4 && b === cols + 1 && cols >= 6 && peaks >= 2 * cols, await ev(`document.querySelector('.cmp-vline').textContent`)];
     });
   }
   await row('Compare', 'Measure tabs', 'Average wait', 'The peaks redraw for that measure; Show details adds the exact table', 'ComparePage design', async () => { await ev(`document.querySelector('[data-metric="avgw"]').click(); true`); await sleep(150); const m = await ev(`APRM.compare.snapshot().metric`); return [m === 'avgw' && /AVERAGE WAIT|Average wait/i.test(await ev(`document.querySelector('.cmp-herotitle').textContent`)), m]; });
