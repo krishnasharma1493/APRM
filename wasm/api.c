@@ -20,7 +20,7 @@
  * the string is an error envelope {"ok":false,"error":{...}} (PRD section 5).
  *
  * The only mutable global state in the project lives in THIS file, never in
- * core/ (CLAUDE.md rule 2 is about core/):
+ * core/ (project rule 2 is about core/):
  *   g_slots, g_cap   the handle table (handle h is slot h-1)
  *   g_orphan_err     the last failure that had no handle (see below)
  *   g_orphan_buf     the JsonBuf that renders it

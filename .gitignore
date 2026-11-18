@@ -40,18 +40,17 @@ results/
 .DS_Store
 Thumbs.db
 
-# --- Tool and assistant folders ----------------------------------------------
-# Local working state of the coding assistant, the design tool and the browser
-# tool, and the old autonomous-run script and its state.
-.claude/
+# --- Tool folders -----------------------------------------------------------
+# Local working state of the design tool and the browser tool, and the old
+# run script and its state.
 .impeccable/
 .playwright-mcp/
 autorun.sh
 .autorun/
 
 # --- Local project documents -----------------------------------------------
-# Planning documents, design notes, research papers, report figures and the
-# assistant rules file are kept on the developers' machines only, not in the
+# Planning documents, design notes, research papers and report figures are kept on the developers' machines only, not in the
 # public repository. tools/plot_figures.py still writes to docs/report/figures/.
 docs/
-CLAUDE.md
+deploy/
+.vercel/
