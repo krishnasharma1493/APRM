@@ -11,7 +11,7 @@ APRM is a two-person course project. The rules below keep `main` green and every
    - C: `make test` and `make sanitize`; `make hardening` for input handling
    - Website: `make wasm && make web && make web-test`
    - Python: `pytest tests/py`
-5. Open a pull request from [`.github/pull_request_template.md`](.github/pull_request_template.md): "Closes #<issue>", every "Done when" box ticked with evidence, and a plain-English "How it works". Say in the PR if an AI assistant helped.
+5. Open a pull request from [`.github/pull_request_template.md`](.github/pull_request_template.md): "Closes #<issue>", every "Done when" box ticked with evidence, and a plain-English "How it works".
 6. A reviewer checks the PR against the issue, the rules below and the input, output and summary formats. It is squash-merged once the review approves and CI is green. Never merge red, never force-push to `main`.
 
 ## Rules that are never broken

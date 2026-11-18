@@ -9,6 +9,8 @@ APRM is an online, non-preemptive job scheduler for one machine with two resourc
 - **Website:** the engine compiled to WebAssembly in a single offline HTML file. You build a case, watch every decision with a plain-English reason, and compare all schedulers side by side.
 - **Python tools:** generate seeded workloads, run experiments E1 to E6, check invariants and conformance, and draw the report figures.
 
+**Live demo:** <https://aprm.vercel.app/> (opens in any browser, no login).
+
 This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd semester), Faculty of Technology, University of Delhi.
 
 ![The Run page: aging with EASY reservation on the 12-job example, paused at tick 6. The laptop screen shows cores and memory in use, the waiting queue is on the left, and the "why" line explains the latest decision.](assets/readme/run.png)
@@ -16,6 +18,8 @@ This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd 
 ## Contents
 
 - [Features](#features)
+- [Tech stack](#tech-stack)
+- [Accounts and environment](#accounts-and-environment)
 - [Quick start](#quick-start)
 - [The website](#the-website)
 - [The schedulers](#the-schedulers)
@@ -26,6 +30,7 @@ This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd 
 - [Testing and quality checks](#testing-and-quality-checks)
 - [Experiments and figures](#experiments-and-figures)
 - [Setup](#setup)
+- [Deploying the website](#deploying-the-website)
 - [Optional: GitHub Pages copy](#optional-github-pages-copy)
 - [Authors and responsibilities](#authors-and-responsibilities)
 - [Licence](#licence)
@@ -43,6 +48,21 @@ This is a course project for Analysis and Design of Algorithms, B.Tech CSE (3rd 
 - **Pure, safe C11.** The core uses the standard library only, with no I/O and no global state. It compiles cleanly with `-Wall -Wextra -Werror`, and the test suite also runs under AddressSanitizer and UndefinedBehaviorSanitizer, with fuzzing and allocation-failure injection.
 - **An offline website.** It is one HTML file with the engine, fonts and scripts inside. It opens from `file://` with the network off, works in light and dark themes and at phone width, can be used fully from the keyboard, and respects reduced motion.
 - **Reproducible experiments.** Every workload has a recorded seed, results are summarised with 95% confidence intervals, and one command redraws every figure.
+
+## Tech stack
+
+| Part | Technology |
+| --- | --- |
+| Scheduling engine and console program | C11, standard library only, built with Make (GCC or Clang) |
+| Website engine | The same C code compiled to WebAssembly with Emscripten |
+| Website | HTML, CSS and JavaScript, bundled by a small Node.js script into one offline HTML file |
+| Experiments and checks | Python 3 with numpy, pandas, matplotlib and pytest |
+| Continuous integration | GitHub Actions |
+| Hosting | Vercel (a static copy of `web/dist/index.html`) |
+
+## Accounts and environment
+
+The app has no user accounts, no login and no backend, so there are no demo credentials. It uses no API keys, passwords or environment variables, so there is no `.env` or `.env.example` file. Everything runs in the browser.
 
 ## Quick start
 
@@ -277,6 +297,19 @@ pip install -r requirements.lock.txt   # exact versions; use this one
 | `pip` prints "A new release of pip is available" | A notice, not an error. Ignore it; do not upgrade pip for this project. |
 | `summarize.py` prints a warning "no runs under raw/E2" | Expected: E2 is summarised from the E1 runs. Not a failure. |
 
+## Deploying the website
+
+The live demo is the same `web/dist/index.html` that `make web` builds, uploaded to Vercel as a static file:
+
+```sh
+make wasm && make web
+mkdir -p deploy && cp web/dist/index.html deploy/
+npx vercel login                            # once
+npx vercel deploy deploy --prod --name aprm
+```
+
+`deploy/` is a temporary folder; do not commit it.
+
 ## Optional: GitHub Pages copy
 
 The laptop is the primary demo. The `deploy` job in `.github/workflows/ci.yml` can publish the website from `main`. It stays skipped until two settings are made, in this order:
@@ -293,7 +326,7 @@ The next push to `main` that passes every check then publishes `web/dist/`, buil
 | Krishna Sharma | Core development and experimental execution | The C11 scheduling algorithms and core, the console program, the WebAssembly build and website, workload generation, experiment runs, statistical processing, automated testing and CI |
 | Ahaana Arya | Experimental visualisation and verification | `tools/plot_figures.py` and the E1 to E6 report figures: their presentation, styling, captions and labels. Manual verification of the golden test cases on paper, and review of changes to the CSV, summary and figure formats |
 
-These are areas of responsibility, not a record of who typed each line. All code in this repository, including `tools/plot_figures.py`, was implemented by Krishna Sharma with the help of an AI coding assistant (Claude). Ahaana's contribution is reviewing and checking the figures' presentation, styling, captions and labels, and verifying the golden cases by hand.
+These are areas of responsibility, not a record of who typed each line. All code in this repository, including `tools/plot_figures.py`, was implemented by Krishna Sharma . Ahaana's contribution is reviewing and checking the figures' presentation, styling, captions and labels, and verifying the golden cases by hand.
 
 How to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

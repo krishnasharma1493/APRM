@@ -40,7 +40,7 @@ mkdir -p web/vendor
 OUT=web/vendor/aprm.js
 rm -f "$OUT" web/vendor/aprm.wasm
 
-# Same warning policy as the other C code (CLAUDE.md rule 6).
+# Same warning policy as the other C code (project rule 6).
 emcc -std=c11 -Wall -Wextra -Werror -O2 -Icore \
   core/*.c wasm/api.c \
   -o "$OUT" \

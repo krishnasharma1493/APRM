@@ -58,9 +58,9 @@ The idea, invariants, time and space complexity, why this design over alternativ
 ## 11. Pitfalls
 -
 
-## 12. Assistant prompt
+## 12. Start here
 ```
-Read CLAUDE.md, then this issue (#<number>) in full.
+Read the project rules, then this issue (#<number>) in full.
 ```
 
 ## 13. Definition of done
